@@ -31,7 +31,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 	scanner.Buffer(make([]byte, 65536), 16<<20)
 	// Work the agent started in the background finishes after its turn ends, and
 	// Claude Code starts a new turn to report it, so such a turn is not final.
-	background := false
+	background := map[string]bool{}
 	for scanner.Scan() {
 		var r struct {
 			Type   string `json:"type"`
@@ -47,6 +47,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 			UUID         string `json:"uuid"`
 			Effort       string `json:"effort"`
 			Attachment   struct {
+				Prompt string `json:"prompt"`
 				Type   string `json:"type"`
 				Origin struct {
 					Kind string `json:"kind"`
@@ -79,7 +80,7 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 		}
 		if human && claudePointerMatches(text, pointer) && r.Cwd == cwd && r.SessionID != "" {
 			turn = codexTranscriptTurn{Consumed: true, SessionID: r.SessionID, TurnID: r.UUID}
-			background = false
+			background = map[string]bool{}
 			continue
 		}
 		if !turn.Consumed {
@@ -103,10 +104,14 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 		if r.Effort != "" {
 			turn.Effort = r.Effort
 		}
+		updateClaudeBackgroundWork(background, r.Type, r.Message.Content, r.Content, r.Attachment.Prompt)
+		turn.BackgroundWork = len(background) > 0
+		if turn.Waiting == SeatStateBackgroundWork && !turn.BackgroundWork {
+			turn.Waiting = SeatStateTurnEndedWithoutSentinel
+		}
 		if r.Type != "assistant" {
 			continue
 		}
-		background = background || claudeStartsBackgroundWork(r.Message.Content)
 		// Claude Code writes its own notices as "<synthetic>" assistant records.
 		if model := r.Message.Model; model != "" && model != "<synthetic>" {
 			if turn.Model != "" && model != turn.Model {
@@ -133,17 +138,10 @@ func readClaudeTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTr
 			turn.Complete = true
 			return turn, nil
 		}
-		// A turn that ends without the sentinel, while nobody else took a turn and
-		// no background work is still due, is the agent's final word: the caller
-		// rejects it at once rather than waiting on.
-		if stop == "end_turn" && turn.OperatorTurns == 0 && !background {
-			turn.Complete = true
-			return turn, nil
-		}
 		// Otherwise the dispatch waits on: say why, so it is visible.
 		if stop == "end_turn" {
 			turn.Waiting = SeatStateTurnEndedWithoutSentinel
-			if turn.OperatorTurns == 0 {
+			if turn.BackgroundWork {
 				turn.Waiting = SeatStateBackgroundWork
 			}
 		}
@@ -168,25 +166,52 @@ func claudeLocalCommand(text string) string {
 	return strings.TrimSpace(name)
 }
 
-// claudeStartsBackgroundWork reports a tool call whose result arrives after the
-// turn: a background shell command or a Monitor.
-func claudeStartsBackgroundWork(content json.RawMessage) bool {
+// updateClaudeBackgroundWork tracks each launched background tool until its
+// native completion notification.
+// A sticky "started background work" flag would hide later API failures forever.
+func updateClaudeBackgroundWork(pending map[string]bool, recordType string, content json.RawMessage, notice, attachment string) {
 	var blocks []struct {
-		Type  string `json:"type"`
-		Name  string `json:"name"`
-		Input struct {
+		Type      string `json:"type"`
+		ID        string `json:"id"`
+		ToolUseID string `json:"tool_use_id"`
+		Name      string `json:"name"`
+		IsError   bool   `json:"is_error"`
+		Input     struct {
 			RunInBackground bool `json:"run_in_background"`
 		} `json:"input"`
 	}
-	if json.Unmarshal(content, &blocks) != nil {
-		return false
+	_ = json.Unmarshal(content, &blocks)
+	notices := []string{notice, attachment}
+	if recordType == "user" {
+		notices = append(notices, assistantContentText(content)...)
 	}
 	for _, block := range blocks {
-		if block.Type == "tool_use" && (block.Input.RunInBackground || block.Name == "Monitor") {
-			return true
+		if recordType == "assistant" && block.Type == "tool_use" && block.ID != "" && (block.Input.RunInBackground || block.Name == "Monitor") {
+			pending[block.ID] = true
+		}
+		if block.Type == "tool_result" && block.IsError {
+			delete(pending, block.ToolUseID)
 		}
 	}
-	return false
+	for _, text := range notices {
+		if !strings.HasPrefix(strings.TrimSpace(text), "<task-notification>") {
+			continue
+		}
+		status := claudeNotificationField(text, "status")
+		switch status {
+		case "completed", "failed", "killed", "stopped", "cancelled", "canceled":
+			delete(pending, claudeNotificationField(text, "tool-use-id"))
+		}
+	}
+}
+
+func claudeNotificationField(text, field string) string {
+	_, rest, ok := strings.Cut(text, "<"+field+">")
+	if !ok {
+		return ""
+	}
+	value, _, _ := strings.Cut(rest, "</"+field+">")
+	return strings.TrimSpace(value)
 }
 
 // claudePointerMatches accepts the exact pointer, plain or inside Claude's

@@ -34,7 +34,8 @@ type nativeSeat struct {
 	watch   *filewatch.Watcher
 	created time.Time
 	// wait is what the seat is waiting on now, for seat_state events.
-	wait seatWait
+	wait       seatWait
+	onRecovery func() error
 	// sent marks a seat that has taken a brief from Archon: it is past its
 	// startup, so a trust dialog's words on its screen are never the dialog.
 	sent bool
@@ -67,6 +68,8 @@ type realSeatTransport struct {
 	control func(context.Context, string, string) (*seatControl, error)
 	// proc is where process file descriptors are read; empty means /proc.
 	proc string
+	// Nonzero durations are test seams; production uses the constants below.
+	idleTimeout, checkInterval time.Duration
 }
 
 func (t realSeatTransport) run(ctx context.Context, socket string, input *strings.Reader, args ...string) (string, error) {
@@ -503,6 +506,9 @@ func findSeatTurn(s *nativeSeat, cwd, pointer string) (codexTranscriptTurn, stri
 // after /clear or /new, goes unnoticed when no transcript changes.
 const replacementCheckInterval = 5 * time.Second
 
+// Quiet prompt recovery is independent of optional mission time limits.
+const seatIdleRecoveryDelay = 5 * time.Minute
+
 // WaitTurn waits for the dispatch's native turn to complete. The operator may
 // type into the seat meanwhile; the transcript readers tolerate those turns.
 // It fails when the seat ends, or when the harness moves to another
@@ -516,10 +522,20 @@ func (t realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, poi
 	if s.control != nil {
 		seatEvents = s.control.events
 	}
-	ticker := time.NewTicker(replacementCheckInterval)
+	interval := t.checkInterval
+	if interval == 0 {
+		interval = replacementCheckInterval
+	}
+	idleTimeout := t.idleTimeout
+	if idleTimeout == 0 {
+		idleTimeout = seatIdleRecoveryDelay
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	defer s.setWaiting("")
 	recorded, check := false, false
+	var idleSince time.Time
+	recovered := false
 	for {
 		s.setWaiting(turn.Waiting)
 		if turn.Consumed && !recorded {
@@ -535,6 +551,30 @@ func (t realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, poi
 		if check && turn.Consumed {
 			if err := t.conversationReplaced(ctx, s, turn); err != nil {
 				return turn, err
+			}
+			clear, _, _, err := t.inputClear(ctx, s.socket, s)
+			if err != nil {
+				return turn, err
+			}
+			if !clear || turn.BackgroundWork {
+				idleSince = time.Time{}
+			} else if idleSince.IsZero() {
+				idleSince = time.Now()
+			} else if time.Since(idleSince) >= idleTimeout {
+				if recovered {
+					return turn, runExecutionError("seat_idle_without_sentinel", "seat returned to an empty prompt without this run's completion sentinel after one continue instruction; resume with redispatch", "adapter", nil)
+				}
+				if s.onRecovery != nil {
+					if err := s.onRecovery(); err != nil {
+						return turn, err
+					}
+				}
+				instruction := "Continue the dispatched work from where you stopped. Your response ended without this run's completion sentinel. Preserve completed work and follow the original brief and output contract. When complete emit <<<ARCHON-DONE run-id=" + s.runID + " status=ok artifact=<path-or-ref>>>."
+				if err := t.Stage(ctx, s.socket, s, "idle-continue-"+s.runID, instruction); err != nil {
+					return turn, err
+				}
+				recovered = true
+				idleSince = time.Time{}
 			}
 		}
 		check = false
@@ -562,6 +602,7 @@ func (t realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, poi
 				check = true
 				continue
 			}
+			idleSince = time.Time{}
 			candidate, err := readSeatTurn(s, event.Path, cwd, pointer)
 			if err != nil {
 				return turn, err

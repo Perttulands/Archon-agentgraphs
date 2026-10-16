@@ -11,7 +11,7 @@ func TestCodexTurnUsesExactUserPointerAndNativeCompletion(t *testing.T) {
 	base := `{"type":"session_meta","payload":{"id":"native-one","cwd":"/workspace"}}
 {"type":"turn_context","payload":{"model":"gpt-6-astra","effort":"xhigh"}}
 {"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"pointer"}]}}
-{"type":"response_item","payload":{"type":"message","role":"assistant","channel":"final","content":[{"text":"first final"}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","channel":"final","content":[{"text":"first final <<<ARCHON-DONE run-id=run_test status=ok artifact=result>>>"}]}}
 `
 	complete := `{"type":"event_msg","payload":{"type":"task_complete"}}
 `
@@ -23,9 +23,9 @@ func TestCodexTurnUsesExactUserPointerAndNativeCompletion(t *testing.T) {
 		{"closed", complete, "pointer", "/workspace", true, true, false},
 		{"wrong pointer", complete, "different", "/workspace", false, false, false},
 		{"wrong workspace", complete, "pointer", "/elsewhere", false, false, false},
-		// A message someone typed is an operator turn: the answer without the
-		// sentinel may be a reply to them, so the dispatch keeps waiting.
-		{"later user", `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"another task"}]}}` + "\n" + complete, "pointer", "/workspace", true, false, false},
+		// A later user message does not invalidate a natively finished answer
+		// that carries the dispatch sentinel.
+		{"later user", `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"another task"}]}}` + "\n" + complete, "pointer", "/workspace", true, true, false},
 		{"closed before later turn", complete + `{"type":"turn_context","payload":{"model":"another-model","effort":"low"}}` + "\n", "pointer", "/workspace", true, true, false},
 		{"partial final event", strings.TrimSuffix(complete, "}}\n"), "pointer", "/workspace", true, false, false},
 	} {
@@ -39,7 +39,7 @@ func TestCodexTurnUsesExactUserPointerAndNativeCompletion(t *testing.T) {
 			if turn.Consumed != tt.consumed || turn.Complete != tt.done {
 				t.Fatalf("turn %+v", turn)
 			}
-			if turn.Complete && (turn.Text != "first final" || turn.Model != "gpt-6-astra" || turn.Effort != "xhigh") {
+			if turn.Complete && (turn.Text != "first final <<<ARCHON-DONE run-id=run_test status=ok artifact=result>>>" || turn.Model != "gpt-6-astra" || turn.Effort != "xhigh") {
 				t.Fatalf("later turn replaced exact result: %+v", turn)
 			}
 		})
@@ -60,7 +60,7 @@ func TestCodexNativeFinalAnswerPhaseMatchesCompletedTurn(t *testing.T) {
 			data := `{"type":"session_meta","payload":{"id":"native-one","cwd":"/workspace"}}
 {"type":"turn_context","payload":{"turn_id":"turn-one","model":"gpt-6-astra","effort":"xhigh"}}
 {"type":"response_item","payload":{"type":"message","role":"user","content":[{"text":"pointer"}]}}
-{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"` + tt.phase + `","content":[{"text":"native result"}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"` + tt.phase + `","content":[{"text":"native result <<<ARCHON-DONE run-id=run_test status=ok artifact=result>>>"}]}}
 {"type":"event_msg","payload":{"type":"task_complete","turn_id":"` + tt.completedTurn + `"}}
 `
 			path := filepath.Join(t.TempDir(), "rollout.jsonl")

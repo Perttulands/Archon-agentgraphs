@@ -928,15 +928,26 @@ completion sentinel: Codex task completion, or Claude's end_turn assistant
 message. A marker alone is insufficient, and another run's sentinel never
 completes a dispatch. The operator's turns after the pointer, typed or queued
 messages and interrupts, neither complete nor fail the dispatch, and the
-completing turn may come after them. A turn that finishes without the sentinel
-fails the dispatch at once only when nobody else took a turn during it, and for
-Claude only when the agent left no background work that resumes the
-conversation; otherwise the dispatch waits, within the step's time limit if it has one. The dispatch
+completing turn may come after them. A turn that finishes without the sentinel waits for recovery.
+For both harnesses, once a dispatched seat has an idle, empty input prompt
+and no native transcript activity for five minutes, Archon sends one continue
+instruction in that same seat naming the missing completion sentinel. Busy
+panes, Claude background tasks awaiting their native completion notification,
+and unsent operator input reset this quiet window; idle prompt animations
+do not. This also covers API errors or lost responses with no native turn-end
+record. Five minutes leaves room for delayed writes and normal pauses without
+leaving overnight runs stuck indefinitely. A second five-minute idle window
+without completion blocks the run with `seat_idle_without_sentinel` and a plain
+reason; `run wait --until needs-you` returns it. Inspect the seat and resume
+with `--mode redispatch` to run the step again. This is stalled-seat recovery,
+not a time limit on a working step.
+The dispatch
 still fails loudly when the seat ends, when the model or effort changes, or when
 the harness moves to another conversation (`/clear`, `/new` or `/resume`).
 
 A step without a time limit never times out, so a seat that waits on something
-Archon cannot end on its own is recorded instead, never blocked or failed.
+Archon cannot end on its own is recorded instead. The idle recovery above
+handles seats that have stopped working without completing.
 Once such a wait has lasted a minute, the ledger records `seat_state` (`nodeId`,
 `slotId`, `data.state`, `data.detail`, `data.since` and `data.dispatchId` once
 dispatched), and records it again with state `working` when the wait ends:
@@ -946,8 +957,8 @@ dispatched), and records it again with state `working` when the wait ends:
   busy or the input line holds text the operator has not sent;
 - `brief_not_taken`: the brief is pasted but not sent, because Enter did not
   send it or the input line also holds text Archon does not send;
-- `turn_ended_without_sentinel`: after an operator turn, the agent ended a
-  turn without this run's sentinel;
+- `turn_ended_without_sentinel`: the agent ended a turn without this run's
+  sentinel;
 - `background_work_pending`: Claude ended its turn with background work that
   has not resumed the conversation.
 

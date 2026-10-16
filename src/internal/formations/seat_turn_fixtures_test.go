@@ -127,21 +127,12 @@ func TestOperatorTurnsNeitherCompleteNorFailADispatch(t *testing.T) {
 	})
 }
 
-func TestAFinishedTurnWithoutTheSentinelFailsFastWhenNobodyElseTookATurn(t *testing.T) {
+func TestAFinishedTurnWithoutTheSentinelWaitsForRecovery(t *testing.T) {
 	for _, harness := range fixtureHarnesses {
 		t.Run(harness.name, func(t *testing.T) {
-			name := harness.name + "-no-sentinel"
-			turn, line, err := fixtureOutcome(t, harness.id, name, "nosentinel")
-			if err != nil || !turn.Complete || turn.OperatorTurns != 0 || strings.TrimSpace(turn.Text) != "hello" {
-				t.Fatalf("turn %+v, err %v; want the finished answer handed back at once", turn, err)
-			}
-			// Claude returns on its end_turn record; Codex on task_complete.
-			end := map[string]string{"claude": `"stop_reason":"end_turn"`, "codex": `"task_complete"`}[harness.name]
-			if want := lineOf(t, name, end); line != want {
-				t.Fatalf("returned at line %d, want the native turn end at line %d", line, want)
-			}
-			if _, ok := ParseCompletionSentinel(turn.Text, fixtureRunID); ok {
-				t.Fatal("an answer without the sentinel carried one")
+			turn, _, err := fixtureOutcome(t, harness.id, harness.name+"-no-sentinel", "nosentinel")
+			if err != nil || turn.Complete || !turn.Consumed || turn.Waiting != SeatStateTurnEndedWithoutSentinel {
+				t.Fatalf("turn %+v, err %v; want waiting for recovery", turn, err)
 			}
 		})
 	}
@@ -151,12 +142,10 @@ func TestAnotherRunsSentinelDoesNotCompleteADispatch(t *testing.T) {
 	for _, harness := range fixtureHarnesses {
 		t.Run(harness.name, func(t *testing.T) {
 			turn, _, err := fixtureOutcome(t, harness.id, harness.name+"-other-run-sentinel", "otherrun")
-			if err != nil || !turn.Complete || !strings.Contains(turn.Text, "run-id=run_other") {
+			if err != nil || turn.Complete || !strings.Contains(turn.Text, "run-id=run_other") {
 				t.Fatalf("turn %+v, err %v", turn, err)
 			}
-			// The finished turn goes back to the executor, whose completion check
-			// rejects an answer without this run's sentinel (see
-			// TestS4CompletionSentinelRequiresMatchingRunID).
+			// Another run's sentinel leaves this dispatch waiting for recovery.
 			if _, ok := ParseCompletionSentinel(turn.Text, fixtureRunID); ok {
 				t.Fatal("another run's sentinel completed this run's dispatch")
 			}

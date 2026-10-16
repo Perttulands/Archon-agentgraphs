@@ -10,11 +10,10 @@ import (
 )
 
 type codexTranscriptTurn struct {
-	SessionID string
-	Consumed  bool
-	// Complete means the dispatch has an answer to read: an agent turn after the
-	// pointer finished natively with this run's completion sentinel, or finished
-	// without it while nobody else took a turn, which the caller rejects.
+	BackgroundWork bool
+	SessionID      string
+	Consumed       bool
+	// Complete means a natively finished agent turn carries this run's sentinel.
 	Complete bool
 	Text     string
 	Model    string
@@ -24,7 +23,7 @@ type codexTranscriptTurn struct {
 	// after the pointer: typed or queued messages and interrupts.
 	OperatorTurns int
 	// Waiting says why an incomplete turn is parked, when the transcript shows
-	// it: a turn that ended without the sentinel after an operator turn, or
+	// it: a turn that ended without the sentinel, or
 	// Claude background work that has not resumed. Empty while the agent works.
 	Waiting string
 }
@@ -125,13 +124,11 @@ func readCodexTurnReader(reader io.Reader, cwd, pointer, runID string) (codexTra
 			if p.TurnID != turn.TurnID {
 				continue
 			}
-			if _, ok := ParseCompletionSentinel(turn.Text, runID); ok || turn.OperatorTurns == 0 {
+			if _, ok := ParseCompletionSentinel(turn.Text, runID); ok {
 				turn.Complete = true
 				return turn, nil
 			}
-			// The operator took a turn, so an answer without the sentinel may be a
-			// reply to them; wait for the dispatch's own completion.
-			turn.Text = ""
+			// An answer without this run's sentinel waits for idle recovery.
 			turn.Waiting = SeatStateTurnEndedWithoutSentinel
 		}
 	}

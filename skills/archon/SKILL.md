@@ -564,7 +564,12 @@ restart or a lost seat, read [references/recovery.md](references/recovery.md).
 
 ## Seats belong to the runtime
 
-The runtime creates, briefs and cleans up every seat. Leave seat tmux sessions
+The runtime creates, briefs and cleans up every seat. A dispatched seat idle
+at an empty prompt without native transcript activity for five minutes gets
+one continue instruction for its missing sentinel. Another five-minute idle
+window blocks with `seat_idle_without_sentinel`; inspect it and use
+`run resume --mode redispatch` to run the step again. Busy agents, pending Claude background tasks and unsent
+operator input reset the quiet window. Leave seat tmux sessions
 alone: only an orchestrated controller directs its own bound workers. The
 operator may type into any seat at any time; a dispatch waits through their
 turns and still completes on the run's sentinel. Inside a seat, treat what the

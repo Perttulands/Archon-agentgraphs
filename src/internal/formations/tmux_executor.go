@@ -826,11 +826,18 @@ func (e *TmuxFormationExecutor) executeBoundSlotTurn(req FormationExecution, bin
 	defer stopWarnings()
 	stopTokens := e.watchTokens(req, seat, slot.ID, lease.DispatchID, pointer)
 	defer stopTokens()
+	seat.onRecovery = func() error {
+		return e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_idle_recovery", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"dispatchId": lease.DispatchID, "reason": "idle without completion sentinel for five minutes; sending one continue instruction"}})
+	}
 	turn, err := e.seatClient.WaitTurn(owned.ctx, seat, e.config.Cwd, pointer, func(turn codexTranscriptTurn) error {
 		defer consumedOnce.Do(func() { close(consumed) })
 		return e.store.AppendRunEvent(req.RunID, RunEvent{Type: "seat_prompt_consumed", NodeID: req.NodeID, SlotID: slot.ID, Data: map[string]any{"sessionName": binding.SessionName, "nativeSessionId": turn.SessionID, "dispatchId": lease.DispatchID}})
 	})
 	if err != nil {
+		var executionErr *RunExecutionError
+		if errors.As(err, &executionErr) && executionErr.Code == "seat_idle_without_sentinel" {
+			return tmuxSlotOutput{}, runSlotExecutionError(executionErr.Code, executionErr.Message, "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
+		}
 		return tmuxSlotOutput{}, runSlotExecutionError("native_turn_failed", redactPromptFromLedgerText(err.Error(), prompt), "adapter", err, req.NodeID, slot.ID, lease.DispatchID)
 	}
 	if err := binding.Variant.verifyTurnSettings(turn); err != nil {
