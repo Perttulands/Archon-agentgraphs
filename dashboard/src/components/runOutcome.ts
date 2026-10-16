@@ -150,11 +150,13 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
       : route.targets.find(target => target.nodeId === limit.nodeId)?.title || titleOf(limit.nodeId) || limit.nodeId
     const where = [...clauses, ...ends].join('; ')
     if (route.picksBest) {
+      // The pick's judges spend the mission's rounds as any step does.
+      const left = mission && route.roundsNeeded && mission.max - mission.used <= route.roundsNeeded ? mission.max - mission.used : -1
       return {
         button,
-        outcome: `${verb}: ${where}, but ${who} has used ${spentAllowance(limit)}, so its best judged attempt is picked instead and goes on as if it had passed.`,
+        outcome: `${verb}: ${where}, but ${who} has used ${spentAllowance(limit)}, so its best judged attempt is picked instead and goes on as if it had passed${left >= 0 && mission ? `; the mission has ${left} of ${mission.max} rounds left` : ''}.`,
         blocks: false,
-        last: false,
+        last: left >= 0,
       }
     }
     return {

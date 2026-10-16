@@ -245,6 +245,52 @@ describe('formations run-state helpers', () => {
     ])
   })
 
+  it('ends a step at its pick and shows its gate picking (archon-gihe)', () => {
+    // A time card cuts Draft's third attempt; Review's judges pick the best.
+    const failed: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_draft', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'node_output', nodeId: 'fmn_draft', attempt: 1, data: { status: 'done' } },
+      { runId: 'run_1', seq: 3, type: 'gate_evaluating', nodeId: 'gate_review', gateId: 'gate_review' },
+      { runId: 'run_1', seq: 4, type: 'gate_verdict', nodeId: 'gate_review', gateId: 'gate_review', data: { verdict: 'fail' } },
+      { runId: 'run_1', seq: 5, type: 'node_started', nodeId: 'fmn_draft', attempt: 2 },
+      { runId: 'run_1', seq: 6, type: 'error', nodeId: 'fmn_draft', attempt: 2, data: { code: 'limit_reached' } },
+    ]
+    const picking: RunEvent[] = [
+      ...failed,
+      { runId: 'run_1', seq: 7, type: 'pick_started', nodeId: 'fmn_draft', gateId: 'gate_review', data: { trigger: 'whenSpent', candidates: [{ attempt: 1 }] } },
+      { runId: 'run_1', seq: 8, type: 'node_started', nodeId: 'fmn_judge', attempt: 2 },
+    ]
+    const states = projectNodeStates(picking)
+    expect(states.get('fmn_draft')).toBe('done')
+    expect(states.get('gate_review')).toBe('running')
+    const points = runCurrentPoints(picking, run('running'))
+    expect(points).toEqual([
+      { kind: 'running', nodeId: 'gate_review', gate: true, picking: true },
+      { kind: 'running', nodeId: 'fmn_judge', gate: false, attempt: 2 },
+    ])
+    expect(runPointPhrase(points[0], 'Review')).toBe('picking the best attempt at Review')
+
+    const picked = projectNodeStates([...picking,
+      { runId: 'run_1', seq: 9, type: 'node_output', nodeId: 'fmn_judge', attempt: 2, data: { status: 'done' } },
+      { runId: 'run_1', seq: 10, type: 'gate_verdict', nodeId: 'gate_review', gateId: 'gate_review', data: { verdict: 'pass', pick: { nodeId: 'fmn_draft', attempt: 1 } } },
+    ])
+    expect(picked.get('gate_review')).toBe('done')
+    expect(picked.get('fmn_draft')).toBe('done')
+
+    // A human gate's pick waits for the operator, then routes the answer.
+    const asked: RunEvent[] = [
+      ...failed,
+      { runId: 'run_1', seq: 7, type: 'pick_started', nodeId: 'fmn_draft', gateId: 'gate_review' },
+      { runId: 'run_1', seq: 8, type: 'human_input_requested', nodeId: 'gate_review', gateId: 'gate_review', data: { pick: { nodeId: 'fmn_draft', candidates: [1] } } },
+    ]
+    expect(projectNodeStates(asked).get('fmn_draft')).toBe('done')
+    expect(runCurrentPoints(asked, run('waiting_human', { waitingGates: [{ gateId: 'gate_review', requestedSeq: 8 }] }))).toEqual([
+      { kind: 'waiting', nodeId: 'gate_review', gate: true },
+    ])
+    const answered = [...asked, { runId: 'run_1', seq: 9, type: 'human_verdict_recorded', nodeId: 'gate_review', gateId: 'gate_review' } as RunEvent]
+    expect(runCurrentPoints(answered, run('running')).map(point => runPointPhrase(point, 'Review'))).toEqual(['routing your answer at Review'])
+  })
+
   it('extracts run text, report references, and resume affordance from events', () => {
     expect(runEventText({ runId: 'run_1', seq: 1, type: 'run_blocked', data: { reason: 'needs human' } })).toBe('needs human')
     expect(runEventText({ runId: 'run_1', seq: 2, type: 'node_output', data: { text: 'report body' } })).toBe('report body')

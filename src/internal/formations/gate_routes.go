@@ -41,8 +41,10 @@ type GateRouteTarget struct {
 // unless PicksBest: the card's whenSpent is best and the step's best judged
 // attempt is picked instead and goes on as its gate's pass (archon-gihe).
 // MissionRounds is the mission card's use so far and RoundsNeeded the step
-// starts the route makes, judges included, when a card caps the mission's
-// rounds; MissionTime is the mission card's time use when it sets time.
+// starts the route makes, judges included and a pick's judges in place of
+// the step, when a card caps the mission's rounds; MissionTime is the mission
+// card's time use when it sets time. A spent mission card blocks a pick whose
+// judges would start, so such a route has that Limit and no PicksBest.
 type GateRoute struct {
 	Verdict       string            `json:"verdict"`
 	Targets       []GateRouteTarget `json:"targets"`
@@ -78,7 +80,6 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 			target := GateRouteTarget{NodeID: nodeID, Title: boardNodeTitle(board, nodeID), Kind: boardNodeKind(board, nodeID)}
 			switch target.Kind {
 			case "formation":
-				needed++
 				target.Attempt = nodeLatestAttempt(events, nodeID) + 1
 				formation, _ := findFormation(board.Formations, nodeID)
 				if limit, ok := limitCovering(board, nodeID); ok {
@@ -88,10 +89,19 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 					target.Time = timeUse(board, events, limit, now)
 				}
 				// The engine's own rule, so the panel says what the engine will do.
+				starts := 1
 				if route.Limit == nil {
 					route.Limit = limitSpentBefore(board, events, formation, now)
-					route.PicksBest = route.Limit != nil && routePicksBest(board, events, gateID, nodeID, *route.Limit)
+					if route.Limit != nil {
+						// A step that picks instead of starting starts its
+						// gate's judges, if they compare (archon-gihe).
+						var judges int
+						if route.PicksBest, judges = routePick(board, events, gateID, nodeID, *route.Limit); route.PicksBest {
+							starts = judges
+						}
+					}
 				}
+				needed += starts
 				target.WaitsForInputs = formationWaitsForOtherInputs(board, events, nodeID, portID)
 			case "gate":
 				// A judge gate starts each formation of its judge chain.
@@ -108,16 +118,18 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 			route.RunFails = route.RunFails || target.Outcome == EndOutcomeRejected
 		}
 		route.EndsRun = routeEndsRun(board, events, gateID, route.Targets, route.RunFails)
+		// A pick's judges start under the mission's card as any step does,
+		// so a spent mission card blocks the pick too.
 		if needed > 0 && missionRounds != nil {
 			route.MissionRounds, route.RoundsNeeded = missionRounds, needed
-			if route.Limit == nil && missionRounds.Used >= missionRounds.Max {
-				route.Limit = missionRounds
+			if (route.Limit == nil || route.PicksBest) && missionRounds.Used >= missionRounds.Max {
+				route.Limit, route.PicksBest = missionRounds, false
 			}
 		}
 		if needed > 0 && missionTime != nil {
 			route.MissionTime = missionTime
-			if route.Limit == nil && missionTime.Used >= missionTime.Max {
-				route.Limit = missionTime
+			if (route.Limit == nil || route.PicksBest) && missionTime.Used >= missionTime.Max {
+				route.Limit, route.PicksBest = missionTime, false
 			}
 		}
 		routes = append(routes, route)

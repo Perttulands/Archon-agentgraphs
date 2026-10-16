@@ -67,9 +67,11 @@ type formationsRunResumeRequest struct {
 }
 
 type formationsHumanGateVerdictRequest struct {
-	Verdict string `json:"verdict"`
-	Reason  string `json:"reason"`
-	Actor   string `json:"actor"`
+	RequestedSeq int    `json:"requestedSeq"`
+	Verdict      string `json:"verdict"`
+	Reason       string `json:"reason"`
+	Actor        string `json:"actor"`
+	RelayedBy    string `json:"relayedBy"`
 }
 
 type formationsHumanGatePickRequest struct {
@@ -77,6 +79,7 @@ type formationsHumanGatePickRequest struct {
 	Attempt      int    `json:"attempt"`
 	Reason       string `json:"reason"`
 	Actor        string `json:"actor"`
+	RelayedBy    string `json:"relayedBy"`
 }
 
 type formationsBoardPatchRequest struct {
@@ -886,10 +889,12 @@ func (h *FormationsHandler) RecordHumanGateVerdict(w http.ResponseWriter, r *htt
 	}
 	engine := h.newRunEngine("api")
 	if _, err := engine.RecordHumanGateVerdict(r.PathValue("runId"), formations.HumanGateVerdictRequest{
-		GateID:  r.PathValue("gateId"),
-		Verdict: request.Verdict,
-		Reason:  request.Reason,
-		Actor:   request.Actor,
+		GateID:       r.PathValue("gateId"),
+		RequestedSeq: request.RequestedSeq,
+		Verdict:      request.Verdict,
+		Reason:       request.Reason,
+		Actor:        request.Actor,
+		RelayedBy:    request.RelayedBy,
 	}); err != nil {
 		writeFormationsError(w, err)
 		return
@@ -921,6 +926,7 @@ func (h *FormationsHandler) RecordHumanGatePick(w http.ResponseWriter, r *http.R
 		Attempt:      request.Attempt,
 		Reason:       request.Reason,
 		Actor:        request.Actor,
+		RelayedBy:    request.RelayedBy,
 	}); err != nil {
 		writeFormationsError(w, err)
 		return

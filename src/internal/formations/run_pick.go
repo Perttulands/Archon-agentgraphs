@@ -126,39 +126,37 @@ type pickCandidateDetail struct {
 }
 
 // pickCandidates lists, by attempt, the step's attempts whose output the gate
-// judged with a verdict of its own; a pick's verdict judges nothing. The
-// gate's input names the attempt it judges (RunInputRef.Origin).
+// judged with a verdict of its own; a pick's verdict judges nothing. Each
+// verdict names the output it judged (its inputRef's Origin), which is the
+// output a pick of that attempt carries on, even when the verdict arrives
+// after the gate began judging a later attempt. An attempt's latest verdict
+// counts.
 func pickCandidates(events []RunEvent, stepID, gateID string) []pickCandidate {
-	var candidates []pickCandidate
 	outputSeq := map[int]int{}
-	var judging *pickCandidate
+	judged := map[int]pickCandidate{}
 	for _, event := range events {
 		switch event.Type {
 		case RunEventNodeOutput:
 			if event.NodeID == stepID {
 				outputSeq[event.Attempt] = event.Seq
 			}
-		case RunEventGateEvaluating:
-			if eventGateID(event) != gateID {
-				continue
-			}
-			judging = nil
-			if origin := runInputRefFromAny(event.Data["inputRef"]).Origin; origin != nil && origin.NodeID == stepID && outputSeq[origin.Attempt] > 0 {
-				judging = &pickCandidate{Attempt: origin.Attempt, OutputSeq: outputSeq[origin.Attempt]}
-			}
 		case RunEventGateVerdict:
-			if eventGateID(event) != gateID || judging == nil || isPickEvent(event) {
+			if eventGateID(event) != gateID || isPickEvent(event) {
 				continue
 			}
 			if port := stringFromEventData(event, "routePort"); port != "pass" && port != "fail" {
 				continue
 			}
-			judging.VerdictSeq = event.Seq
-			attempt := judging.Attempt
-			candidates = slices.DeleteFunc(candidates, func(candidate pickCandidate) bool { return candidate.Attempt == attempt })
-			candidates = append(candidates, *judging)
-			judging = nil
+			origin := runInputRefFromAny(event.Data["inputRef"]).Origin
+			if origin == nil || origin.NodeID != stepID || outputSeq[origin.Attempt] == 0 {
+				continue
+			}
+			judged[origin.Attempt] = pickCandidate{Attempt: origin.Attempt, OutputSeq: outputSeq[origin.Attempt], VerdictSeq: event.Seq}
 		}
+	}
+	candidates := make([]pickCandidate, 0, len(judged))
+	for _, candidate := range judged {
+		candidates = append(candidates, candidate)
 	}
 	slices.SortFunc(candidates, func(a, b pickCandidate) int { return a.Attempt - b.Attempt })
 	return candidates
@@ -277,25 +275,40 @@ func judgedSinceLastPick(events []RunEvent, stepID string, candidates []pickCand
 	return false
 }
 
-// routePicksBest reports whether a gate's route to a step whose limit use is
-// spent picks the step's best attempt rather than blocking, as pickOrBlock
-// will decide when the step comes to start. When the answering gate is the
-// step's selecting gate, its answer judges the attempt it waits on, so a
-// candidate judged since the last pick exists.
-func routePicksBest(board *BoardDocument, events []RunEvent, gateID, stepID string, use RunLimitReached) bool {
+// routePick reports whether a gate's route to a step whose limit use is spent
+// picks the step's best attempt rather than blocking, as pickOrBlock will
+// decide when the step comes to start, and how many judges the pick starts:
+// the selecting gate's judge chain, when it has one and more than one
+// candidate to compare. Those starts spend mission rounds as any step's do.
+// When the answering gate is the step's selecting gate, its answer judges the
+// attempt it waits on, which joins the candidates.
+func routePick(board *BoardDocument, events []RunEvent, gateID, stepID string, use RunLimitReached) (picks bool, judgeStarts int) {
 	card, ok := findLimit(board, use.LimitID)
 	if !ok || card.WhenSpent != LimitWhenSpentBest || card.Target != stepID || use.NodeID != stepID {
-		return false
+		return false, 0
 	}
 	gate, problem := selectingGate(board, stepID)
 	if problem != "" {
-		return false
-	}
-	if gate.ID == gateID {
-		return true
+		return false, 0
 	}
 	candidates := pickCandidates(events, stepID, gate.ID)
-	return len(candidates) > 0 && judgedSinceLastPick(events, stepID, candidates)
+	attempts := map[int]bool{}
+	for _, candidate := range candidates {
+		attempts[candidate.Attempt] = true
+	}
+	if gate.ID == gateID {
+		if request, ok := latestHumanRequest(events, gateID); ok {
+			if origin := runInputRefFromAny(request.Data["inputRef"]).Origin; origin != nil && origin.NodeID == stepID {
+				attempts[origin.Attempt] = true
+			}
+		}
+	} else if len(candidates) == 0 || !judgedSinceLastPick(events, stepID, candidates) {
+		return false, 0
+	}
+	if len(attempts) > 1 && hasGateKind(gate.Kinds, "formation") {
+		judgeStarts = len(judgeChainForGate(board, gate.ID))
+	}
+	return true, judgeStarts
 }
 
 // pickOrBlock is what a step does at its spent limit. A card whose whenSpent
@@ -776,10 +789,30 @@ func AttemptListWords(attempts []int) string {
 }
 
 // judgePickMode runs a judge chain to pick rather than to judge: anchored at
-// its pick_started, with the pick contract and the candidate attempts.
+// its pick_started, with the candidate attempts; the last judge has the pick
+// contract and the judges before it the recommend contract.
 type judgePickMode struct {
 	anchorSeq int
 	attempts  []int
+}
+
+// recommendContract is what a judge before the last returns in a pick: a
+// recommendation the judges after it read, never the pick itself.
+func recommendContract(attempts []int) string {
+	return fmt.Sprintf("judge recommend contract:\nThis is a pick, not a verdict, and a later judge in the chain decides it: compare the attempts below side by side and recommend the best one. Write your recommendation as your output: the attempt you recommend (one of attempts %s), why it is the best, and what decided it. The judges after you read it beside the attempts. Emit no archon-pick or archon-verdict block.\n",
+		AttemptListWords(attempts))
+}
+
+// judgeRecommendation is what a judge before the last recommended: its output
+// port's text, the path of its kept file or folder, or else its reply.
+func judgeRecommendation(payload FormationOutputPayload, reply string) string {
+	if text := strings.TrimSpace(payload.Text); text != "" {
+		return text
+	}
+	if keptKind(payload.Kind) && payload.Ref != "" {
+		return payload.Kind + ": " + payload.Ref
+	}
+	return strings.TrimSpace(reply)
 }
 
 const judgePickKeys = "requires exactly attempt, reason and evidence"
@@ -790,7 +823,7 @@ func pickContract(attempts []int) string {
 	if len(attempts) > 0 {
 		example = attempts[0]
 	}
-	return fmt.Sprintf("judge pick contract:\nThis is a pick, not a verdict: compare the attempts below side by side and pick the best one. Before the completion sentinel, emit exactly one fenced archon-pick JSON block, separate from archon-outputs, with exactly these three keys:\n```archon-pick\n{\"attempt\":%d,\"reason\":\"Why this attempt is the best\",\"evidence\":[\"what decided it\"]}\n```\nattempt must be one of attempts %s, reason a string, and evidence an array of strings (use [] when there are no references). Do not omit evidence or add keys. The final judge in the chain decides the pick.\n",
+	return fmt.Sprintf("judge pick contract:\nThis is a pick, not a verdict: compare the attempts below side by side and pick the best one. Before the completion sentinel, emit exactly one fenced archon-pick JSON block, separate from archon-outputs, with exactly these three keys:\n```archon-pick\n{\"attempt\":%d,\"reason\":\"Why this attempt is the best\",\"evidence\":[\"what decided it\"]}\n```\nattempt must be one of attempts %s, reason a string, and evidence an array of strings (use [] when there are no references). Do not omit evidence or add keys. Your pick decides; any recommendation from an earlier judge follows the attempts.\n",
 		example, AttemptListWords(attempts))
 }
 

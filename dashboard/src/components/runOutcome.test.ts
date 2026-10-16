@@ -97,6 +97,15 @@ describe('gate route words', () => {
       blocks: false,
       last: false,
     })
+    // The pick's two judges take the mission's last rounds.
+    const mission = { kind: 'rounds' as const, limitId: 'lim_all', nodeId: 'mis', used: 18, max: 20 }
+    expect(gateRouteWords('fail', sendBack(4, { limit: cap(3), picksBest: true, missionRounds: mission, roundsNeeded: 2 }), titleOf)).toEqual({
+      button: 'Send back to Draft',
+      outcome: 'Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so its best judged attempt is picked instead and goes on as if it had passed; the mission has 2 of 20 rounds left.',
+      blocks: false,
+      last: true,
+    })
+    expect(gateRouteWords('fail', sendBack(4, { limit: cap(3), picksBest: true, missionRounds: { ...mission, used: 10 }, roundsNeeded: 2 }), titleOf).last).toBe(false)
   })
 
   it('says when the mission card is spent', () => {

@@ -355,11 +355,16 @@ attempts it judged side by side and the one it picks goes on through the
 gate's pass route, as if the gate had passed it (to the next step, an End and
 the mission's outputs). The step needs a selecting gate: one judge or human
 gate that only it feeds and whose fail returns to it; validation names a best
-card without one. A judge picks with one `archon-pick` block
-(`{"attempt":n,"reason":"...","evidence":[...]}`), the runtime gives it the
-contract; a human gate asks the operator (see Decide a human gate), with the
-judge's pick as a recommendation when the gate has both. An attempt the limit
-cut short is never picked, and with only one judged attempt Archon takes it.
+card without one. The final judge picks with one `archon-pick` block
+(`{"attempt":n,"reason":"...","evidence":[...]}`); every judge of the chain
+sees the attempts, and a judge before it only recommends one in its output,
+which the later judges read. The runtime gives each its contract. A human gate
+asks the operator (see Decide a human gate), with the judges' pick as a
+recommendation when the gate has both. An attempt the limit cut short or a
+crash ended is never picked, and with only one judged attempt Archon takes it.
+The pick's judges spend mission-card rounds like any step, so leave the
+mission card room for them. A mission output bound to another port of the
+step, one that skips the selecting gate, keeps its own latest attempt.
 
 ```bash
 archon $S limit create "$M" --target "$WORK" --rounds 3 --when-spent best --json
@@ -511,10 +516,10 @@ entry. `run gates "$ARCHON_RUN_ID"` lists them; `gate request "$ARCHON_RUN_ID"
 the targets (an End node target means "this path ends (done)" or "(rejected)",
 `endsRun` says the run then ends, and `runFails` that it fails, now or once its other work ends), the
 attempt each would start and, only when a Limit card covers it, the step's
-`rounds` (`used`, `max`), the mission's `missionRounds` and `roundsNeeded`, and
-a `limit` entry when taking the route would find a card spent, so the run
-blocks until you grant one more, or with `picksBest` the step's best judged
-attempt is picked instead.
+`rounds` (`used`, `max`), the mission's `missionRounds` and `roundsNeeded`
+(a pick's judges included), and a `limit` entry when taking the route would
+find a card spent, so the run blocks until you grant one more, or with
+`picksBest` the step's best judged attempt is picked instead.
 
 ```bash
 archon $S gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json

@@ -482,7 +482,12 @@ func describeGateRoute(route formations.GateRoute) string {
 		}
 	}
 	if route.PicksBest {
-		return fmt.Sprintf("%s, but %s has used %s, so its best judged attempt is picked instead and goes on as if it had passed", where, who, formations.SpentWords(*limit))
+		picked := fmt.Sprintf("%s, but %s has used %s, so its best judged attempt is picked instead and goes on as if it had passed", where, who, formations.SpentWords(*limit))
+		// The pick's judges spend the mission's rounds as any step does.
+		if mission := route.MissionRounds; mission != nil && route.RoundsNeeded > 0 && mission.Max-mission.Used <= route.RoundsNeeded {
+			picked += fmt.Sprintf("; the mission has %d of %d rounds left", mission.Max-mission.Used, mission.Max)
+		}
+		return picked
 	}
 	return fmt.Sprintf("%s, but %s has used %s, so the run blocks instead until you grant %s", where, who, formations.SpentWords(*limit), formations.GrantWords(*limit))
 }

@@ -442,7 +442,7 @@ paths:
       description: Part of the run evidence API (ADR-0017). After the verdict, the gate's node evidence holds the same input with the response.
       responses:
         '200':
-          description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request, and routes, where each verdict leads (a route whose limit is a spent best card has picksBest, so the step's best judged attempt is picked instead of the run blocking). A pending pick of a step's best attempt (archon-gihe) adds pick (PendingPick); its input shows the candidates side by side and routes holds only pass, which the picked attempt takes. Refs, paths, prompts and session identities are omitted.
+          description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request, and routes, where each verdict leads (a route whose limit is a spent best card has picksBest, so the step's best judged attempt is picked instead of the run blocking; its roundsNeeded counts the judges the pick starts, which spend mission rounds, and a pick whose judges would find the mission card spent names that card as limit without picksBest). A pending pick of a step's best attempt (archon-gihe) adds pick (PendingPick); its input shows the candidates side by side and routes holds only pass, which the picked attempt takes. Refs, paths, prompts and session identities are omitted.
         '404':
           description: No such run, or no human request for this gate
         '409':

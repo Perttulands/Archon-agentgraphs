@@ -2852,8 +2852,9 @@ func callGateEvaluator(evaluator GateEvaluator, req GateEvaluation) (result Gate
 // produced output for this evaluation, after the gate's latest
 // gate_evaluating, is not run again: resuming after a crash inside the chain
 // continues from the first judge without output (archon-n7u.57). With pick,
-// the chain picks the best attempt instead, anchored at its pick_started
-// (archon-gihe).
+// the chain picks the best attempt instead, anchored at its pick_started:
+// every judge reads the candidates and the recommendations of the judges
+// before it, and the last judge's pick decides (archon-gihe).
 func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode, pick *judgePickMode) (string, error) {
 	events, err := e.store.ReadRunEvents(req.RunID)
 	if err != nil {
@@ -2885,6 +2886,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 	}
 	input := req.Input
 	var finalText string
+	var recommendations strings.Builder
 	replaying := true
 	for index, formation := range chain {
 		if len(formation.Outputs) == 0 {
@@ -2963,6 +2965,15 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			finalText = result.Text
 			payload = result.Outputs[fromPortID]
 			outputAttempt = nodeAttempt
+		}
+		if pick != nil {
+			// Every judge of a pick compares the candidates themselves; a
+			// judge before the last recommends one, and the judges after it
+			// read that recommendation below the candidates.
+			fmt.Fprintf(&recommendations, "\nrecommendation from %s:\n%s\n", nodeName(board, formation.ID), judgeRecommendation(payload, finalText))
+			input = req.Input
+			input.Text = req.Input.Text + recommendations.String()
+			continue
 		}
 		input = RunInputRef{
 			FromNodeID:  formation.ID,

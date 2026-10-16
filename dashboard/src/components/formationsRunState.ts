@@ -12,6 +12,7 @@ export const runEventTypes = [
   'gate_verdict',
   'human_input_requested',
   'human_verdict_recorded',
+  'pick_started',
   'verification_verdict',
   'escalation_raised',
   'error',
@@ -162,6 +163,12 @@ function projectRun(events: RunEvent[]): RunProjection {
         set(nodeId, verdict === 'fail' ? 'failed' : 'done', event.seq)
         break
       }
+      // A spent best card ends the step's attempts, one the limit cut short
+      // included, and its gate picks the best of them (archon-gihe).
+      case 'pick_started':
+        set(nodeId, 'done', event.seq)
+        if (event.gateId) set(event.gateId, 'running', event.seq)
+        break
       case 'run_blocked':
         if (!beforeBlock.has(nodeId)) beforeBlock.set(nodeId, states.get(nodeId) || '')
         set(nodeId, 'blocked', event.seq)
@@ -200,6 +207,8 @@ export interface RunPoint {
   blockSeq?: number
   /** A running gate whose operator verdict the run is about to route. */
   answered?: boolean
+  /** A running gate picking the best attempt of a step whose best card is spent. */
+  picking?: boolean
 }
 
 /**
@@ -224,10 +233,15 @@ export function runCurrentPoints(events: RunEvent[], run: RunStatusProjection | 
   const waitingIds = run.waitingGates?.length ? run.waitingGates.map(gate => gate.gateId) : openHumanGateIds(sorted)
   const waiting = waitingIds.map((nodeId): RunPoint => ({ kind: 'waiting', nodeId, gate: true }))
   const answered = new Set<string>()
+  const picking = new Set<string>()
   for (const event of sorted) {
     const gateId = event.gateId || event.nodeId || ''
     if (event.type === 'human_verdict_recorded') answered.add(gateId)
-    if (event.type === 'gate_verdict' || event.type === 'gate_evaluating') answered.delete(gateId)
+    if (event.type === 'pick_started' && event.gateId) picking.add(event.gateId)
+    if (event.type === 'gate_verdict' || event.type === 'gate_evaluating') {
+      answered.delete(gateId)
+      picking.delete(gateId)
+    }
   }
   const running = [...states]
     .filter(([nodeId, state]) => state === 'running' && !waitingIds.includes(nodeId))
@@ -235,6 +249,7 @@ export function runCurrentPoints(events: RunEvent[], run: RunStatusProjection | 
     .map(([nodeId]): RunPoint => {
       const point: RunPoint = { kind: 'running', nodeId, gate: gates.has(nodeId), attempt: attempts.get(nodeId) }
       if (answered.has(nodeId)) point.answered = true
+      else if (picking.has(nodeId)) point.picking = true
       return point
     })
   switch (run.status) {
@@ -273,6 +288,7 @@ export function runPointPhrase(point: RunPoint, title: string, reason = ''): str
       return `waiting for you at ${where}`
     case 'running':
       if (point.answered) return `routing your answer at ${where}`
+      if (point.picking) return `picking the best attempt at ${where}`
       if (point.gate) return `evaluating ${where}`
       return `running ${where}${point.attempt && point.attempt > 1 ? ` (attempt ${point.attempt})` : ''}`
     case 'blocked':

@@ -121,23 +121,36 @@ func TestABestCardPicksTheBestJudgedAttemptAndGoesOn(t *testing.T) {
 		t.Fatalf("a best card blocked or erred:\n%s", eventTypeTrail(events))
 	}
 
-	// The judges compare every judged attempt side by side under the pick contract.
+	// Both judges compare every judged attempt side by side: the first
+	// recommends under the recommend contract, and the last reads that
+	// recommendation below the attempts and picks under the pick contract.
 	j1, j2 := executor.calls[9], executor.calls[10]
-	for _, text := range []string{"Pick the best attempt of Work", "criterion: Judge the work", "attempt 1\nverdict: fail\nreason: no tests", "draft one", "attempt 2\nverdict: fail\nreason: retry untested", "draft two", "attempt 3", "draft three"} {
-		if !strings.Contains(j1.Inputs[0].Text, text) {
-			t.Fatalf("pick input lacks %q:\n%s", text, j1.Inputs[0].Text)
+	for _, call := range []FormationExecution{j1, j2} {
+		for _, text := range []string{"Pick the best attempt of Work", "criterion: Judge the work", "attempt 1\nverdict: fail\nreason: no tests", "draft one", "attempt 2\nverdict: fail\nreason: retry untested", "draft two", "attempt 3", "draft three"} {
+			if !strings.Contains(call.Inputs[0].Text, text) {
+				t.Fatalf("%s's pick input lacks %q:\n%s", call.NodeID, text, call.Inputs[0].Text)
+			}
+		}
+		if !reflect.DeepEqual(call.PickAttempts, []int{1, 2, 3}) || call.FinalJudge != (call.NodeID == "fmn_j2") || call.JudgeGateID != "gate_review" {
+			t.Fatalf("judge call = %+v", call)
 		}
 	}
-	if !reflect.DeepEqual(j2.PickAttempts, []int{1, 2, 3}) || !j2.FinalJudge || j2.JudgeGateID != "gate_review" {
-		t.Fatalf("final judge call = %+v", j2)
+	if strings.Contains(j1.Inputs[0].Text, "recommendation from") || j2.Inputs[0].Text != j1.Inputs[0].Text+"\nrecommendation from Judge 1:\ncompared the three drafts\n" {
+		t.Fatalf("Judge 2 reads:\n%s", j2.Inputs[0].Text)
 	}
-	slot := j2.Formation.Slots[0]
-	settings, card, err := ResolveSlotSettings(slot, executor.lab.personas)
-	if err != nil {
-		t.Fatal(err)
+	prompts := map[string]string{}
+	for _, call := range []FormationExecution{j1, j2} {
+		slot := call.Formation.Slots[0]
+		settings, card, err := ResolveSlotSettings(slot, executor.lab.personas)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompts[call.NodeID] = executor.lab.renderPrompt(call, slot, *card, settings.Variant())
 	}
-	prompt := executor.lab.renderPrompt(j2, slot, *card, settings.Variant())
-	if !strings.Contains(prompt, "judge pick contract:") || !strings.Contains(prompt, "attempt must be one of attempts 1, 2 or 3") || strings.Contains(prompt, "judge verdict contract") {
+	if prompt := prompts["fmn_j1"]; !strings.Contains(prompt, "judge recommend contract:") || !strings.Contains(prompt, "one of attempts 1, 2 or 3") || strings.Contains(prompt, "judge pick contract") || strings.Contains(prompt, "judge verdict contract") {
+		t.Fatalf("first judge prompt:\n%s", prompt)
+	}
+	if prompt := prompts["fmn_j2"]; !strings.Contains(prompt, "judge pick contract:") || !strings.Contains(prompt, "attempt must be one of attempts 1, 2 or 3") || strings.Contains(prompt, "judge recommend contract") || strings.Contains(prompt, "judge verdict contract") {
 		t.Fatalf("final judge prompt:\n%s", prompt)
 	}
 
@@ -689,5 +702,228 @@ func TestAPickedAttemptIsTheMissionsOutput(t *testing.T) {
 	}
 	if want := []RunOutput{{Name: "draft", Kind: MissionInputText, Value: "draft two", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 2}}; !reflect.DeepEqual(status.Outputs, want) {
 		t.Fatalf("outputs = %+v, want %+v", status.Outputs, want)
+	}
+}
+
+// verdictWhileWorkingExecutor records the operator's fail on the gate's
+// pending request while Work's second attempt runs, so the run routes that
+// verdict only after the gate began judging the second attempt.
+type verdictWhileWorkingExecutor struct {
+	*scriptedLabExecutor
+	engine *RunEngine
+	store  *Store
+	t      *testing.T
+}
+
+func (e *verdictWhileWorkingExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	if req.NodeID == "fmn_work" && req.Attempt == 2 {
+		events, err := e.store.ReadRunEvents(req.RunID)
+		if err != nil {
+			return FormationExecutionResult{}, err
+		}
+		request, ok := latestHumanRequest(events, "gate_review")
+		if !ok {
+			e.t.Fatalf("no pending request while Work#2 runs:\n%s", eventTypeTrail(events))
+		}
+		if _, err := e.engine.RecordHumanGateVerdict(req.RunID, HumanGateVerdictRequest{GateID: "gate_review", RequestedSeq: request.Seq, Verdict: "fail", Reason: "attempt one is not good", Actor: "human:operator"}); err != nil {
+			e.t.Fatalf("verdict while Work#2 runs: %v", err)
+		}
+	}
+	return e.scriptedLabExecutor.ExecuteFormation(req)
+}
+
+// prepFeedsWorkFixture adds Prep, whose code check always fails back into
+// Work, so Work runs a second time while Review still waits on its first.
+const prepFeedsWorkFixture = `
+[[formation]]
+id = "fmn_prep"
+type = "solo"
+title = "Prep"
+
+[[formation.input]]
+id = "port_prep_in"
+label = "Input"
+
+[[formation.output]]
+id = "port_prep_out"
+label = "Output"
+
+[[formation.slot]]
+id = "slot_prep"
+label = "Worker"
+agentId = "scout"
+harness = "openai-codex"
+controller = true
+effort = "medium"
+
+[[gate]]
+id = "gate_check"
+title = "Check"
+kinds = ["code"]
+criterion = "Prep says ok"
+check = "output_contains"
+checkVersion = "1"
+checkValue = "never-there"
+
+[[connection]]
+id = "edge_mission_prep"
+from = "mis_showcase:out"
+to = "fmn_prep:port_prep_in"
+
+[[connection]]
+id = "edge_prep_check"
+from = "fmn_prep:port_prep_out"
+to = "gate_check:in"
+
+[[connection]]
+id = "edge_check_fail_work"
+from = "gate_check:fail"
+to = "fmn_work:port_work_in"
+
+[[connection]]
+id = "edge_check_pass_done"
+from = "gate_check:pass"
+to = "end_done:in"
+`
+
+// A verdict joins the attempt it judged, not the attempt the gate judges
+// next: Review's fail on Work's first draft arrives after Review began on the
+// second, whose request the third draft then replaces unjudged. The pick
+// offers attempts 1 and 3, each with its own verdict and output, and the
+// attempt picked is the output Ship runs on, the mission's output and the
+// status's pick.
+func TestAPickCandidateIsTheAttemptItsVerdictJudged(t *testing.T) {
+	fixture := strings.Replace(s5HumanGateBoardFixture(), "id = \"edge_gate_fail_rejected\"\nfrom = \"gate_review:fail\"\nto = \"end_rejected:in\"", "id = \"edge_gate_fail_work\"\nfrom = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
+	fixture = strings.Replace(fixture, "beadId = \"home-7kc4.7\"\n", "beadId = \"home-7kc4.7\"\noutputs = [{ name = \"draft\", from = \"fmn_work:port_work_out\", required = true }]\n", 1)
+	fixture += prepFeedsWorkFixture + "\n" + workCard("rounds = 3\nwhenSpent = \"best\"")
+	store, personas := s4RunFixture(t)
+	createS4Persona(t, personas, "scout")
+	writeFixture(t, store.BoardPath("session-search"), fixture)
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report := ValidateRunAdmission(board, nil, RunAdmissionScope{}); len(report.Errors) != 0 {
+		t.Fatalf("fixture findings: %+v", report.Errors)
+	}
+	cwd := t.TempDir()
+	lab := &scriptedLabExecutor{lab: NewLabFormationExecutor(store, personas, LabExecutorConfig{Cwd: cwd, Harnesses: []string{"openai-codex"}}), responses: map[string]map[int]string{
+		"fmn_work": {1: "draft one", 2: "draft two", 3: "draft three"}, "fmn_prep": {1: "prep notes"}, "fmn_ship": {1: "shipped"},
+	}}
+	executor := &verdictWhileWorkingExecutor{scriptedLabExecutor: lab, store: store, t: t}
+	engine := NewRunEngine(store, personas, executor)
+	executor.engine = engine
+	engine.SetGateEvaluator(NewCodeGateEvaluator())
+	status, err := engine.RunMission("session-search", RunStartRequest{Cwd: cwd, MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Work's third draft waits at Review; the operator fails it, and the
+	// spent card asks for a pick.
+	events := mustEvents(t, store, status.RunID)
+	request, ok := latestHumanRequest(events, "gate_review")
+	if !ok || PendingPickOf(request) != nil {
+		t.Fatalf("no verdict request for the third draft:\n%s", eventTypeTrail(events))
+	}
+	if origin := runInputRefFromAny(request.Data["inputRef"]).Origin; origin == nil || origin.Attempt != 3 {
+		t.Fatalf("Review waits on %+v, want Work's third draft:\n%s", origin, eventTypeTrail(events))
+	}
+	if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", RequestedSeq: request.Seq, Verdict: "fail", Reason: "attempt three is not good", Actor: "human:operator"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.ContinueRun(status.RunID); err != nil {
+		t.Fatal(err)
+	}
+	events = mustEvents(t, store, status.RunID)
+	request, ok = latestHumanRequest(events, "gate_review")
+	pick := PendingPickOf(request)
+	if !ok || pick == nil || !reflect.DeepEqual(pick.Candidates, []int{1, 3}) {
+		t.Fatalf("pending pick = %+v:\n%s", pick, eventTypeTrail(events))
+	}
+	details, err := loadPickCandidates(events, pickCandidatesFromEvent(eventsOfType(events, RunEventPickStarted)[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int]struct{ text, reason string }{1: {"draft one", "attempt one is not good"}, 3: {"draft three", "attempt three is not good"}}
+	for _, detail := range details {
+		if detail.Input.Origin == nil || detail.Input.Origin.Attempt != detail.Attempt || detail.Input.Text != want[detail.Attempt].text || detail.Reason != want[detail.Attempt].reason {
+			t.Fatalf("candidate %d carries %+v, reason %q", detail.Attempt, detail.Input, detail.Reason)
+		}
+		block := fmt.Sprintf("attempt %d\nverdict: fail\nreason: %s\noutput:\n%s\n", detail.Attempt, want[detail.Attempt].reason, want[detail.Attempt].text)
+		if text := runInputRefFromAny(request.Data["inputRef"]).Text; !strings.Contains(text, block) {
+			t.Fatalf("pick input misplaces attempt %d:\n%s", detail.Attempt, text)
+		}
+	}
+
+	if _, err := engine.RecordHumanGatePick(status.RunID, HumanGatePickRequest{GateID: "gate_review", RequestedSeq: request.Seq, Attempt: 1, Reason: "the first reads best", Actor: "human:operator"}); err != nil {
+		t.Fatal(err)
+	}
+	final, err := engine.ContinueRun(status.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Status != RunStatusSucceeded {
+		t.Fatalf("status = %+v:\n%s", final, eventTypeTrail(mustEvents(t, store, status.RunID)))
+	}
+	ship := callsByNode(lab.calls)["fmn_ship"]
+	if len(ship) != 1 || ship[0].Inputs[0].Text != "draft one" || ship[0].Inputs[0].Origin == nil || ship[0].Inputs[0].Origin.Attempt != 1 {
+		t.Fatalf("Ship ran on %+v", ship)
+	}
+	if want := []RunOutput{{Name: "draft", Kind: MissionInputText, Value: "draft one", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 1}}; !reflect.DeepEqual(final.Outputs, want) {
+		t.Fatalf("outputs = %+v, want %+v", final.Outputs, want)
+	}
+	if len(final.Picks) != 1 || final.Picks[0].Attempt != 1 || !reflect.DeepEqual(final.Picks[0].Candidates, []int{1, 3}) {
+		t.Fatalf("status picks = %+v", final.Picks)
+	}
+	attempts, err := store.ProjectRunAttempts(status.RunID, "fmn_work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, attempt := range attempts.Steps[0].Attempts {
+		if (attempt.Picked != nil) != (attempt.Attempt == 1) {
+			t.Fatalf("attempt %d picked = %+v", attempt.Attempt, attempt.Picked)
+		}
+	}
+}
+
+// A pick's judges start under the mission's Limit card as any step does. The
+// send-back that leads to a pick counts them in the rounds it needs, and with
+// the mission's rounds spent it says the run blocks at the mission card
+// rather than picking; the engine then does what the route said.
+func TestARouteToAPickCountsItsJudgesInTheMissionsRounds(t *testing.T) {
+	for _, missionRounds := range []int{6, 8} {
+		responses := threeFailedDrafts("")
+		responses["fmn_j1"][3] = "compared the two drafts"
+		responses["fmn_j2"] = map[int]string{1: judgeBlock("pass", "fine"), 2: judgeBlock("pass", "fine too"), 3: pickBlock(2, "covers retry")}
+		missionCard := fmt.Sprintf("[[limit]]\nid = \"lim_mission\"\ntitle = \"Whole\"\ntarget = \"mis_showcase\"\nrounds = %d\n", missionRounds)
+		store, engine, executor, status := pickRun(t, pickBoardFixture(`["formation", "human"]`, workCard("rounds = 2\nwhenSpent = \"best\"")+"\n"+missionCard), responses)
+		failHumanGate(t, engine, store, status.RunID)
+		frozen, err := store.ReadRunBoard(status.RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Work's card is spent at its second draft, which waits at Review.
+		sendBack := HumanGateRoutes(frozen, mustEvents(t, store, status.RunID), "gate_review", time.Time{})[1]
+		if sendBack.MissionRounds == nil || sendBack.MissionRounds.Used != 6 || sendBack.RoundsNeeded != 2 {
+			t.Fatalf("mission %d: send-back = %+v, mission rounds %+v", missionRounds, sendBack, sendBack.MissionRounds)
+		}
+		spent := missionRounds == 6
+		if sendBack.Limit == nil || sendBack.PicksBest == spent || (sendBack.Limit.LimitID == "lim_mission") != spent {
+			t.Fatalf("mission %d: send-back limit %+v, picks best %v", missionRounds, sendBack.Limit, sendBack.PicksBest)
+		}
+
+		failHumanGate(t, engine, store, status.RunID)
+		events := mustEvents(t, store, status.RunID)
+		blocks := eventsOfType(events, RunEventBlocked)
+		request, _ := latestHumanRequest(events, "gate_review")
+		if spent {
+			if len(blocks) != 1 || blocks[0].NodeID != "fmn_j1" || limitFromAny(blocks[0].Data["limit"]) == nil || limitFromAny(blocks[0].Data["limit"]).LimitID != "lim_mission" {
+				t.Fatalf("mission %d: blocks %+v, calls %v:\n%s", missionRounds, blocks, callTrail(executor.calls), eventTypeTrail(events))
+			}
+			continue
+		}
+		if len(blocks) != 0 || PendingPickOf(request) == nil || PendingPickOf(request).Recommendation == nil {
+			t.Fatalf("mission %d: calls %v:\n%s", missionRounds, callTrail(executor.calls), eventTypeTrail(events))
+		}
 	}
 }

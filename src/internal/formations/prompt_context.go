@@ -7,8 +7,10 @@ import (
 
 func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card PersonaCard) {
 	switch {
-	case req.JudgeGateID != "" && len(req.PickAttempts) > 0:
+	case req.JudgeGateID != "" && len(req.PickAttempts) > 0 && req.FinalJudge:
 		b.WriteString(pickContract(req.PickAttempts))
+	case req.JudgeGateID != "" && len(req.PickAttempts) > 0:
+		b.WriteString(recommendContract(req.PickAttempts))
 	case req.JudgeGateID != "":
 		b.WriteString(judgeContract)
 	}

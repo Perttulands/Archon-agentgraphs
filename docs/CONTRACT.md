@@ -663,9 +663,11 @@ attempt goes on".
 
 When any knob of a best card is spent, the step runs no more and picks among
 its candidates: the attempts whose output the selecting gate judged with a
-verdict of its own, found by the `origin` of the input each evaluation judged.
-An attempt the limit cut short, or a crash ended, has no output and is never a
-candidate. With no candidate the run blocks as a stop card's does; with one,
+verdict of its own, each credited to the attempt named by the `origin` of the
+input that verdict judged, so a verdict that arrives while a later attempt
+runs still joins the attempt it judged. An attempt the limit cut short, or a
+crash ended, has no output and is never a candidate; the time a crashed
+attempt ran still counts on a time card. With no candidate the run blocks as a stop card's does; with one,
 Archon takes it without asking anyone (`decidedBy` `archon`). A card picks by
 itself only when the gate judged a candidate since the step's last pick, so a
 pass route that leads back to the step cannot pick the same attempts forever;
@@ -680,7 +682,13 @@ Then the gate decides:
 - A judge gate runs its judge chain once more, anchored at `pick_started`,
   on one input that shows every candidate side by side: the criterion, and for
   each attempt its verdict, reason and output (text, or the kept file or
-  folder path). Judges number their attempts on, as for any judging. The final
+  folder path). Every judge of the chain reads that input. A judge before the
+  last recommends instead of picking: its prompt carries the recommend
+  contract, and its output (the attempt it recommends, why, and what decided
+  it) reaches each later judge below the candidates as "recommendation from
+  <judge title>:". Judges number their attempts on, as for any judging, and
+  each judge's start spends a round of a mission card that sets rounds, so a
+  spent mission card blocks the pick at the judge it would start. The final
   judge decides with exactly one fenced block, instead of a verdict:
 
   ```archon-pick
@@ -718,8 +726,13 @@ final judge's ID, the operator's actor or `archon`), `trigger`, and any
 picked attempt's gate input, its `origin` included, down the gate's pass
 routes exactly as the gate's own pass of that attempt would have, without the
 picker's reason, so downstream steps and the run's mission
-[outputs](#mission-outputs) receive that attempt's output. Replay finishes a
-pick the ledger started and did not end, from the judge outputs it holds.
+[outputs](#mission-outputs) receive that attempt's output. A mission output
+bound to another port of the step, one that reaches a done End without
+passing the selecting gate, is not part of the pick: it keeps the latest
+attempt whose output on that port reached a done End, which can differ from
+the picked attempt. Replay
+finishes a pick the ledger started and did not end, from the judge outputs it
+holds.
 
 A run stopped at a spent limit whose step can pick (a selecting gate that
 judged at least one attempt) carries `resumePolicy` `grant_or_pick`, whatever
@@ -2096,12 +2109,15 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `runFails` when the run fails once it ends, at once with `endsRun` or else
   after its other open work (a rejected End node on this route, or a path
   already rejected), `missionRounds` (the mission card's use) and
-  `roundsNeeded` (the step runs the route starts, judges included) when a
+  `roundsNeeded` (the step runs the route starts, judges included, and for a
+  step that picks the judges its pick starts instead of the step) when a
   Limit card covers the mission's rounds, `missionTime` when it sets time, and
   `limit` when a card the route needs is already spent, so taking it blocks
   the run until a grant, or, with `picksBest`, the card's `whenSpent` is
   `best` and the step's best judged attempt is picked instead and goes on as
-  its gate's pass. When the frozen mission cannot be read, `routes` is omitted. A
+  its gate's pass. A pick whose judges would start under a spent mission card
+  blocks there, so such a route names the mission card without `picksBest`.
+  When the frozen mission cannot be read, `routes` is omitted. A
   pending pick adds `pick` (`nodeId`, `candidates`, `recommendation`), its
   input shows the candidates side by side, and `routes` holds only `pass`,
   which the picked attempt takes. An

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -364,7 +365,24 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	if _, err := store.RecordEscalationFromCapture(humanStarted.RunID, "fmn_work", "<<<ARCHON-ESCALATE run-id="+humanStarted.RunID+" severity=needs-attention reason='found a better direction'>>>"); err != nil {
 		t.Fatalf("record escalation: %v", err)
 	}
-	verdictReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+humanStarted.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(`{"verdict":"pass","reason":"direction is right","actor":"human:operator"}`))
+	humanEvents, err := store.ReadRunEvents(humanStarted.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestedSeq := 0
+	for _, event := range humanEvents {
+		if event.Type == formations.RunEventHumanInputRequested && event.GateID == "gate_review" {
+			requestedSeq = event.Seq
+		}
+	}
+	// A stale request is refused, as through the coordinator.
+	staleReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+humanStarted.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(fmt.Sprintf(`{"requestedSeq":%d,"verdict":"pass","actor":"human:operator"}`, requestedSeq+100)))
+	staleRec := httptest.NewRecorder()
+	mux.ServeHTTP(staleRec, staleReq)
+	if staleRec.Code != http.StatusConflict {
+		t.Fatalf("stale verdict status = %d, want %d: %s", staleRec.Code, http.StatusConflict, staleRec.Body.String())
+	}
+	verdictReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+humanStarted.RunID+"/gates/gate_review/verdict", bytes.NewBufferString(fmt.Sprintf(`{"requestedSeq":%d,"verdict":"pass","reason":"direction is right","actor":"human:operator","relayedBy":"slot_worker"}`, requestedSeq)))
 	verdictRec := httptest.NewRecorder()
 	mux.ServeHTTP(verdictRec, verdictReq)
 	if verdictRec.Code != http.StatusOK {
@@ -373,6 +391,16 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	approved := decodeFormationsStatusResponse(t, verdictRec.Body.Bytes())
 	if approved.Status != formations.RunStatusBlocked {
 		t.Fatalf("approved = %+v, want blocked when public verdict path lacks executor", approved)
+	}
+	if humanEvents, err = store.ReadRunEvents(humanStarted.RunID); err != nil {
+		t.Fatal(err)
+	}
+	relayed := false
+	for _, event := range humanEvents {
+		relayed = relayed || event.Type == formations.RunEventHumanVerdictRecorded && event.Data["relayedBy"] == "slot_worker"
+	}
+	if !relayed {
+		t.Fatalf("the offline verdict lost relayedBy: %+v", humanEvents)
 	}
 
 	escalationsReq := httptest.NewRequest(http.MethodGet, "/api/runs/"+humanStarted.RunID+"/escalations", nil)
@@ -392,6 +420,72 @@ func TestFormationsHandlerS5ResumeVerdictAndEscalations(t *testing.T) {
 	}
 	if len(escalationsResponse.Data.Escalations) != 1 || escalationsResponse.Data.Escalations[0].Reason != "found a better direction" {
 		t.Fatalf("escalations = %+v, want ledger-derived reason", escalationsResponse.Data.Escalations)
+	}
+}
+
+// The offline pick route records who relayed the operator's pick, as the
+// coordinator's does (archon-gihe).
+func TestFormationsHandlerRecordsARelayedPick(t *testing.T) {
+	store := formations.NewStore(t.TempDir())
+	store.Now = fixedFormationsAPIClock()
+	personas := formations.NewPersonaStore(t.TempDir())
+	personas.Now = fixedFormationsAPIClock()
+	fixture := strings.Replace(formationsAPIS5HumanGateBoardFixture(), "from = \"gate_review:fail\"\nto = \"end_rejected:in\"", "from = \"gate_review:fail\"\nto = \"fmn_work:port_work_in\"", 1)
+	fixture += "\n[[limit]]\nid = \"lim_cap\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nrounds = 2\nwhenSpent = \"best\"\n"
+	writeFormationsAPIFixture(t, store.BoardPath("human-search"), fixture)
+	board, err := store.ReadBoard("human-search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := formations.NewRunEngine(store, personas, apiTestRunExecutor{})
+	status, err := engine.RunMission("human-search", formations.RunStartRequest{MissionID: "mis_showcase", Actor: "agent:test", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev, Personas: personas})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := func() formations.RunEvent {
+		t.Helper()
+		events, err := store.ReadRunEvents(status.RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requests := formations.OpenHumanRequests(events)
+		if len(requests) != 1 {
+			t.Fatalf("open requests = %+v", requests)
+		}
+		return requests[0]
+	}
+	// Both drafts are sent back, so Work's spent card asks for a pick.
+	for range 2 {
+		if _, err := engine.RecordHumanGateVerdict(status.RunID, formations.HumanGateVerdictRequest{GateID: "gate_review", RequestedSeq: pending().Seq, Verdict: "fail", Reason: "not yet", Actor: "human:operator"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := engine.ContinueRun(status.RunID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := pending()
+	if formations.PendingPickOf(request) == nil {
+		t.Fatalf("no pending pick: %+v", request)
+	}
+	handler := NewFormationsHandlerWithStores(store, personas)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+	pickReq := httptest.NewRequest(http.MethodPost, "/api/runs/"+status.RunID+"/gates/gate_review/pick", bytes.NewBufferString(fmt.Sprintf(`{"requestedSeq":%d,"attempt":1,"reason":"the first reads best","actor":"human:operator","relayedBy":"slot_work"}`, request.Seq)))
+	pickRec := httptest.NewRecorder()
+	mux.ServeHTTP(pickRec, pickReq)
+	if pickRec.Code != http.StatusOK {
+		t.Fatalf("pick status = %d: %s", pickRec.Code, pickRec.Body.String())
+	}
+	events, err := store.ReadRunEvents(status.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relayed := false
+	for _, event := range events {
+		relayed = relayed || event.Type == formations.RunEventHumanVerdictRecorded && event.Data["relayedBy"] == "slot_work" && event.Data["pick"] != nil
+	}
+	if !relayed {
+		t.Fatalf("the offline pick lost relayedBy: %+v", events)
 	}
 }
 
