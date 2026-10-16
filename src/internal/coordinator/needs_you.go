@@ -346,7 +346,10 @@ func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []
 	case formations.NeedsYouKindFinal:
 		n.Subject = fmt.Sprintf("Archon run %s: %s", ask.Status, n.BoardTitle)
 		fmt.Fprintf(&body, "Run %s on %s finished: %s.\n", ask.RunID, n.BoardTitle, ask.Status)
-		if ask.Status != formations.RunStatusSucceeded && ask.Ask != "" {
+		switch {
+		case ask.Status == formations.RunStatusPicked:
+			body.WriteString("Its work went on through a pick: failed work a spent limit carried on, not a pass. Its outputs carry the failed verdicts.\n")
+		case ask.Status != formations.RunStatusSucceeded && ask.Ask != "":
 			fmt.Fprintf(&body, "Reason: %s\n", ask.Ask)
 		}
 		writeCockpitLink(&body, n.BoardURL)

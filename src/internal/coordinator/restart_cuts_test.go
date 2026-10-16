@@ -265,7 +265,7 @@ func outcomeOf(events []formations.RunEvent) runOutcome {
 			if _, granted := event.Data["grant"]; granted {
 				outcome.Grants++
 			}
-		case formations.RunEventSucceeded, formations.RunEventFailed, formations.RunEventCanceled:
+		case formations.RunEventSucceeded, formations.RunEventPicked, formations.RunEventFailed, formations.RunEventCanceled:
 			outcome.Status = strings.TrimPrefix(event.Type, "run_")
 			if ends, ok := event.Data["endIds"].([]any); ok {
 				for _, end := range ends {
@@ -637,7 +637,7 @@ seconds = 95
 			judges:     map[string][]string{"fmn_judge": {"fail", "fail", "fail"}},
 			picks:      map[string]int{"fmn_judge": 2},
 			invariants: requirePicked("gate_judge", 2, 3),
-			want:       runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 4}},
+			want:       runOutcome{Status: "picked", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 4}},
 		},
 		{
 			// The operator sends A back twice, then picks the first try.
@@ -657,7 +657,7 @@ whenSpent = "best"
 			verdicts:   map[string][]string{"gate_review": {"fail", "fail"}},
 			picks:      map[string]int{"gate_review": 1},
 			invariants: requirePicked("gate_review", 1, 2),
-			want:       runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2}},
+			want:       runOutcome{Status: "picked", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2}},
 		},
 	}
 }

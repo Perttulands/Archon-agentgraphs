@@ -3,6 +3,7 @@ package formations
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -54,8 +55,9 @@ type MissionOutput struct {
 	From string `json:"from,omitempty"`
 }
 
-// RunOutput is one mission output a successful run produced: the latest
-// accepted payload of its bound port, the snapshot path for a file or folder.
+// RunOutput is one mission output a run that reached a done End produced:
+// the latest accepted payload of its bound port, the snapshot path for a file
+// or folder.
 type RunOutput struct {
 	Name    string `json:"name"`
 	Kind    string `json:"kind"`
@@ -63,6 +65,33 @@ type RunOutput struct {
 	NodeID  string `json:"nodeId"`
 	PortID  string `json:"portId"`
 	Attempt int    `json:"attempt"`
+	// Picks are the picks the value came through, oldest first (ADR-0022):
+	// each picked attempt is failed work a spent limit carried on, with the
+	// verdict that failed it. A value no pick carried has none.
+	Picks []RunOutputPick `json:"picks,omitempty"`
+}
+
+// RunOutputPick is one pick a run's work came through: the step's attempt a
+// spent limit picked, through which gate, who picked it, and the verdict that
+// gate gave that attempt before the pick (ADR-0022).
+type RunOutputPick struct {
+	NodeID    string `json:"nodeId"`
+	Attempt   int    `json:"attempt"`
+	GateID    string `json:"gateId"`
+	Seq       int    `json:"seq"`
+	DecidedBy string `json:"decidedBy"`
+	// Verdict is the picked attempt's own verdict as the gate recorded it.
+	Verdict PickedVerdict `json:"verdict"`
+}
+
+// PickedVerdict is the verdict a pick's gate gave the picked attempt: its
+// ledger seq, the verdict (a fail, unless a pass route led back to the
+// step), the judge's or operator's reason and the judge's findings.
+type PickedVerdict struct {
+	Seq      int      `json:"seq"`
+	Verdict  string   `json:"verdict"`
+	Reason   string   `json:"reason"`
+	Findings []string `json:"findings,omitempty"`
 }
 
 // NormalizePortKind returns the stored form of an output port kind: "" for
@@ -227,16 +256,17 @@ func portName(port FormationPort) string {
 
 // resolveMissionOutputs lists the outputs of a run that reached a done End:
 // each declared output is its bound port's payload from the attempt the run
-// carried to a done End (doneEndOutputs), with that attempt. It returns the
-// failure reason when no attempt of a required output's port reached a done
-// End or a produced path no longer exists.
-func resolveMissionOutputs(board *BoardDocument, events []RunEvent) ([]RunOutput, string) {
+// carried to a done End (doneEndOutputs), with that attempt and the picks it
+// came through. picks are every pick the work that reached a done End came
+// through, which make the run picked rather than succeeded (ADR-0022). It
+// returns the failure reason when no attempt of a required output's port
+// reached a done End or a produced path no longer exists.
+func resolveMissionOutputs(board *BoardDocument, events []RunEvent) (outputs []RunOutput, picks []RunOutputPick, missing string) {
+	reached, picks := doneEndOutputs(board, events)
 	card := missionInputCard(board)
 	if card == nil || len(card.Outputs) == 0 {
-		return nil, ""
+		return nil, picks, ""
 	}
-	reached := doneEndOutputs(board, events)
-	var outputs []RunOutput
 	var problems []string
 	for _, output := range card.Outputs {
 		kind := output.Kind
@@ -262,18 +292,57 @@ func resolveMissionOutputs(board *BoardDocument, events []RunEvent) ([]RunOutput
 			problems = append(problems, fmt.Sprintf("output %s must be %s; %s", output.Name, inputKindPhrase(kind), problem))
 			continue
 		}
-		outputs = append(outputs, RunOutput{Name: output.Name, Kind: kind, Value: value, NodeID: nodeID, PortID: portID, Attempt: got.attempt})
+		outputs = append(outputs, RunOutput{Name: output.Name, Kind: kind, Value: value, NodeID: nodeID, PortID: portID, Attempt: got.attempt, Picks: got.picks})
 	}
 	if len(problems) > 0 {
-		return outputs, strings.Join(problems, "; ")
+		return outputs, picks, strings.Join(problems, "; ")
 	}
-	return outputs, ""
+	return outputs, picks, ""
 }
 
-// reachedOutput is one attempt's payload on a port.
+// reachedOutput is one attempt's payload on a port and the picks it came
+// through.
 type reachedOutput struct {
 	payload FormationOutputPayload
 	attempt int
+	picks   []RunOutputPick
+}
+
+// pickedOutputs maps each output a pick carried on, by the origin of the
+// gate input its pass routed, to that pick with the picked attempt's own
+// verdict.
+func pickedOutputs(events []RunEvent) map[OutputOrigin]RunOutputPick {
+	picked := map[OutputOrigin]RunOutputPick{}
+	for _, event := range events {
+		pick := pickData(event)
+		if event.Type != RunEventGateVerdict || pick == nil {
+			continue
+		}
+		origin := runInputRefFromAny(event.Data["inputRef"]).Origin
+		if origin == nil {
+			continue
+		}
+		entry := RunOutputPick{
+			NodeID: stringFromAny(pick["nodeId"]), Attempt: intFromRunEventData(pick["attempt"]), GateID: eventGateID(event),
+			Seq: event.Seq, DecidedBy: stringFromAny(pick["decidedBy"]),
+		}
+		if pickSeq := intFromRunEventData(pick["pickSeq"]); pickSeq > 0 && pickSeq <= len(events) {
+			for _, candidate := range pickCandidatesFromEvent(events[pickSeq-1]) {
+				if candidate.Attempt != entry.Attempt || candidate.VerdictSeq <= 0 || candidate.VerdictSeq > len(events) {
+					continue
+				}
+				verdict := events[candidate.VerdictSeq-1]
+				entry.Verdict = PickedVerdict{Seq: verdict.Seq, Verdict: stringFromEventData(verdict, "verdict"), Reason: stringFromEventData(verdict, "reason")}
+				for _, ref := range gateEvidenceRefsFromRunEventData(verdict.Data["evidence"]) {
+					if text := strings.TrimSpace(ref.Text); text != "" && text != entry.Verdict.Reason {
+						entry.Verdict.Findings = append(entry.Verdict.Findings, text)
+					}
+				}
+			}
+		}
+		picked[*origin] = entry
+	}
+	return picked
 }
 
 // doneEndOutputs follows what reached each done End back to the outputs it
@@ -287,7 +356,12 @@ type reachedOutput struct {
 // through it. A pass that routes an earlier attempt's output, as best of N
 // does, reaches that attempt. Where several attempts of one port were
 // reached, the latest counts.
-func doneEndOutputs(board *BoardDocument, events []RunEvent) map[OutputOrigin]reachedOutput {
+//
+// An output came through a pick when a pick carried it on, or carried on an
+// output that the attempt producing it took in, however far back
+// (ADR-0022). Each reached output lists those picks, and the second result
+// lists every pick anything delivered to a done End came through.
+func doneEndOutputs(board *BoardDocument, events []RunEvent) (map[OutputOrigin]reachedOutput, []RunOutputPick) {
 	gates := map[string]bool{}
 	for _, gate := range board.Gates {
 		gates[gate.ID] = true
@@ -337,6 +411,33 @@ func doneEndOutputs(board *BoardDocument, events []RunEvent) map[OutputOrigin]re
 			}
 		}
 	}
+	picked := pickedOutputs(events)
+	through := map[OutputOrigin][]RunOutputPick{}
+	var picksThrough func(origin OutputOrigin) []RunOutputPick
+	picksThrough = func(origin OutputOrigin) []RunOutputPick {
+		if found, ok := through[origin]; ok {
+			return found
+		}
+		// Inputs come from earlier outputs, so the walk ends; the entry
+		// guards a ledger that says otherwise.
+		through[origin] = nil
+		var found []RunOutputPick
+		if pick, ok := picked[origin]; ok {
+			found = append(found, pick)
+		}
+		for _, input := range inputs[attemptKey{origin.NodeID, origin.Attempt}] {
+			if input.Origin != nil && !(gates[input.FromNodeID] && input.FromPortID == "fail") {
+				found = append(found, picksThrough(*input.Origin)...)
+			}
+		}
+		found = uniquePicks(found)
+		through[origin] = found
+		return found
+	}
+	var crossed []RunOutputPick
+	for _, origin := range queue {
+		crossed = append(crossed, picksThrough(origin)...)
+	}
 	reached := map[OutputOrigin]reachedOutput{}
 	seen := map[OutputOrigin]bool{}
 	for len(queue) > 0 {
@@ -353,13 +454,23 @@ func doneEndOutputs(board *BoardDocument, events []RunEvent) map[OutputOrigin]re
 		}
 		port := OutputOrigin{NodeID: origin.NodeID, PortID: origin.PortID}
 		if got, ok := reached[port]; !ok || origin.Attempt > got.attempt {
-			reached[port] = reachedOutput{payload: payload, attempt: origin.Attempt}
+			reached[port] = reachedOutput{payload: payload, attempt: origin.Attempt, picks: picksThrough(origin)}
 		}
 		for _, input := range inputs[key] {
 			follow(input)
 		}
 	}
-	return reached
+	return reached, uniquePicks(crossed)
+}
+
+// uniquePicks lists each pick once, oldest first.
+func uniquePicks(picks []RunOutputPick) []RunOutputPick {
+	if len(picks) == 0 {
+		return nil
+	}
+	picks = slices.Clone(picks)
+	slices.SortFunc(picks, func(a, b RunOutputPick) int { return a.Seq - b.Seq })
+	return slices.CompactFunc(picks, func(a, b RunOutputPick) bool { return a.Seq == b.Seq })
 }
 
 // runInputRefsFromAny reads a node_started's inputRefs.
@@ -372,7 +483,45 @@ func runInputRefsFromAny(value any) []RunInputRef {
 	return refs
 }
 
-// RunOutputsFromEventData reads the outputs recorded on run_succeeded.
+// RunOutputPicksFromAny reads the picks recorded on run_picked or on one of
+// its outputs.
+func RunOutputPicksFromAny(value any) []RunOutputPick {
+	switch items := value.(type) {
+	case []RunOutputPick:
+		return items
+	case []any:
+		var picks []RunOutputPick
+		for _, item := range items {
+			fields, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			verdict, _ := fields["verdict"].(map[string]any)
+			findings := stringSliceFromAny(verdict["findings"])
+			if len(findings) == 0 {
+				findings = nil
+			}
+			picks = append(picks, RunOutputPick{
+				NodeID:    stringFromAny(fields["nodeId"]),
+				Attempt:   intFromRunEventData(fields["attempt"]),
+				GateID:    stringFromAny(fields["gateId"]),
+				Seq:       intFromRunEventData(fields["seq"]),
+				DecidedBy: stringFromAny(fields["decidedBy"]),
+				Verdict: PickedVerdict{
+					Seq:      intFromRunEventData(verdict["seq"]),
+					Verdict:  stringFromAny(verdict["verdict"]),
+					Reason:   stringFromAny(verdict["reason"]),
+					Findings: findings,
+				},
+			})
+		}
+		return picks
+	}
+	return nil
+}
+
+// RunOutputsFromEventData reads the outputs recorded on run_succeeded or
+// run_picked.
 func RunOutputsFromEventData(value any) []RunOutput {
 	switch items := value.(type) {
 	case []RunOutput:
@@ -391,6 +540,7 @@ func RunOutputsFromEventData(value any) []RunOutput {
 				NodeID:  stringFromAny(fields["nodeId"]),
 				PortID:  stringFromAny(fields["portId"]),
 				Attempt: intFromRunEventData(fields["attempt"]),
+				Picks:   RunOutputPicksFromAny(fields["picks"]),
 			})
 		}
 		return outputs

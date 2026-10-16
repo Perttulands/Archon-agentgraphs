@@ -37,6 +37,19 @@ describe('formations run-state helpers', () => {
     expect(statusFromRunEvent({ runId: 'run_1', seq: 4, type: 'node_output' })).toBe('')
   })
 
+  it('sets a run that ended through a pick apart from one that succeeded, and marks its End done', () => {
+    const picked: RunEvent = { runId: 'run_1', seq: 3, type: 'run_picked', data: { final: true, endIds: ['end_done'] } }
+    expect(statusFromRunEvent(picked)).toBe('picked')
+    expect(runEventResumeAllowed(picked, true)).toBe(false)
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'human_input_requested', gateId: 'gate_review', nodeId: 'gate_review' },
+      { runId: 'run_1', seq: 2, type: 'node_output', nodeId: 'fmn_work', data: { status: 'done' } },
+      picked,
+    ]
+    expect(projectNodeStates(events, null).get('end_done')).toBe('done')
+    expect(openHumanGateIds(events)).toEqual([])
+  })
+
   it('keeps historical inline-verification verdicts non-authorizing in node projection', () => {
     const states = projectNodeStates([
       { runId: 'run_1', seq: 1, type: 'node_output', nodeId: 'fmn_work', data: { status: 'done' } },

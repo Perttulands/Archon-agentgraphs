@@ -1828,7 +1828,9 @@ func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjectio
 		fmt.Fprintf(stdout, "pick\t%s attempt %d, picked from %s by %s, went on through %s\n", pick.NodeID, pick.Attempt, formations.AttemptListWords(pick.Candidates), pick.DecidedBy, pick.GateID)
 	}
 	for _, output := range status.Outputs {
-		fmt.Fprintln(stdout, runOutputLine(output))
+		for _, line := range runOutputLines(output) {
+			fmt.Fprintln(stdout, line)
+		}
 	}
 }
 
@@ -1941,6 +1943,10 @@ func runFollow(store *formations.Store, args []string, stdout, stderr io.Writer)
 			return failRunStreamError(stdout, stderr, err, *jsonOut, "run", runID)
 		}
 		if status.Final {
+			// A run that ended through a pick exits as run wait does for it.
+			if status.Status == formations.RunStatusPicked {
+				return waitExitPicked
+			}
 			return 0
 		}
 		time.Sleep(250 * time.Millisecond)

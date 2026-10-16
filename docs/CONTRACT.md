@@ -482,15 +482,35 @@ its kind when the run ends. An optional output the run did not produce is left
 out. A run that fails at a rejected End promises nothing: it fails with
 `path_rejected` and lists no outputs.
 
-`run_succeeded` records the outputs as `outputs` (`name`, `kind`, `value`,
-`nodeId`, `portId`, `attempt`), and run status, the run list, `run wait`'s
-`end` and the cockpit project them. Plain `run status` prints one line per
-output after the status line, `output<TAB><name><TAB><kind><TAB><value>`, and
-the final `run wait` paragraph does the same; a text value of several lines
-shows its first line and ` [...]`, and `--json` holds every value whole. A
-driver passes a value straight to the next mission: `archon mission run next
---input report=<value>`. The
-cockpit lists a succeeded run's outputs; a path opens in the file viewer.
+`run_succeeded`, or `run_picked` for a run whose work came through a pick,
+records the outputs as `outputs` (`name`, `kind`, `value`, `nodeId`, `portId`,
+`attempt`, and `picks` where a pick carried the value), and run status, the
+run list, `run wait`'s `end` and the cockpit project them. Plain `run status`
+prints one line per output after the status line,
+`output<TAB><name><TAB><kind><TAB><value>`, and the final `run wait` paragraph
+does the same; a text value of several lines shows its first line and
+` [...]`, and `--json` holds every value whole. A driver passes a value
+straight to the next mission: `archon mission run next --input
+report=<value>`. The cockpit lists a succeeded or picked run's outputs; a path
+opens in the file viewer.
+
+An output whose value came through a pick is failed work ([ADR-0022](adr/0022-a-picked-run-is-not-a-success.md)), and
+carries `picks`, oldest first: one entry per pick its value came through,
+whether the pick carried the value itself or carried an output that the
+attempt producing the value took in, however far back. Each entry has the
+picked step as `nodeId`, its `attempt`, the selecting gate's `gateId`, the
+`seq` of the pick's `gate_verdict`, who picked as `decidedBy` (the final
+judge's ID, the operator's actor or `archon`), and as `verdict` the picked
+attempt's own verdict as that gate recorded it: its `seq`, the `verdict`
+(`fail`, unless a pass route led back to the step), the judge's or operator's
+`reason`, and the judge's `findings`, the evidence lines that differ from the
+reason. Plain `run status` and the final `run wait` paragraph follow such an
+output's line with `picked<TAB><name><TAB><step> attempt <n> through <gate> by
+<picker>; its verdict: <verdict>: <reason>` and one
+`finding<TAB><name><TAB><text>` line per finding, each text on one line as
+values are. An output no pick carried has no `picks`. The cockpit marks a
+picked output's chip "picked" and gives the failed verdict and findings in its
+title.
 
 ### Limit cards
 
@@ -599,12 +619,15 @@ imposes no default. A downstream human gate waits after the formation finishes
 and spends no step time.
 
 The projection reports `running`, `waiting_human`, `blocked`, `succeeded`,
-`failed` or `canceled`. `waiting_human` means at least one human gate waits,
+`picked`, `failed` or `canceled`. `waiting_human` means at least one human gate waits,
 even while other steps still run; the events say what runs. Always check
-`final` and `resumeAllowed`; a blocked run is not a completed delivery. A failed or canceled run names who ended it in
+`final` and `resumeAllowed`; a blocked run is not a completed delivery. `picked`
+is final: the run reached a done End, but its work got there through a pick,
+so it delivered failed work, not a pass (see [Picking the best
+attempt](#picking-the-best-attempt)). A failed or canceled run names who ended it in
 `endedBy`; why is in its run evidence problems. Events expose node, slot and gate identities,
 attempt, status/verdict, session display name and cleanup outcome where
-applicable. `run_succeeded` and `run_failed` list in `endIds` the End nodes the
+applicable. `run_succeeded`, `run_picked` and `run_failed` list in `endIds` the End nodes the
 run's paths reached; a `run_failed` with code `path_rejected` names the
 rejected End node as its `nodeId` and the routing gate as its `gateId`.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
@@ -632,7 +655,8 @@ times of its first and latest ledger events; a final run ended at
 `updatedAt`. Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
-human gates and closes only at finality. Interrupting that client stops viewing,
+human gates and closes only at finality, exiting 0, or 7 for a `picked` run as
+`run wait` does. Interrupting that client stops viewing,
 not execution. Abort cancels only the selected run and waits for owned-seat
 cleanup, including seats kept on call, before returning `canceled`.
 
@@ -743,6 +767,23 @@ of a step whose gate judged its attempts, so there is nothing to pick"), and
 so are `--grant` and `--pick-best` together. The cockpit's run bar offers Pick
 the best attempt beside the grant at such a block.
 
+A pick happens only when a step's limit is spent with no attempt passed, so a
+picked attempt is failed work retained, never a pass ([ADR-0022](adr/0022-a-picked-run-is-not-a-success.md)). A run whose
+work reached its done End through a pick ends with `run_picked`, not
+`run_succeeded`, and its status is `picked`: following what reached each done
+End back as [Mission outputs](#mission-outputs) does, through the inputs of the
+attempts that produced it, the walk reached an output a pick carried on. The
+event carries what `run_succeeded` would (`endIds`, `outputs`, `final`, and a
+`reason` on resume) and `picks`, every pick that work came through in the
+shape outputs carry it; each output a pick carried names it in its own
+`picks`. A run that crossed a pick but whose work reached no done End through
+it, such as a pick whose pass leads to a rejected End, ends as it would
+without the pick: a rejected path still fails it with `path_rejected`, and a
+required output never delivered with `missing_output`. `run wait` and `run
+follow` exit 7 for a picked run, the final `run wait` paragraph says its
+outputs are failed work, a final notification says the same, and the cockpit
+shows the run as "Picked, not passed".
+
 Run status lists the run's picks in `picks` (`seq`, `gateId`, `nodeId`,
 `attempt`, `candidates`, `decidedBy`, `trigger`; the reason stays in the
 evidence), and `run status` prints one line for each ("pick fmn_draft attempt
@@ -777,7 +818,7 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
   pick, the candidates, any judge's recommendation and the `gate pick` command;
   or the `run resume` or `run abort` command a block needs, with both `--grant`
   and `--pick-best` at a `grant_or_pick` block.
-- `final` returns when the run succeeds, fails or is canceled.
+- `final` returns when the run succeeds, is picked, fails or is canceled.
 - `any-change` returns at the next ledger event and lists the new events. When
   that event opens a new ask it answers as `needs-you` (exit 3) instead.
 
@@ -812,6 +853,7 @@ codes:
 | Code | Meaning |
 | --- | --- |
 | 0 | The run is final (succeeded, failed or canceled). |
+| 7 | The run is final as `picked`: its outputs are failed work a pick carried on. |
 | 1 | Error, such as an unknown run or a `--since` past the run's last event. |
 | 2 | Usage, or run without `--server`. |
 | 3 | The run needs you, in `needs-you` or `any-change`. |
@@ -1121,7 +1163,9 @@ still run: once nothing else can run, a rejected path fails the run as below
 non-resumably with `reachable_node_starved`. Any other work that remains blocks,
 resumably, with `run_work_unfinished` naming those nodes.
 
-A finished run succeeds unless a path ended at a rejected End node. Then it
+A finished run succeeds unless a path ended at a rejected End node, or its
+work reached a done End through a pick, when it ends `picked` (see [Picking
+the best attempt](#picking-the-best-attempt)). At a rejected End it
 records `run_failed` with `code` `path_rejected`, the End node's `endId`, the
 routing gate's `gateId`, and as `reason` that gate verdict's reason (a human
 gate's response, a judge's or code check's reason); the operator who rejected
@@ -1642,7 +1686,9 @@ an existing project.
 
 To chain a mission that declares outputs into the next, read the succeeded
 run's `outputs` and pass a value as the next run's input; `run attempts` shows
-what every attempt produced and how it was judged:
+what every attempt produced and how it was judged. A `picked` run's outputs
+are failed work: feed one only into a mission that opens with a repair step
+whose gate checks its `picks` findings, or stop the chain and report:
 
 ```bash
 ARCHON_REPORT=$(archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json |
@@ -1795,7 +1841,8 @@ A notification carries `runId`, `missionSlug`, `missionTitle`, `seq`, `kind`,
 - `blocked`, keyed by the `run_blocked` sequence when no blocking escalation
   already explains the block. A waiting gate explains none. The body gives the reason and, when resumable,
   the `run resume` command.
-- `final`, keyed by the terminal event sequence.
+- `final`, keyed by the terminal event sequence. A `picked` run's body says
+  its work went on through a pick, so its outputs are failed work.
 
 A human gate's ask and a blocking escalation are sent as soon as the ledger
 records them, while other steps still run. Blocks and final outcomes are sent
@@ -2135,7 +2182,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   pick, `pick`, and a block's `reason`, `code`, `resumeAllowed`, and at a spent
   limit `limit` and `resumePolicy`. A driver agent consumes this
   text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy`, the
-  `stopped` steps and a succeeded run's mission `outputs`. A bad `until`, `since` or `hold`, or a `since` past the
+  `stopped` steps and a succeeded or picked run's mission `outputs`, with their `picks`. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
   Waits and streams read the daemon's parsed ledger, which parses only what
   each append added, so fifty waiters on a large ledger answer within a

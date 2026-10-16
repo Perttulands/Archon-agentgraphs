@@ -80,6 +80,12 @@ const succeededEvents = [
   { seq: 6, type: 'node_output', nodeId: 'peer', status: 'done' },
   { seq: 7, type: 'run_succeeded' },
 ]
+// The same run ended through a pick (ADR-0022): a spent best card carried
+// Execution's failed attempt on as the gate's pass, and the run ends picked.
+const pickedEvents = [...succeededEvents.slice(0, 6), { seq: 7, type: 'run_picked' }]
+/** The pick the picked run's outputs came through, as the daemon projects it on each. */
+export const pickedExecution = { nodeId: 'execution', attempt: 1, gateId: 'gate', seq: 4, decidedBy: 'archon',
+  verdict: { seq: 3, verdict: 'fail', reason: 'Retries are untested', findings: ['No test drives the retry path'] } }
 const evidenceText = (text: string) => ({ text, bytes: text.length })
 // Where a succeeded run snapshots a file or folder output (.archon/artifacts/<run>/<node>/<attempt>/...).
 export const runArtifacts = '/srv/state/.archon/artifacts/run_browser'
@@ -177,7 +183,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
@@ -500,8 +506,10 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: options.secondGate ? 4 : 3, cwd: runCwd,
       waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
     if (path === '/api/runs/run_browser' && options.succeeded) {
-      const outputs = runOutputs(currentBoard)
-      return respond({ runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(outputs.length ? { outputs } : {}) })
+      // A picked run (succeeded with picked) carried Execution's failed first
+      // attempt on through its gate, so every output came through that pick.
+      const outputs = runOutputs(currentBoard).map(output => options.picked ? { ...output, picks: [pickedExecution] } : output)
+      return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(outputs.length ? { outputs } : {}) })
     }
     // The file routes read a succeeded run's output snapshots by absolute path.
     if (options.succeeded && path === '/api/files/directory') {
@@ -554,7 +562,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
       routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }] },
         { verdict: 'fail', targets: [{ nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' }] }] } })
     if (path.endsWith('/events') && options.blockedAtJudge) return respond({ events: blockedAtJudgeEvents })
-    if (path.endsWith('/events') && options.succeeded) return respond({ events: succeededEvents })
+    if (path.endsWith('/events') && options.succeeded) return respond({ events: options.picked ? pickedEvents : succeededEvents })
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
     if (path === '/api/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,
       input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: Array.from({ length: 60 }, (_, i) => `${i + 1}. A question the operator should answer before the brief is written.`).join('\n') },

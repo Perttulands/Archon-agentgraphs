@@ -69,7 +69,7 @@ type WaitEnd struct {
 	ReasonTruncated bool       `json:"reasonTruncated,omitempty"`
 	EndedBy         string     `json:"endedBy,omitempty"`
 	Stopped         []WaitNode `json:"stopped,omitempty"`
-	// Outputs are the mission outputs a succeeded run delivered.
+	// Outputs are the mission outputs a succeeded or picked run delivered.
 	Outputs []formations.RunOutput `json:"outputs,omitempty"`
 }
 

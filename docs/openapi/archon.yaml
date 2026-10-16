@@ -422,7 +422,7 @@ paths:
           default: 30
       responses:
         '200':
-          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, limit (a blocked ask's spent Limit card), resumePolicy (grant or grant_or_pick at a spent limit), input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes, pick (a human gate's pending pick of a step's best attempt, as PendingPick)) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
+          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped, outputs), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, limit (a blocked ask's spent Limit card), resumePolicy (grant or grant_or_pick at a spent limit), input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes, pick (a human gate's pending pick of a step's best attempt, as PendingPick)) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
         '400':
           description: Bad until, since or hold, or since past the run's last event
         '404':
@@ -1190,6 +1190,55 @@ components:
           type: string
         attempt:
           type: integer
+        picks:
+          type: array
+          description: The picks the value came through, oldest first; absent when no pick carried it. A picked
+            attempt is failed work a spent limit carried on, never a pass (ADR-0022).
+          items:
+            $ref: '#/components/schemas/RunOutputPick'
+    RunOutputPick:
+      type: object
+      required:
+      - nodeId
+      - attempt
+      - gateId
+      - seq
+      - decidedBy
+      - verdict
+      properties:
+        nodeId:
+          type: string
+          description: The step whose attempt was picked.
+        attempt:
+          type: integer
+        gateId:
+          type: string
+          description: The selecting gate the pick went on through.
+        seq:
+          type: integer
+          description: The ledger seq of the pick's gate_verdict.
+        decidedBy:
+          type: string
+          description: The final judge's ID, the operator's actor, or archon.
+        verdict:
+          type: object
+          description: The picked attempt's own verdict as the gate recorded it.
+          required:
+          - seq
+          - verdict
+          - reason
+          properties:
+            seq:
+              type: integer
+            verdict:
+              type: string
+              description: fail, unless a pass route led back to the step.
+            reason:
+              type: string
+            findings:
+              type: array
+              items:
+                type: string
     RunAttempts:
       type: object
       properties:
@@ -1505,8 +1554,10 @@ components:
           - waiting_human
           - blocked
           - succeeded
+          - picked
           - failed
           - canceled
+          description: picked is final, for a run whose work reached its done End through a pick (ADR-0022).
         final:
           type: boolean
         missionSlug:
@@ -1543,7 +1594,7 @@ components:
                 type: string
         outputs:
           type: array
-          description: The mission outputs a run that reached a done End delivered, in the mission's declared order; absent otherwise. A file or folder value is the snapshot path in the producing attempt's directory.
+          description: The mission outputs a run that reached a done End delivered, in the mission's declared order; absent otherwise. A file or folder value is the snapshot path in the producing attempt's directory. On a picked run, an output that came through a pick carries picks.
           items:
             $ref: '#/components/schemas/RunOutput'
         epoch:

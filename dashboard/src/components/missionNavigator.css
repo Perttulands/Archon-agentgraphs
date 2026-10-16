@@ -38,6 +38,7 @@
 .fmx .nav-state.waiting_human{color:var(--gold);}
 .fmx .nav-state.blocked,.fmx .nav-state.failed{color:var(--terra-d);}
 .fmx .nav-state.succeeded{color:var(--sage);}
+.fmx .nav-state.picked{color:var(--gold);}
 
 @media (max-width:720px){
   .fmx .mission-nav{width:100%;flex:0 0 auto;max-height:30vh;border-right:0;border-bottom:1px solid var(--line);}

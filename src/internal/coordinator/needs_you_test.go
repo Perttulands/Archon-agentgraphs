@@ -280,6 +280,12 @@ func TestRenderNeedsYouCapsInputAndUsesPlaceholders(t *testing.T) {
 			t.Fatalf("%s: %+v", kind, got)
 		}
 	}
+	// A picked run is final but not a pass (ADR-0022): the body says its
+	// outputs are failed work instead of quoting a reason.
+	picked := renderNeedsYou(NeedsYouConfig{}, formations.NeedsYouAsk{RunID: "run_x", Seq: 2, Kind: formations.NeedsYouKindFinal, Ask: "resume", Status: formations.RunStatusPicked}, events, "picked", nil)
+	if picked.Subject != "Archon run picked: proof" || !strings.Contains(picked.Body, "finished: picked.\nIts work went on through a pick") || strings.Contains(picked.Body, "Reason:") {
+		t.Fatalf("picked: %+v", picked)
+	}
 	raw, err := json.Marshal(n)
 	if err != nil || !strings.Contains(string(raw), `"subject":`) || !strings.Contains(string(raw), `"body":`) {
 		t.Fatalf("notification JSON %s, %v", raw, err)

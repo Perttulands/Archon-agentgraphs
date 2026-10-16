@@ -58,7 +58,7 @@ export function chooseBoardRun(input: {
 
 const runStatusLabels: Record<string, string> = {
   waiting_human: 'Waiting for your answer', running: 'Running', blocked: 'Blocked',
-  succeeded: 'Succeeded', failed: 'Failed', canceled: 'Canceled',
+  succeeded: 'Succeeded', picked: 'Picked, not passed', failed: 'Failed', canceled: 'Canceled',
 }
 
 /** Display wording only; projection values remain unchanged. */

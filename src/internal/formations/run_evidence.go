@@ -707,7 +707,7 @@ func runResumedAfter(events []RunEvent, index int) int {
 		switch event.Type {
 		case RunEventResumed:
 			return event.Seq
-		case RunEventBlocked, RunEventCanceled, RunEventFailed, RunEventSucceeded:
+		case RunEventBlocked, RunEventCanceled, RunEventFailed, RunEventSucceeded, RunEventPicked:
 			return 0
 		}
 	}

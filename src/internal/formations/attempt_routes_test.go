@@ -64,7 +64,7 @@ func TestMissionOutputComesFromTheAttemptRoutedToTheEnd(t *testing.T) {
 			RunEvent{Type: RunEventGateEvaluating, GateID: "gate_lint", Data: map[string]any{"inputRef": draft(2)}},
 			RunEvent{Type: RunEventGateVerdict, GateID: "gate_lint", Data: map[string]any{"verdict": "pass", "routePort": "pass", "inputRef": draft(picked)}},
 		)
-		outputs, missing := resolveMissionOutputs(board, events)
+		outputs, _, missing := resolveMissionOutputs(board, events)
 		want := []RunOutput{{Name: "report", Kind: PortKindText, Value: fmt.Sprintf("draft %d", picked), NodeID: "fmn_work", PortID: "port_work_out", Attempt: picked}}
 		if missing != "" || !reflect.DeepEqual(outputs, want) {
 			t.Fatalf("picked %d: outputs = %+v, %q; want %+v", picked, outputs, missing, want)

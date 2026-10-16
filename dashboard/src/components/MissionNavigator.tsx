@@ -15,7 +15,7 @@ const RUNS_SHOWN = 5
 
 const stateWords: Record<string, string> = {
   waiting_human: 'your answer', running: 'running', blocked: 'blocked',
-  succeeded: 'succeeded', failed: 'failed', canceled: 'canceled',
+  succeeded: 'succeeded', picked: 'picked', failed: 'failed', canceled: 'canceled',
 }
 
 export function runStateWord(status: string): string {

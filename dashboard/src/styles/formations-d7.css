@@ -448,7 +448,7 @@
 .fmx .run-banner .badge{text-transform:uppercase;letter-spacing:.08em;padding:3px 9px;border-radius:4px;font-size:11px;}
 .fmx .run-banner .badge.running{color:var(--terra);background:rgba(var(--accent-rgb),.14);}
 .fmx .run-banner .badge.succeeded{color:var(--sage);background:color-mix(in srgb,var(--sage) 16%,transparent);}
-.fmx .run-banner .badge.blocked{color:var(--gold);background:color-mix(in srgb,var(--gold) 16%,transparent);}
+.fmx .run-banner .badge.blocked,.fmx .run-banner .badge.picked{color:var(--gold);background:color-mix(in srgb,var(--gold) 16%,transparent);}
 .fmx .run-banner .badge.failed,.fmx .run-banner .badge.canceled{color:var(--terra-d);background:var(--color-error-light);}
 .fmx .run-banner button{background:var(--paper2);border:1px solid var(--line);color:var(--ink2);border-radius:5px;padding:5px 10px;font-family:inherit;font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;}
 .fmx .run-banner button:hover{border-color:var(--terra);color:var(--terra);}

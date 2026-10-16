@@ -232,3 +232,26 @@ func runOutputLine(output formations.RunOutput) string {
 	}
 	return fmt.Sprintf("output\t%s\t%s\t%s", output.Name, output.Kind, value)
 }
+
+// runOutputLines is a run output's line, then for each pick it came through
+// a picked line naming the failed verdict and a finding line per finding
+// (ADR-0022). Text of several lines shows its first; --json holds it whole.
+func runOutputLines(output formations.RunOutput) []string {
+	lines := []string{runOutputLine(output)}
+	for _, pick := range output.Picks {
+		lines = append(lines, fmt.Sprintf("picked\t%s\t%s attempt %d through %s by %s; its verdict: %s: %s",
+			output.Name, pick.NodeID, pick.Attempt, pick.GateID, pick.DecidedBy, pick.Verdict.Verdict, oneLine(pick.Verdict.Reason)))
+		for _, finding := range pick.Verdict.Findings {
+			lines = append(lines, fmt.Sprintf("finding\t%s\t%s", output.Name, oneLine(finding)))
+		}
+	}
+	return lines
+}
+
+// oneLine is text's first line, marked when there is more.
+func oneLine(text string) string {
+	if first := firstLine(text); first != strings.TrimSpace(text) {
+		return first + " [...]"
+	}
+	return strings.TrimSpace(text)
+}

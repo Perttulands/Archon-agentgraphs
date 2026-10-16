@@ -20,6 +20,7 @@ export const runEventTypes = [
   'run_canceled',
   'run_failed',
   'run_succeeded',
+  'run_picked',
 ]
 
 export function upsertRunEvent(events: RunEvent[], next: RunEvent): RunEvent[] {
@@ -46,6 +47,9 @@ export function statusFromRunEvent(event: RunEvent): string {
       return 'failed'
     case 'run_succeeded':
       return 'succeeded'
+    // A run whose work went on through a pick: failed work, not a pass (ADR-0022).
+    case 'run_picked':
+      return 'picked'
     default:
       return ''
   }
@@ -54,7 +58,7 @@ export function statusFromRunEvent(event: RunEvent): string {
 export function runEventResumeAllowed(event: RunEvent, fallback: boolean): boolean {
   if (event.type === 'run_blocked') return event.data?.resumeAllowed === true
   if (event.type === 'run_started' || event.type === 'run_resumed') return false
-  if (event.type === 'run_canceled' || event.type === 'run_failed' || event.type === 'run_succeeded') return false
+  if (event.type === 'run_canceled' || event.type === 'run_failed' || event.type === 'run_succeeded' || event.type === 'run_picked') return false
   return fallback
 }
 
@@ -119,7 +123,7 @@ function projectRun(events: RunEvent[]): RunProjection {
     if (event.type === 'run_blocked') blocked = true
     // A finished run names the End nodes its paths reached (archon-o7p.10); the
     // rejected one a failure names turns failed below.
-    if (event.type === 'run_succeeded' || event.type === 'run_failed') {
+    if (event.type === 'run_succeeded' || event.type === 'run_picked' || event.type === 'run_failed') {
       const endIds: unknown[] = Array.isArray(event.data?.endIds) ? event.data.endIds : []
       for (const endId of endIds) if (typeof endId === 'string') set(endId, 'done', event.seq)
     }
@@ -323,6 +327,7 @@ export function openHumanGateIds(events: RunEvent[]): string[] {
         break
       }
       case 'run_succeeded':
+      case 'run_picked':
       case 'run_failed':
       case 'run_canceled':
         open.length = 0

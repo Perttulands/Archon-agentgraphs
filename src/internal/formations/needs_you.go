@@ -91,7 +91,7 @@ type NeedsYouNotifier interface {
 func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 	for _, event := range events {
 		switch event.Type {
-		case RunEventSucceeded, RunEventFailed, RunEventCanceled:
+		case RunEventSucceeded, RunEventPicked, RunEventFailed, RunEventCanceled:
 			return nil
 		}
 	}
@@ -164,7 +164,7 @@ func ProjectSettledNeedsYouAsks(events []RunEvent) ([]NeedsYouAsk, error) {
 	var last RunEvent
 	for _, event := range events {
 		switch event.Type {
-		case RunEventBlocked, RunEventResumed, RunEventSucceeded, RunEventFailed, RunEventCanceled:
+		case RunEventBlocked, RunEventResumed, RunEventSucceeded, RunEventPicked, RunEventFailed, RunEventCanceled:
 			last = event
 		}
 	}

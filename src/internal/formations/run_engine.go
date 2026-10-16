@@ -1257,7 +1257,7 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 // formation the ledger ever fed; a step runs only while the ledger, read as
 // it stands now, still owes it a delivery, so a send-back routed during this
 // drain runs again (archon-n7u.53). startReason is recorded on each
-// node_started, and finishReason, when set, on run_succeeded.
+// node_started, and finishReason, when set, on run_succeeded or run_picked.
 func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[string]GateNode, attempts map[string]int, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string, startReason, finishReason string) error {
 	formationByID := map[string]FormationNode{}
 	for _, formation := range board.Formations {
@@ -1498,7 +1498,8 @@ const RunFailurePathRejected = "path_rejected"
 // finishRun ends a run in which every path has ended and nothing else can run
 // (unfinishedRunWork is empty). A path that ended at a rejected End node
 // fails the run with the reason of the gate verdict that routed there;
-// otherwise the run succeeds. reason, when set, says how the run got here,
+// otherwise the run succeeds, or is picked when its work reached the done End
+// through a pick (ADR-0022). reason, when set, says how the run got here,
 // such as resume.
 func (e *RunEngine) finishRun(runID string, board *BoardDocument, events []RunEvent, reason string) error {
 	if err := e.EndKeptSeats(runID); err != nil {
@@ -1533,7 +1534,7 @@ func (e *RunEngine) finishRun(runID string, board *BoardDocument, events []RunEv
 	}
 	// A run that reached a done End delivers the mission's declared outputs; a
 	// required one it did not produce fails it (archon-5tg1).
-	outputs, missing := resolveMissionOutputs(board, events)
+	outputs, picks, missing := resolveMissionOutputs(board, events)
 	if missing != "" {
 		return e.store.AppendRunEvent(runID, RunEvent{
 			Type:  RunEventFailed,
@@ -1558,6 +1559,12 @@ func (e *RunEngine) finishRun(runID string, board *BoardDocument, events []RunEv
 	}
 	if reason != "" {
 		data["reason"] = reason
+	}
+	// A pick carries on failed work, so a run whose work reached its done End
+	// through one is picked, not succeeded (ADR-0022).
+	if len(picks) > 0 {
+		data["picks"] = picks
+		return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventPicked, Data: data})
 	}
 	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventSucceeded, Data: data})
 }

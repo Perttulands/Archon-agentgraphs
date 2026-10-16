@@ -58,12 +58,16 @@ const (
 	RunEventCanceled             = "run_canceled"
 	RunEventFailed               = "run_failed"
 	RunEventSucceeded            = "run_succeeded"
+	// RunEventPicked ends a run whose work reached a done End through a pick:
+	// failed work a spent limit carried on, never a pass (ADR-0022).
+	RunEventPicked = "run_picked"
 
 	RunStatusRunning   = "running"
 	RunStatusBlocked   = "blocked"
 	RunStatusCanceled  = "canceled"
 	RunStatusFailed    = "failed"
 	RunStatusSucceeded = "succeeded"
+	RunStatusPicked    = "picked"
 )
 
 type RunStartRequest struct {
@@ -129,9 +133,10 @@ type RunStatusProjection struct {
 	ContextPaths []string `json:"contextPaths,omitempty"`
 	// Inputs are the values the run supplied, in the mission's order.
 	Inputs []RunInput `json:"inputs,omitempty"`
-	// Outputs are the mission outputs a succeeded run delivered, in the
-	// mission's order (archon-5tg1); a file or folder value is the path of
-	// the accepted snapshot.
+	// Outputs are the mission outputs a succeeded or picked run delivered, in
+	// the mission's order (archon-5tg1); a file or folder value is the path
+	// of the accepted snapshot. On a picked run, an output that came through
+	// a pick carries it (ADR-0022).
 	Outputs       []RunOutput `json:"outputs,omitempty"`
 	RunID         string      `json:"runId"`
 	Status        string      `json:"status"`
@@ -729,6 +734,11 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.Final = true
 			status.ResumeAllowed = false
 			status.Outputs = RunOutputsFromEventData(event.Data["outputs"])
+		case RunEventPicked:
+			status.Status = RunStatusPicked
+			status.Final = true
+			status.ResumeAllowed = false
+			status.Outputs = RunOutputsFromEventData(event.Data["outputs"])
 		}
 	}
 	if status.Final || status.Status != RunStatusBlocked {
@@ -742,7 +752,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 	// whose last lifecycle event is node_waiting, the success is a lie (e.g. a
 	// stray run_succeeded over a starved join); project blocked instead so
 	// CLI, API, and UI never report finished work that never ran.
-	if status.Status == RunStatusSucceeded {
+	if status.Status == RunStatusSucceeded || status.Status == RunStatusPicked {
 		if waiting := unresolvedWaitingNodes(events); len(waiting) > 0 {
 			status.Status = RunStatusBlocked
 			status.Final = false
@@ -1113,7 +1123,7 @@ func lifecycleLedger(events []RunEvent) []RunEvent {
 }
 
 func isFinalRunEvent(eventType string) bool {
-	return eventType == RunEventSucceeded || eventType == RunEventFailed || eventType == RunEventCanceled
+	return eventType == RunEventSucceeded || eventType == RunEventPicked || eventType == RunEventFailed || eventType == RunEventCanceled
 }
 
 func stringFromEventData(event RunEvent, key string) string {

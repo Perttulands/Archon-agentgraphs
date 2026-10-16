@@ -268,6 +268,46 @@ func TestRunWaitReconnectsAcrossARestart(t *testing.T) {
 	}
 }
 
+// A run whose work went on through a pick is final but not a pass
+// (ADR-0022): run wait and run follow exit 7, and the paragraph says the
+// outputs are failed work and lists each pick's failed verdict.
+func TestRunWaitAndFollowSetAPickedRunApart(t *testing.T) {
+	end := `{"runId":"run_x","missionSlug":"proof","status":"picked","final":true,"outputs":[{"name":"draft","kind":"text","value":"draft two","nodeId":"fmn_work","portId":"port_out","attempt":2,"picks":[{"nodeId":"fmn_work","attempt":2,"gateId":"gate_review","seq":58,"decidedBy":"fmn_j2","verdict":{"seq":33,"verdict":"fail","reason":"retry untested","findings":["no test drives the retry path"]}}]}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/wait"):
+			fmt.Fprint(w, `{"success":true,"data":{"runId":"run_x","missionTitle":"Proof","until":"final","outcome":"final","since":0,"seq":60,"status":"picked","final":true,"settled":true,"asks":[],"changes":[],"end":{"status":"picked","seq":60,"outputs":[{"name":"draft","kind":"text","value":"draft two","nodeId":"fmn_work","portId":"port_out","attempt":2,"picks":[{"nodeId":"fmn_work","attempt":2,"gateId":"gate_review","seq":58,"decidedBy":"fmn_j2","verdict":{"seq":33,"verdict":"fail","reason":"retry untested","findings":["no test drives the retry path"]}}]}]}}}`)
+		case strings.HasSuffix(r.URL.Path, "/stream"):
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprintf(w, "event: projection\ndata: {\"success\":true,\"data\":%s}\n\n", end)
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer server.Close()
+	out, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "run", "wait", "run_x", "--until", "final")
+	if code != 7 {
+		t.Fatalf("code %d %s", code, stderr)
+	}
+	for _, want := range []string{
+		`Run run_x (mission "Proof") picked at #60.`,
+		"so it is failed work, not a pass",
+		"output\tdraft\ttext\tdraft two\n",
+		"picked\tdraft\tfmn_work attempt 2 through gate_review by fmn_j2; its verdict: fail: retry untested\n",
+		"finding\tdraft\tno test drives the retry path\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Wait for what comes next") {
+		t.Errorf("a final run offers a next wait:\n%s", out)
+	}
+	if _, stderr, code := runArchon(t, &fakeTmux{}, "--server", server.URL, "run", "follow", "run_x"); code != waitExitPicked {
+		t.Fatalf("follow code %d %s", code, stderr)
+	}
+}
+
 func TestRunWaitGivesUpOnAnUnreachableDaemonWithAClearCode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := server.URL

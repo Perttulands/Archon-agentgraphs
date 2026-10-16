@@ -110,7 +110,7 @@ func TestABestCardPicksTheBestJudgedAttemptAndGoesOn(t *testing.T) {
 	store, _, executor, status := pickRun(t, pickBoardFixture(`["formation"]`, workCard("rounds = 3\nwhenSpent = \"best\"")),
 		threeFailedDrafts(pickBlock(2, "the only draft whose tests pass", "draft two: retry covered")))
 	events := mustEvents(t, store, status.RunID)
-	if status.Status != RunStatusSucceeded || !status.Final {
+	if status.Status != RunStatusPicked || !status.Final {
 		t.Fatalf("status = %+v:\n%s", status, eventTypeTrail(events))
 	}
 	want := []string{"fmn_work#1", "fmn_j1#1", "fmn_j2#1", "fmn_work#2", "fmn_j1#2", "fmn_j2#2", "fmn_work#3", "fmn_j1#3", "fmn_j2#3", "fmn_j1#4", "fmn_j2#4", "fmn_ship#1"}
@@ -229,7 +229,7 @@ func TestPickBestResumesASpentLimitBlock(t *testing.T) {
 		t.Fatalf("grant and pick = %v", err)
 	}
 	resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", PickBest: true})
-	if err != nil || resumed.Status != RunStatusSucceeded {
+	if err != nil || resumed.Status != RunStatusPicked {
 		t.Fatalf("resume --pick-best = %+v, %v:\n%s", resumed, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
 	if got, want := callTrail(executor.calls), []string{"fmn_work#1", "fmn_j1#1", "fmn_j2#1", "fmn_work#2", "fmn_j1#2", "fmn_j2#2", "fmn_j1#3", "fmn_j2#3", "fmn_ship#1"}; !reflect.DeepEqual(got, want) {
@@ -271,7 +271,7 @@ func TestPickBestIsRefusedWhereNothingCanPick(t *testing.T) {
 // A step's card whose only judged attempt is one is taken without a picker.
 func TestTheOnlyJudgedAttemptIsTakenWithoutAPicker(t *testing.T) {
 	store, _, executor, status := pickRun(t, pickBoardFixture(`["formation"]`, workCard("rounds = 1\nwhenSpent = \"best\"")), threeFailedDrafts(""))
-	if status.Status != RunStatusSucceeded {
+	if status.Status != RunStatusPicked {
 		t.Fatalf("status = %+v:\n%s", status, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
 	if got, want := callTrail(executor.calls), []string{"fmn_work#1", "fmn_j1#1", "fmn_j2#1", "fmn_ship#1"}; !reflect.DeepEqual(got, want) {
@@ -334,7 +334,7 @@ func TestAnAttemptTheLimitCutIsNeverACandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := mustEvents(t, store, status.RunID)
-	if status.Status != RunStatusSucceeded {
+	if status.Status != RunStatusPicked {
 		t.Fatalf("status = %+v:\n%s", status, eventTypeTrail(events))
 	}
 	if got := nodeStartedAttempts(events, "fmn_work"); !reflect.DeepEqual(got, []int{1, 2, 3}) {
@@ -428,7 +428,7 @@ func TestAnOperatorPicksAtAHumanGate(t *testing.T) {
 		t.Fatalf("a second pick = %v", err)
 	}
 	final, err := engine.ContinueRun(status.RunID)
-	if err != nil || final.Status != RunStatusSucceeded {
+	if err != nil || final.Status != RunStatusPicked {
 		t.Fatalf("after the pick = %+v, %v:\n%s", final, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
 	if ship := callsByNode(executor.calls)["fmn_ship"][0]; ship.Inputs[0].Text != "draft one" {
@@ -473,7 +473,7 @@ func TestTheJudgesRecommendAndTheOperatorPicks(t *testing.T) {
 		t.Fatal(err)
 	}
 	final, err := engine.ContinueRun(status.RunID)
-	if err != nil || final.Status != RunStatusSucceeded {
+	if err != nil || final.Status != RunStatusPicked {
 		t.Fatalf("after the pick = %+v, %v", final, err)
 	}
 	if ship := callsByNode(executor.calls)["fmn_ship"][0]; ship.Inputs[0].Text != "draft one" {
@@ -510,7 +510,7 @@ func TestAMalformedJudgePickBlocksAndAResumeAsksAgain(t *testing.T) {
 		t.Fatalf("resume --pick-best at a malformed pick = %v", err)
 	}
 	resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test"})
-	if err != nil || resumed.Status != RunStatusSucceeded {
+	if err != nil || resumed.Status != RunStatusPicked {
 		t.Fatalf("resume = %+v, %v:\n%s", resumed, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
 	// Only the final judge answers again; Judge 1's comparison stands.
@@ -547,7 +547,7 @@ func TestReplayFinishesAPickTheLedgerStarted(t *testing.T) {
 			}
 			crash.stopAt = ""
 			resumed, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach"})
-			if err != nil || resumed.Status != RunStatusSucceeded {
+			if err != nil || resumed.Status != RunStatusPicked {
 				t.Fatalf("resume = %+v, %v:\n%s", resumed, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
 			}
 			events := mustEvents(t, store, status.RunID)
@@ -691,17 +691,84 @@ func TestWhenSpentAuthoring(t *testing.T) {
 	}
 }
 
+// pickOutputsFixture is the pick fixture with a best card of three rounds,
+// declaring Work's draft and Ship's result as the mission's outputs.
+func pickOutputsFixture() string {
+	return strings.Replace(pickBoardFixture(`["formation"]`, workCard("rounds = 3\nwhenSpent = \"best\"")), "beadId = \"home-7kc4.7\"\n",
+		"beadId = \"home-7kc4.7\"\noutputs = [{ name = \"draft\", from = \"fmn_work:port_work_out\", required = true }, { name = \"shipped\", from = \"fmn_ship:port_ship_out\" }]\n", 1)
+}
+
 // The picked attempt is the one the run carried to its done End, so it is
-// the mission's output, not the latest attempt.
+// the mission's output, not the latest attempt. A pick carries on failed
+// work (ADR-0022): the run ends picked, not succeeded, and every output that
+// came through the pick, the picked draft and Ship's result made from it,
+// carries the pick with the verdict that failed that draft.
 func TestAPickedAttemptIsTheMissionsOutput(t *testing.T) {
-	fixture := strings.Replace(pickBoardFixture(`["formation"]`, workCard("rounds = 3\nwhenSpent = \"best\"")), "beadId = \"home-7kc4.7\"\n",
-		"beadId = \"home-7kc4.7\"\noutputs = [{ name = \"draft\", from = \"fmn_work:port_work_out\", required = true }]\n", 1)
-	store, _, _, status := pickRun(t, fixture, threeFailedDrafts(pickBlock(2, "covers retry")))
-	if status.Status != RunStatusSucceeded {
+	responses := threeFailedDrafts(pickBlock(2, "covers retry"))
+	responses["fmn_j2"][2] = judgeBlock("fail", "retry untested", "no test drives the retry path", "retry swallows the last error")
+	store, _, _, status := pickRun(t, pickOutputsFixture(), responses)
+	events := mustEvents(t, store, status.RunID)
+	if status.Status != RunStatusPicked || !status.Final {
+		t.Fatalf("status = %+v:\n%s", status, eventTypeTrail(events))
+	}
+	last := events[len(events)-1]
+	if last.Type != RunEventPicked || len(eventsOfType(events, RunEventSucceeded)) != 0 {
+		t.Fatalf("the run ended with %s:\n%s", last.Type, eventTypeTrail(events))
+	}
+	verdict := pickVerdicts(events)[0]
+	var failed RunEvent
+	for _, event := range eventsOfType(events, RunEventGateVerdict) {
+		if origin := runInputRefFromAny(event.Data["inputRef"]).Origin; !isPickEvent(event) && origin != nil && origin.Attempt == 2 {
+			failed = event
+		}
+	}
+	pick := RunOutputPick{
+		NodeID: "fmn_work", Attempt: 2, GateID: "gate_review", Seq: verdict.Seq, DecidedBy: "fmn_j2",
+		Verdict: PickedVerdict{Seq: failed.Seq, Verdict: "fail", Reason: "retry untested", Findings: []string{"no test drives the retry path", "retry swallows the last error"}},
+	}
+	if failed.Seq == 0 {
+		t.Fatalf("no verdict on attempt 2:\n%s", eventTypeTrail(events))
+	}
+	want := []RunOutput{
+		{Name: "draft", Kind: MissionInputText, Value: "draft two", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 2, Picks: []RunOutputPick{pick}},
+		{Name: "shipped", Kind: MissionInputText, Value: "shipped", NodeID: "fmn_ship", PortID: "port_ship_out", Attempt: 1, Picks: []RunOutputPick{pick}},
+	}
+	if !reflect.DeepEqual(status.Outputs, want) {
+		t.Fatalf("outputs = %+v, want %+v", status.Outputs, want)
+	}
+	if got := RunOutputPicksFromAny(last.Data["picks"]); !reflect.DeepEqual(got, []RunOutputPick{pick}) {
+		t.Fatalf("run_picked picks = %+v", last.Data["picks"])
+	}
+}
+
+// A run whose gate passes an attempt before the card is spent crossed no
+// pick: it succeeds, and its outputs carry nothing new.
+func TestARunWithoutAPickSucceedsWithPlainOutputs(t *testing.T) {
+	responses := threeFailedDrafts("")
+	responses["fmn_j2"][2] = judgeBlock("pass", "retry covered")
+	store, _, _, status := pickRun(t, pickOutputsFixture(), responses)
+	if status.Status != RunStatusSucceeded || len(status.Picks) != 0 {
 		t.Fatalf("status = %+v:\n%s", status, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
-	if want := []RunOutput{{Name: "draft", Kind: MissionInputText, Value: "draft two", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 2}}; !reflect.DeepEqual(status.Outputs, want) {
+	want := []RunOutput{
+		{Name: "draft", Kind: MissionInputText, Value: "draft two", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 2},
+		{Name: "shipped", Kind: MissionInputText, Value: "shipped", NodeID: "fmn_ship", PortID: "port_ship_out", Attempt: 1},
+	}
+	if !reflect.DeepEqual(status.Outputs, want) {
 		t.Fatalf("outputs = %+v, want %+v", status.Outputs, want)
+	}
+}
+
+// A run that crossed a pick and then ended at a rejected End stays rejected:
+// it fails with path_rejected, not picked.
+func TestAPickThatEndsRejectedStaysRejected(t *testing.T) {
+	fixture := strings.Replace(pickBoardFixture(`["formation"]`, workCard("rounds = 3\nwhenSpent = \"best\"")),
+		"from = \"fmn_ship:port_ship_out\"\nto = \"end_done:in\"", "from = \"fmn_ship:port_ship_out\"\nto = \"end_rejected:in\"", 1)
+	store, _, _, status := pickRun(t, fixture, threeFailedDrafts(pickBlock(2, "covers retry")))
+	events := mustEvents(t, store, status.RunID)
+	failed := eventsOfType(events, RunEventFailed)
+	if status.Status != RunStatusFailed || len(status.Picks) != 1 || len(failed) != 1 || failed[0].Data["code"] != RunFailurePathRejected || len(eventsOfType(events, RunEventPicked)) != 0 {
+		t.Fatalf("status = %+v:\n%s", status, eventTypeTrail(events))
 	}
 }
 
@@ -862,14 +929,19 @@ func TestAPickCandidateIsTheAttemptItsVerdictJudged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if final.Status != RunStatusSucceeded {
+	if final.Status != RunStatusPicked {
 		t.Fatalf("status = %+v:\n%s", final, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}
 	ship := callsByNode(lab.calls)["fmn_ship"]
 	if len(ship) != 1 || ship[0].Inputs[0].Text != "draft one" || ship[0].Inputs[0].Origin == nil || ship[0].Inputs[0].Origin.Attempt != 1 {
 		t.Fatalf("Ship ran on %+v", ship)
 	}
-	if want := []RunOutput{{Name: "draft", Kind: MissionInputText, Value: "draft one", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 1}}; !reflect.DeepEqual(final.Outputs, want) {
+	// The output carries the operator's pick and the fail it gave attempt 1.
+	outputPick := RunOutputPick{NodeID: "fmn_work", Attempt: 1, GateID: "gate_review", Seq: final.Picks[0].Seq, DecidedBy: "human:operator", Verdict: PickedVerdict{Verdict: "fail", Reason: "attempt one is not good"}}
+	if len(final.Outputs) == 1 && len(final.Outputs[0].Picks) == 1 {
+		outputPick.Verdict.Seq = final.Outputs[0].Picks[0].Verdict.Seq
+	}
+	if want := []RunOutput{{Name: "draft", Kind: MissionInputText, Value: "draft one", NodeID: "fmn_work", PortID: "port_work_out", Attempt: 1, Picks: []RunOutputPick{outputPick}}}; !reflect.DeepEqual(final.Outputs, want) {
 		t.Fatalf("outputs = %+v, want %+v", final.Outputs, want)
 	}
 	if len(final.Picks) != 1 || final.Picks[0].Attempt != 1 || !reflect.DeepEqual(final.Picks[0].Candidates, []int{1, 3}) {

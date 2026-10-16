@@ -294,7 +294,7 @@ func OpenHumanRequests(events []RunEvent) []RunEvent {
 			open[gateID] = event
 		case RunEventHumanVerdictRecorded, RunEventGateEvaluating:
 			delete(open, gateID)
-		case RunEventSucceeded, RunEventFailed, RunEventCanceled:
+		case RunEventSucceeded, RunEventPicked, RunEventFailed, RunEventCanceled:
 			return nil
 		}
 	}

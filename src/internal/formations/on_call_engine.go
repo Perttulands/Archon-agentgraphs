@@ -22,7 +22,7 @@ func (e *RunEngine) seatKeeper() (SeatKeeper, bool) {
 }
 
 // EndKeptSeats ends every kept seat of the run and records their cleanup. Call
-// it just before appending run_succeeded, run_failed or run_canceled, since the
+// it just before appending run_succeeded, run_picked, run_failed or run_canceled, since the
 // ledger accepts nothing after a final event.
 func (e *RunEngine) EndKeptSeats(runID string) error {
 	return e.endKeptSeats(runID, SeatCauseRunFinal, nil)

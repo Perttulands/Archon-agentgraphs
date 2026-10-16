@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import RunOutputs, { runOutputRequest, runOutputValueLabel } from './RunOutputs'
+import RunOutputs, { runOutputPickLines, runOutputRequest, runOutputValueLabel } from './RunOutputs'
 import type { RunOutput } from '../components/formationsTypes'
 
 const open = vi.fn()
@@ -36,6 +36,22 @@ describe('RunOutputs', () => {
     expect(screen.getByTestId('run-output-site').getAttribute('title')).toBe(`site · folder · ${outputs[1].value}`)
     fireEvent.click(screen.getByTestId('run-output-report'))
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ id: `file:${outputs[0].value}` }), null)
+  })
+
+  it('marks an output that came through a pick and gives the verdict that failed it', () => {
+    const picked: RunOutput = {
+      ...output('draft', 'text', 'draft two'),
+      picks: [{ nodeId: 'fmn_work', attempt: 2, gateId: 'gate_review', seq: 58, decidedBy: 'fmn_j2', verdict: { seq: 33, verdict: 'fail', reason: 'retry untested', findings: ['no test drives the retry path'] } }],
+    }
+    const titles: Record<string, string> = { fmn_work: 'Work', gate_review: 'Review' }
+    expect(runOutputPickLines(picked, id => titles[id] || id)).toEqual(['picked: Work attempt 2, which Review judged fail: retry untested', '  - no test drives the retry path'])
+    expect(runOutputPickLines(outputs[0])).toEqual([])
+    render(<RunOutputs runId="run_1" outputs={[picked, outputs[0]]} titleOf={id => titles[id] || id} />)
+    const chip = screen.getByTestId('run-output-draft')
+    expect(chip).toHaveClass('picked')
+    expect(chip).toHaveTextContent('draftdraft twopicked')
+    expect(chip.getAttribute('title')).toBe('draft · text · draft two\npicked: Work attempt 2, which Review judged fail: retry untested\n  - no test drives the retry path')
+    expect(screen.getByTestId('run-output-report')).not.toHaveClass('picked')
   })
 
   it('shows nothing for a run without outputs', () => {

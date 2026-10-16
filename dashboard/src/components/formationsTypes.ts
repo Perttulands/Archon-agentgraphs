@@ -182,7 +182,7 @@ export interface MissionOutput {
   from?: string
 }
 
-/** One value a succeeded run delivered: text, or the absolute path of its snapshot of a file or folder. */
+/** One value a succeeded or picked run delivered: text, or the absolute path of its snapshot of a file or folder. */
 export interface RunOutput {
   name: string
   kind: PortKind
@@ -190,6 +190,18 @@ export interface RunOutput {
   nodeId: string
   portId: string
   attempt: number
+  /** The picks the value came through, oldest first: failed work a spent limit carried on (ADR-0022). */
+  picks?: RunOutputPick[]
+}
+
+/** A pick a run output came through, with the verdict that failed the picked attempt. */
+export interface RunOutputPick {
+  nodeId: string
+  attempt: number
+  gateId: string
+  seq: number
+  decidedBy: string
+  verdict: { seq: number; verdict: string; reason: string; findings?: string[] }
 }
 
 export interface MissionNode {
@@ -262,7 +274,7 @@ export interface RunStatusProjection {
   beadId?: string
   /** The values the run supplied, in the mission's declared order. */
   inputs?: RunInput[]
-  /** What the run delivered, on a succeeded run that reached a done End. */
+  /** What the run delivered, on a succeeded or picked run that reached a done End. */
   outputs?: RunOutput[]
   runId: string
   status: string

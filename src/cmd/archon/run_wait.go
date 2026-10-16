@@ -26,6 +26,9 @@ const (
 	waitExitChanged  = 4
 	waitExitTimeout  = 5
 	waitExitLost     = 6
+	// waitExitPicked is a final run whose work went on through a pick: failed
+	// work a spent limit carried on, not a pass (ADR-0022).
+	waitExitPicked = 7
 
 	waitHold          = 30 * time.Second
 	waitRetryInterval = 250 * time.Millisecond
@@ -73,7 +76,7 @@ func runWaitRemote(c *remoteClient, args []string, stdout, stderr io.Writer) int
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if code != waitExitFinal {
+	if code != waitExitFinal && code != waitExitPicked {
 		out.Next = waitCommand(c.server, runID, *until, out.Seq, *jsonOut)
 	}
 	if *jsonOut {
@@ -151,6 +154,9 @@ func (w *runWaiter) wait(timeout time.Duration) (*waitOutput, int, error) {
 		last = &waitOutput{RunWait: *answer}
 		switch answer.Outcome {
 		case coordinator.WaitOutcomeFinal:
+			if answer.Status == formations.RunStatusPicked {
+				return last, waitExitPicked, nil
+			}
 			return last, waitExitFinal, nil
 		case coordinator.WaitOutcomeNeedsYou:
 			return last, waitExitNeedsYou, nil
@@ -216,7 +222,7 @@ func renderWait(server string, out *waitOutput, code int) string {
 	r := out.RunWait
 	name := fmt.Sprintf("Run %s (mission %q)", r.RunID, r.Mission)
 	switch code {
-	case waitExitFinal:
+	case waitExitFinal, waitExitPicked:
 		writeWaitEnd(&b, name, r)
 	case waitExitNeedsYou:
 		fmt.Fprintf(&b, "%s needs you.\n", name)
@@ -275,8 +281,13 @@ func writeWaitEnd(b *strings.Builder, name string, r coordinator.RunWait) {
 		fmt.Fprintf(b, " Ended by %s.", waitActor(end.EndedBy))
 	}
 	b.WriteString("\n")
+	if end.Status == formations.RunStatusPicked {
+		b.WriteString("Its work went on through a pick, so it is failed work, not a pass. Feed a picked output only into a mission that opens with a repair step whose gate checks the findings, or stop the chain and report.\n")
+	}
 	for _, output := range end.Outputs {
-		b.WriteString(runOutputLine(output) + "\n")
+		for _, line := range runOutputLines(output) {
+			b.WriteString(line + "\n")
+		}
 	}
 }
 

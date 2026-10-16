@@ -364,7 +364,10 @@ recommendation when the gate has both. An attempt the limit cut short or a
 crash ended is never picked, and with only one judged attempt Archon takes it.
 The pick's judges spend mission-card rounds like any step, so leave the
 mission card room for them. A mission output bound to another port of the
-step, one that skips the selecting gate, keeps its own latest attempt.
+step, one that skips the selecting gate, keeps its own latest attempt. A pick
+happens only when no attempt passed, so the picked attempt is failed work: a
+run whose work reached its done End through a pick ends `picked`, not
+`succeeded` (see Results).
 
 ```bash
 archon $S limit create "$M" --target "$WORK" --rounds 3 --when-spent best --json
@@ -451,6 +454,7 @@ written for you, and exits. Act on the exit code:
 | --- | --- | --- |
 | 3 | The run needs you | Do what the paragraph says. For a gate it names the gate, criterion, input and where each verdict leads, and prints the exact `gate approve`/`gate reject --requested-seq <n>` commands, or for a pick the candidates and the `gate pick` command; for a block, the `run resume` or `run abort` command. Answer with the operator's authority, then wait again. |
 | 0 | The run ended | Read how: its status, the step it stopped at, the reason and who ended it. No further wait. |
+| 7 | The run ended `picked` | Its outputs are failed work a pick carried on; see Results before chaining them. No further wait. |
 | 4 | Something changed (`any-change`) | Read the listed events, then wait again. |
 | 5 | `--timeout` passed first | Wait again with the same command. |
 | 6 | The daemon stayed unreachable (`--reconnect`, default one minute) | Wait again with the printed command once the daemon is back. |
@@ -476,14 +480,14 @@ written for you, and exits. Act on the exit code:
   any of them stops watching, not the run. `run logs` is the same sanitized
   view as status.
 
-Read `status` (`running`, `waiting_human`, `blocked`, `succeeded`, `failed`,
-`canceled`), `final`, `resumeAllowed` and `waitingGates`. `waiting_human` means
+Read `status` (`running`, `waiting_human`, `blocked`, `succeeded`, `picked`,
+`failed`, `canceled`), `final`, `resumeAllowed` and `waitingGates`. `waiting_human` means
 the run needs the operator, even while other steps still run: each
 `waitingGates` entry has `gateId` and `requestedSeq`, and several gates can
 wait at once; answer each. `blocked` is never a delivery. Runtime JSON is wrapped in
 `.data`; authoring JSON is not.
 
-Results: a succeeded run's `run status` lists its mission outputs, one `output`
+Results: a succeeded or picked run's `run status` lists its mission outputs, one `output`
 line each with name, kind and value (`outputs` in JSON, each with `name`,
 `kind`, `value`, `nodeId`, `portId` and `attempt`); the final `run wait`
 answer carries them too. Chain a mission by passing a value on:
@@ -492,6 +496,14 @@ answer carries them too. Chain a mission by passing a value on:
 REPORT=$(archon $S run status "$ARCHON_RUN_ID" --json | jq -er '.data.outputs[] | select(.name == "report") | .value')
 archon $S mission run "$NEXT_MISSION" --input spec="$REPORT" --json
 ```
+
+A `picked` run's outputs are failed work, not results. Each output that came
+through a pick carries `picks` (the step, `attempt`, `gateId`, `decidedBy` and
+the `verdict` that failed it, with `reason` and `findings`); in text, `picked`
+and `finding` lines follow its `output` line. Feed a picked output only into a
+mission that opens with a repair step whose gate checks those findings, or stop
+the chain and report the run and its findings. Never pass it on as if it had
+succeeded.
 
 Every attempt of every step, judges included, has its own directory under
 `$ARCHON_STATE/.archon/artifacts/<runId>/<nodeId>/<attempt>/`.

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { cockpitFixture, runArtifacts } from './cockpit-fixture'
+import { cockpitFixture, pickedExecution, runArtifacts } from './cockpit-fixture'
 
 // Peer review's result becomes a file, the mission declares it as its report,
 // and the succeeded run delivers the snapshot's path, which opens in a file window.
@@ -39,6 +39,21 @@ test('a port kind and a mission output bound to it lead to a run output that ope
   await output.click()
   const file = page.getByRole('dialog', { name: 'file review.md' })
   await expect(file.getByRole('heading', { name: 'Peer review' })).toBeVisible()
+})
+
+// A run whose work went on through a pick is failed work, not a pass
+// (ADR-0022): the run bar says so, and each output names the failed verdict.
+test('a picked run reads as picked, and its outputs carry the verdict that failed them', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.addInitScript(() => localStorage.clear())
+  const fixture = await cockpitFixture(page, { succeeded: true, picked: true })
+  fixture.board().inputCards[0].outputs = [{ name: 'summary', kind: 'text', from: 'execution:out' }]
+  await page.goto('/?mission=browser&run=run_browser')
+  await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('Picked, not passed')
+  const output = page.getByTestId('run-output-summary')
+  await expect(output).toHaveClass(/picked/)
+  await expect(output).toContainText('picked')
+  await expect(output).toHaveAttribute('title', `summary · text · Implemented the reviewed plan.\n\nAll tests pass.\npicked: Execution attempt 1, which Review gate judged fail: ${pickedExecution.verdict.reason}\n  - ${pickedExecution.verdict.findings[0]}`)
 })
 
 test('a folder output opens as its listing, whose files open in their own windows', async ({ page }) => {

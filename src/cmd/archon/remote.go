@@ -215,13 +215,27 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Buffer(make([]byte, 65536), 16<<20)
+		status := ""
 		for scanner.Scan() {
 			if raw, ok := strings.CutPrefix(scanner.Text(), "data: "); ok {
 				fmt.Fprintln(stdout, raw)
+				var projection struct {
+					Data struct {
+						Status string `json:"status"`
+						Final  bool   `json:"final"`
+					} `json:"data"`
+				}
+				if json.Unmarshal([]byte(raw), &projection) == nil && projection.Data.Final {
+					status = projection.Data.Status
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
 			return fail(stderr, err)
+		}
+		// A run that ended through a pick exits as run wait does for it.
+		if status == formations.RunStatusPicked {
+			return waitExitPicked
 		}
 		return 0
 	case "gate approve", "gate reject":

@@ -17,6 +17,8 @@
 .fmx .run-banner .run-outputs .produced-chip { max-width: 280px; }
 .run-output-name { flex-shrink: 0; }
 .run-output-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+.produced-chip.run-output.picked { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.run-output-picked { flex-shrink: 0; color: var(--gold); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
 
 .run-produced-menu {
   position: fixed; z-index: 400; display: flex; flex-direction: column; gap: 10px; min-width: 240px; max-width: min(420px, calc(100vw - 20px));

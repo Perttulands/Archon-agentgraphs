@@ -3,9 +3,11 @@ import { fileAnchor, useFileWindows } from './FileWindows'
 import { folderFileRequest, referencedFileRequest, textValueRequest, type FileRequest } from './fileWindowModel'
 import './produced.css'
 
-// What a succeeded run delivered, as its mission's outputs declare: each opens
-// in a file window on click. A file opens as itself, a folder as its listing,
-// and a text value as its full text.
+// What a succeeded or picked run delivered, as its mission's outputs declare:
+// each opens in a file window on click. A file opens as itself, a folder as
+// its listing, and a text value as its full text. An output that came through
+// a pick is failed work a spent limit carried on (ADR-0022): its chip says
+// picked, and its tooltip gives the verdict that failed the picked attempt.
 
 const EXCERPT = 40
 const GLYPH: Record<RunOutput['kind'], string> = { text: '¶', file: '▤', folder: '▥' }
@@ -20,6 +22,14 @@ export function runOutputValueLabel(output: RunOutput): string {
   return text.length > EXCERPT ? `${text.slice(0, EXCERPT - 1)}…` : text
 }
 
+/** The failed verdict of each pick the output came through, one line each, then its findings. */
+export function runOutputPickLines(output: RunOutput, titleOf: (nodeId: string) => string = id => id): string[] {
+  return (output.picks || []).flatMap(pick => [
+    `picked: ${titleOf(pick.nodeId)} attempt ${pick.attempt}, which ${titleOf(pick.gateId)} judged ${pick.verdict.verdict || 'unknown'}${pick.verdict.reason ? `: ${pick.verdict.reason}` : ''}`,
+    ...(pick.verdict.findings || []).map(finding => `  - ${finding}`),
+  ])
+}
+
 export function runOutputRequest(runId: string, output: RunOutput): FileRequest {
   const context = `output ${output.name}`
   if (output.kind === 'file') return referencedFileRequest(output.value, context)
@@ -27,7 +37,7 @@ export function runOutputRequest(runId: string, output: RunOutput): FileRequest 
   return textValueRequest(`run-output:${runId}:${output.name}`, output.name, output.value, `run ${runId.slice(-6)}`)
 }
 
-export default function RunOutputs({ runId, outputs }: { runId: string; outputs: RunOutput[] | undefined }) {
+export default function RunOutputs({ runId, outputs, titleOf }: { runId: string; outputs: RunOutput[] | undefined; titleOf?: (nodeId: string) => string }) {
   const files = useFileWindows()
   if (!outputs?.length || !files) return null
   return (
@@ -37,9 +47,9 @@ export default function RunOutputs({ runId, outputs }: { runId: string; outputs:
         <button
           key={output.name}
           type="button"
-          className={`produced-chip run-output kind-${output.kind}`}
+          className={`produced-chip run-output kind-${output.kind}${output.picks?.length ? ' picked' : ''}`}
           data-testid={`run-output-${output.name}`}
-          title={`${output.name} · ${output.kind} · ${output.value.length > 400 ? `${output.value.slice(0, 399)}…` : output.value}`}
+          title={[`${output.name} · ${output.kind} · ${output.value.length > 400 ? `${output.value.slice(0, 399)}…` : output.value}`, ...runOutputPickLines(output, titleOf)].join('\n')}
           onPointerDown={event => event.stopPropagation()}
           onClick={event => {
             event.stopPropagation()
@@ -49,6 +59,7 @@ export default function RunOutputs({ runId, outputs }: { runId: string; outputs:
           <span className="produced-glyph" aria-hidden="true">{GLYPH[output.kind]}</span>
           <span className="run-output-name">{output.name}</span>
           <span className="run-output-value">{runOutputValueLabel(output)}</span>
+          {output.picks?.length ? <span className="run-output-picked">picked</span> : null}
         </button>
       ))}
     </span>

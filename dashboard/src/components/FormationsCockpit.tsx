@@ -3370,7 +3370,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                     </Fragment>
                   ))}
                 </span>
-                <RunOutputs runId={activeRun.runId} outputs={activeRun.outputs} />
+                <RunOutputs runId={activeRun.runId} outputs={activeRun.outputs} titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)} />
                 <RunProduced />
                 {historical ? null : <RunRevisionNote run={activeRun} currentRev={currentBoard?.rev} missionTitle={currentBoard?.title || ''} />}
                 <span className="run-meta" title={activeRun.cwd ? `Runs in ${activeRun.cwd}` : undefined}>

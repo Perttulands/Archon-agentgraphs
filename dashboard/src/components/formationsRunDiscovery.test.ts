@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { chooseBoardRun, openRunsByAttention, readRunLink, runLinkSearch } from './formationsRunDiscovery'
+import { chooseBoardRun, openRunsByAttention, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
+import { runStateWord } from './MissionNavigator'
 import type { RunStatusProjection } from './formationsTypes'
 
 const run = (runId: string, status: string, final = false): RunStatusProjection => ({ runId, status, final, missionSlug: 'scouting', inputCardId: 'mis', eventCount: 1 })
@@ -17,6 +18,13 @@ describe('run discovery', () => {
     expect(readRunLink('?board=scouting&run=run_01A')).toEqual({ board: '', run: 'run_01A' })
     const link = '?theme=dark&mission=scouting&run=run_01A&view=flow'
     expect(runLinkSearch(link, readRunLink(link))).toBe('?mission=scouting&run=run_01A&theme=dark&view=flow')
+  })
+
+  it('words a picked run as failed work, apart from a succeeded one', () => {
+    expect(runStatusLabel('picked')).toBe('Picked, not passed')
+    expect(runStatusLabel('succeeded')).toBe('Succeeded')
+    expect(runStateWord('picked')).toBe('picked')
+    expect(openRunsByAttention([run('run_01A', 'picked', true), run('run_01B', 'running')]).map(item => item.runId)).toEqual(['run_01B'])
   })
 
   it('orders open runs by what needs the operator, newest first', () => {
