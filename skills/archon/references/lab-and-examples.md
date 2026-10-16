@@ -44,3 +44,16 @@ A plain brief blocks at the judge. Peer and orchestrated formations echo the
 block once per seat, and lab keeps one copy of identical blocks, so the fixture
 still reaches a judge downstream of them; a second, different block blocks at
 the judge. Report lab success as routing evidence only.
+
+To smoke-test a best card in lab, give the input a failing `archon-verdict`
+block and an `archon-pick` block naming a judged attempt; the judges fail each
+round until the card is spent, then pick:
+
+````text
+```archon-verdict
+{"verdict":"fail","reason":"Lab fixture","evidence":[]}
+```
+```archon-pick
+{"attempt":2,"reason":"Lab fixture","evidence":[]}
+```
+````

@@ -367,7 +367,14 @@ paths:
                   type: boolean
                   description: Gives the spent Limit card that blocked the run one more round, or its time or
                     tokens again, recorded on the run_resumed as grant {limitId, kind, amount}. Required while the
-                    run's resumePolicy is grant, refused otherwise.
+                    run's resumePolicy is grant, and the alternative to pickBest while it is grant_or_pick;
+                    refused otherwise.
+                pickBest:
+                  type: boolean
+                  description: Picks the best attempt the stopped step's selecting gate judged and sends it on
+                    through the gate's pass route, whatever the card's whenSpent (archon-gihe); recorded on the
+                    run_resumed as pickBest. Allowed only while the run's resumePolicy is grant_or_pick, and not
+                    with grant.
                 takeFail:
                   type: boolean
                   description: Settles a gate blocked on a judge verdict Archon rejected (blockCode
@@ -382,8 +389,9 @@ paths:
                 $ref: '#/components/schemas/ProjectionEnvelope'
         '409':
           description: Run still executing after a five-second wait for its command, final, not
-            resumable, stopped at a spent limit without grant, given a grant at any other block, or given takeFail at
-            a block that is not a rejected judge verdict
+            resumable, stopped at a spent limit without grant (or without grant or pickBest under
+            grant_or_pick), given a grant at any other block, given pickBest anywhere but a grant_or_pick block or
+            together with grant, or given takeFail at a block that is not a rejected judge verdict
   /api/runs/{runId}/wait:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -414,7 +422,7 @@ paths:
           default: 30
       responses:
         '200':
-          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, limit (a blocked ask's spent Limit card), input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
+          description: Enveloped data contains runId, missionSlug, missionTitle, until, outcome (final, needs-you, changed, pending), since, seq (the next since), status, final, resumeAllowed, settled, end (status, seq, code, reason, reasonTruncated, endedBy, stopped), asks (kind, seq, new, gateId, nodeId, title, criterion, reason, code, severity, resumeAllowed, limit (a blocked ask's spent Limit card), resumePolicy (grant or grant_or_pick at a spent limit), input with fromNodeId, fromTitle, fromPortId, text capped at 4 KiB, bytes and truncated, routes, pick (a human gate's pending pick of a step's best attempt, as PendingPick)) and changes (seq, type, nodeId, gateId, title, attempt, status, verdict; the latest 50, with changesOmitted). Texts are redacted like run evidence.
         '400':
           description: Bad until, since or hold, or since past the run's last event
         '404':
@@ -434,7 +442,7 @@ paths:
       description: Part of the run evidence API (ADR-0017). After the verdict, the gate's node evidence holds the same input with the response.
       responses:
         '200':
-          description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request. Refs, paths, prompts and session identities are omitted.
+          description: Enveloped data.request contains gateId, requestedSeq, the frozen criterion and input (fromNodeId, fromPortId, text capped at 64 KiB, truncated) for the gate's pending request, and routes, where each verdict leads (a route whose limit is a spent best card has picksBest, so the step's best judged attempt is picked instead of the run blocking). A pending pick of a step's best attempt (archon-gihe) adds pick (PendingPick); its input shows the candidates side by side and routes holds only pass, which the picked attempt takes. Refs, paths, prompts and session identities are omitted.
         '404':
           description: No such run, or no human request for this gate
         '409':
@@ -452,7 +460,7 @@ paths:
       description: Texts are {text,bytes,truncated}, capped at 64 KiB each and 2 MiB per response, with secret patterns redacted. Kind results and verdicts list at most 100 evidence items and count the rest in evidenceOmitted. Structured fields omit native session, tmux session and pane IDs, sessionRef, digests, brief and prompt paths, report pointers and absolute artifact paths.
       responses:
         '200':
-          description: Enveloped data.evidence contains runId, nodeId, kind (inputCard, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with a decision's verdict, response, decidedBy and relayedBy, verdict with perKind and routePort) and problems (blocks and errors).
+          description: Enveloped data.evidence contains runId, nodeId, kind (inputCard, formation, gate, tool), attempts (inputs, dispatches, seatCleanups with slot and outcome, output with sorted ports), evaluations (criterion, input, kindResults, judgeFailures, humanRequests with a decision's verdict, response, decidedBy and relayedBy, verdict with perKind and routePort), picks on a gate (each pick of a step's best attempt at a spent Limit card, archon-gihe - seq, nodeId, trigger, candidates, limit, judgeChain, judgeFailures, humanRequests, recommendation with attempt, reason and decidedBy, and once decided picked with seq, attempt, reason, evidence, evidenceOmitted and decidedBy) and problems (blocks and errors).
         '404':
           description: No such run, or the node is not in the run's frozen mission
   /api/runs/{runId}/evidence/problems:
@@ -658,6 +666,59 @@ paths:
           duplicate or stale human request: null
         '422':
           description: Run state does not permit a verdict, or the frozen gate definition or prerequisite evidence failed validation
+  /api/runs/{runId}/gates/{gateId}/pick:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    - in: path
+      name: gateId
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Pick the best attempt of a step whose spent Limit card asks the operator (archon-gihe)
+      description: Answers a human gate's pending pick, recorded as a human_verdict_recorded pass with
+        pick.attempt and decidedBy human:operator. The run routes it as the gate's pass with the picked
+        attempt's input, between steps, like a verdict.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - requestedSeq
+              - attempt
+              properties:
+                requestedSeq:
+                  type: integer
+                  minimum: 1
+                actor:
+                  type: string
+                attempt:
+                  type: integer
+                  minimum: 1
+                  description: One of the pending pick's candidates.
+                reason:
+                  type: string
+                  description: Why this attempt; the ledger and the gate's evidence record it with the pick.
+                relayedBy:
+                  type: string
+                  pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
+                  description: The slot ID of the seat that typed the operator's confirmed pick, as for verdicts.
+      responses:
+        '202':
+          description: Pick recorded; the coordinator routes it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptEnvelope'
+        '400':
+          description: No requestedSeq or attempt, an attempt that is not a candidate, or a relayedBy that is
+            not a slot ID
+        '409':
+          description: The request is no longer pending or is stale, the gate waits for a verdict rather than a
+            pick, or the run is final
   /api/missions/{mission}/validation:
     parameters:
     - in: path
@@ -859,7 +920,8 @@ paths:
     get:
       responses:
         '200':
-          description: Roster in data.agents and data.count, including presets and overrides, and
+          description: >-
+            Roster in data.agents and data.count, including presets and overrides, and
             data.harnesses, the harnesses whose seats Archon starts, each with the efforts it accepts, its
             defaultEffort and its known models ({id, efforts?}; claude-code's aliases, and the Codex models the
             daemon host's models_cache.json lists, each with the efforts that model accepts), and data.effortPolicy, the {effort,use,kinds?} lines that guide a slot's effort by the role kinds each suits (low for
@@ -1027,7 +1089,7 @@ components:
       type: object
       description: A Limit card. It covers one target, a step or the Input card (the whole mission), and
         caps its rounds, time and tokens; a run blocks with code limit_reached at a spent card until run
-        resume --grant.
+        resume --grant, or on a step with whenSpent best picks the step's best judged attempt and goes on.
       required: [id, title, target]
       properties:
         id:
@@ -1058,6 +1120,13 @@ components:
           description: Tokens the target may spend, counted approximately per dispatch from its pointer
             as input not read from the cache (cache writes included) plus output, subagents included, for
             the step (or every step, for the Input card). Omitted sets no tokens.
+        whenSpent:
+          type: string
+          enum: [best]
+          description: best when the spent card picks the step's best attempt its selecting gate judged and
+            sends it on through the gate's pass route (archon-gihe); omitted is stop, which blocks the run for
+            a grant. Valid only on a step's card whose step has one judge or human gate that only it feeds
+            and whose fail returns to it.
     FormationPort:
       type: object
       description: A formation port. Only an output port carries a kind, and only file or folder; text is absent.
@@ -1242,6 +1311,31 @@ components:
                             type: integer
                           decidedBy:
                             type: string
+                    picked:
+                      type: object
+                      description: Set when a spent Limit card picked this attempt as the step's best and it went on
+                        through the gate's pass route (archon-gihe). The pick's own verdict is not one of verdicts.
+                      properties:
+                        gateId:
+                          type: string
+                        gateTitle:
+                          type: string
+                        seq:
+                          type: integer
+                          description: The gate_verdict that carried the attempt on.
+                        reason:
+                          $ref: '#/components/schemas/EvidenceText'
+                        decidedBy:
+                          type: string
+                          description: The final judge's ID, the operator's actor, or archon for an only candidate.
+                        candidates:
+                          type: array
+                          items:
+                            type: integer
+                        trigger:
+                          enum:
+                          - whenSpent
+                          - resume
                     files:
                       type: array
                       items:
@@ -1259,6 +1353,29 @@ components:
                             type: string
                     filesTruncated:
                       type: boolean
+    PendingPick:
+      type: object
+      description: A human gate's pending pick of a step's best attempt at its spent Limit card
+        (archon-gihe), answered with POST /api/runs/{runId}/gates/{gateId}/pick.
+      required: [nodeId, candidates]
+      properties:
+        nodeId:
+          type: string
+          description: The step whose attempts are compared.
+        candidates:
+          type: array
+          items:
+            type: integer
+        recommendation:
+          type: object
+          description: The judge chain's pick on a gate with a judge and a human; the operator decides.
+          properties:
+            attempt:
+              type: integer
+            reason:
+              type: string
+            decidedBy:
+              type: string
     EvidenceText:
       type: object
       properties:
@@ -1433,8 +1550,37 @@ components:
           type: boolean
         resumePolicy:
           type: string
-          enum: [grant]
-          description: grant while the run waits at a spent Limit card, which resumes only with grant.
+          enum: [grant, grant_or_pick]
+          description: grant while the run waits at a spent Limit card, which resumes only with grant;
+            grant_or_pick where the stopped step's selecting gate judged attempts, which also resumes with
+            pickBest (archon-gihe).
+        picks:
+          type: array
+          description: The passes a spent Limit card picked rather than a gate gave, oldest first (archon-gihe).
+            Why is in the gate's evidence.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              seq:
+                type: integer
+              gateId:
+                type: string
+              nodeId:
+                type: string
+                description: The step whose attempt was picked.
+              attempt:
+                type: integer
+              candidates:
+                type: array
+                items:
+                  type: integer
+              decidedBy:
+                type: string
+              trigger:
+                enum:
+                - whenSpent
+                - resume
         blockCode:
           type: string
           description: The code of the block a run rests at, such as invalid_judge_result; absent when the
@@ -1496,6 +1642,8 @@ components:
               fallbackReason:
                 type: string
                 description: Why a session-channel ask fell back to the notify command.
+              pick:
+                $ref: '#/components/schemas/PendingPick'
         onCallSeats:
           type: array
           description: Seats kept on call and not yet ended.
@@ -1950,6 +2098,11 @@ components:
               type: integer
               minimum: 0
               description: Omitted or 0 sets no tokens.
+            whenSpent:
+              type: string
+              enum: ['', stop, best]
+              description: Omitted, empty or stop blocks the run at the spent card; best picks the step's best
+                attempt (archon-gihe). Another value is refused with INVALID_LIMIT.
             x:
               type: integer
             y:
@@ -1981,6 +2134,11 @@ components:
             tokens:
               type: integer
               minimum: 0
+            whenSpent:
+              type: string
+              enum: ['', stop, best]
+              description: Empty or stop stores the default, stop; best picks the step's best attempt when
+                spent (archon-gihe).
             expectedRev:
               type: integer
             updatedBy:

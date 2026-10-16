@@ -338,7 +338,7 @@ archon $S limit create "$M" --target input --rounds 20 --time 2h --warn 10m --ti
 ```
 
 `limit update "$M" "$LIMIT" --rounds <n>|--time <d>|--warn <d>|--tokens
-<n>|--target <t>|--title <t>` changes a card (an empty `--rounds`, `--time`,
+<n>|--when-spent stop|best|--target <t>|--title <t>` changes a card (an empty `--rounds`, `--time`,
 `--warn` or `--tokens` clears that knob) and `limit delete "$M" "$LIMIT"` removes it. Validation
 rejects a card wired to nothing, a second card on one target, a value that is
 not a positive whole number and a warning without time or not shorter than it
@@ -346,6 +346,22 @@ not a positive whole number and a warning without time or not shorter than it
 time runs out, and the run blocks with `limit_reached` and a plain reason,
 "Review used 3 of 3 rounds", "Review used 30 min of 30 min" or "Review used
 51,230 of 50,000 tokens"; see Recover.
+
+**Best of N.** `--when-spent best` on a step's card picks the best attempt
+instead of blocking: when the card is spent, the step's gate compares the
+attempts it judged side by side and the one it picks goes on through the
+gate's pass route, as if the gate had passed it (to the next step, an End and
+the mission's outputs). The step needs a selecting gate: one judge or human
+gate that only it feeds and whose fail returns to it; validation names a best
+card without one. A judge picks with one `archon-pick` block
+(`{"attempt":n,"reason":"...","evidence":[...]}`), the runtime gives it the
+contract; a human gate asks the operator (see Decide a human gate), with the
+judge's pick as a recommendation when the gate has both. An attempt the limit
+cut short is never picked, and with only one judged attempt Archon takes it.
+
+```bash
+archon $S limit create "$M" --target "$WORK" --rounds 3 --when-spent best --json
+```
 When a step runs long, check `run seats` (a seat's `waiting` says what it waits
 on) or open the seat; `run wait --until any-change` reports each `seat_state`.
 
@@ -426,7 +442,7 @@ written for you, and exits. Act on the exit code:
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 3 | The run needs you | Do what the paragraph says. For a gate it names the gate, criterion, input and where each verdict leads, and prints the exact `gate approve`/`gate reject --requested-seq <n>` commands; for a block, the `run resume` or `run abort` command. Answer with the operator's authority, then wait again. |
+| 3 | The run needs you | Do what the paragraph says. For a gate it names the gate, criterion, input and where each verdict leads, and prints the exact `gate approve`/`gate reject --requested-seq <n>` commands, or for a pick the candidates and the `gate pick` command; for a block, the `run resume` or `run abort` command. Answer with the operator's authority, then wait again. |
 | 0 | The run ended | Read how: its status, the step it stopped at, the reason and who ended it. No further wait. |
 | 4 | Something changed (`any-change`) | Read the listed events, then wait again. |
 | 5 | `--timeout` passed first | Wait again with the same command. |
@@ -474,7 +490,8 @@ Every attempt of every step, judges included, has its own directory under
 `$ARCHON_STATE/.archon/artifacts/<runId>/<nodeId>/<attempt>/`.
 `run attempts "$ARCHON_RUN_ID" [--node <id>] [--json]` lists each attempt in
 order: when it ran, its outputs, the gate verdicts on them with reason and
-evidence, and its files. The cockpit's Produced list opens them. Check each
+evidence, whether a spent card picked it as the best (`picked`), and its
+files. `run status` prints a `pick` line for each pick (`picks` in JSON). The cockpit's Produced list opens them. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 
 The runtime writes the brief each seat receives, including its output contract;
@@ -494,7 +511,8 @@ the targets (an End node target means "this path ends (done)" or "(rejected)",
 attempt each would start and, only when a Limit card covers it, the step's
 `rounds` (`used`, `max`), the mission's `missionRounds` and `roundsNeeded`, and
 a `limit` entry when taking the route would find a card spent, so the run
-blocks until you grant one more.
+blocks until you grant one more, or with `picksBest` the step's best judged
+attempt is picked instead.
 
 ```bash
 archon $S gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
@@ -506,6 +524,18 @@ to the next step; on reject it becomes the feedback reason. `--response-file
 <utf8-file>` records a long answer verbatim. The daemon records the verdict at
 once and the run routes it between steps; nothing blocks or resumes. A blocked
 run takes a verdict too, and routes it once resumed.
+
+A gate whose step's best card is spent asks for a pick instead: its
+`waitingGates` entry carries `pick` (`nodeId`, `candidates` and any judge's
+`recommendation`), and `gate request` shows the candidates side by side.
+`run attempts "$ARCHON_RUN_ID" --node <step>` shows each in full. Pick one
+candidate; it goes on through the pass route:
+
+```bash
+archon $S gate pick "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --attempt 2 --requested-seq "$ARCHON_REQUESTED_SEQ" --reason "Tightest draft" --json
+```
+
+A verdict on a pending pick, or a pick on a pending verdict, answers 409.
 
 ## Stop and recover
 
