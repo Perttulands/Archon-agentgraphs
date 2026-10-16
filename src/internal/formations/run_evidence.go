@@ -196,7 +196,44 @@ type NodeEvidence struct {
 	Definition  *EvidenceNodeDefinition `json:"definition,omitempty"`
 	Attempts    []EvidenceAttempt       `json:"attempts,omitempty"`
 	Evaluations []EvidenceEvaluation    `json:"evaluations,omitempty"`
-	Problems    []EvidenceProblem       `json:"problems,omitempty"`
+	// Picks are the gate's picks of a step's best attempt (archon-gihe).
+	Picks    []EvidencePick    `json:"picks,omitempty"`
+	Problems []EvidenceProblem `json:"problems,omitempty"`
+}
+
+// EvidencePick is a gate's pick of the best attempt of a step whose limit was
+// spent: the step, what started it, the limit, the candidate attempts, the
+// judges' rejected picks, the operator's request and the pick itself, once
+// made (archon-gihe).
+type EvidencePick struct {
+	Seq            int                         `json:"seq"`
+	NodeID         string                      `json:"nodeId"`
+	Trigger        string                      `json:"trigger"`
+	Candidates     []int                       `json:"candidates"`
+	Limit          *RunLimitReached            `json:"limit,omitempty"`
+	JudgeChain     []string                    `json:"judgeChain,omitempty"`
+	JudgeFailures  []EvidenceJudgeFailure      `json:"judgeFailures,omitempty"`
+	HumanRequests  []EvidenceHumanRequest      `json:"humanRequests,omitempty"`
+	Recommendation *EvidencePickRecommendation `json:"recommendation,omitempty"`
+	Picked         *EvidencePicked             `json:"picked,omitempty"`
+}
+
+// EvidencePickRecommendation is the judge's pick the operator was offered.
+type EvidencePickRecommendation struct {
+	Attempt   int          `json:"attempt"`
+	Reason    EvidenceText `json:"reason"`
+	DecidedBy string       `json:"decidedBy,omitempty"`
+}
+
+// EvidencePicked is the pick made: the gate_verdict pass that carried the
+// attempt on, why, and who decided.
+type EvidencePicked struct {
+	Seq             int            `json:"seq"`
+	Attempt         int            `json:"attempt"`
+	Reason          EvidenceText   `json:"reason"`
+	Evidence        []EvidenceItem `json:"evidence"`
+	EvidenceOmitted int            `json:"evidenceOmitted,omitempty"`
+	DecidedBy       string         `json:"decidedBy,omitempty"`
 }
 
 // CapEvidenceText cuts text to at most maxBytes on a rune boundary, so a
@@ -353,10 +390,13 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 	latestOutputs := map[string]RunEvent{}
 	for index, event := range events {
 		switch event.Type {
-		case RunEventGateEvaluating:
+		case RunEventGateEvaluating, RunEventPickStarted:
 			judgeChains[event.GateID] = stringsFromEventData(event.Data["judgeChain"])
 		case RunEventNodeOutput:
 			latestOutputs[event.NodeID] = event
+		}
+		if event.GateID == nodeID && projectPickEvidence(evidence, event, final, capper) {
+			continue
 		}
 		switch event.Type {
 		case RunEventNodeStarted:
@@ -461,11 +501,24 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 			if event.GateID != nodeID {
 				continue
 			}
-			evaluation := currentEvidenceEvaluation(evidence, event)
 			failure := EvidenceJudgeFailure{Seq: event.Seq, Code: stringFromEventData(event, "code"), Reason: capper.text(stringFromEventData(event, "reason"))}
 			returned := stringFromEventData(event, "returned")
+			if failure.Code == RunBlockInvalidJudgePick && len(evidence.Picks) > 0 {
+				// A rejected pick belongs to the gate's latest pick (archon-gihe).
+				pick := &evidence.Picks[len(evidence.Picks)-1]
+				if output, ok := latestOutputs[judgeID]; ok && event.NodeID == event.GateID && output.Seq > pick.Seq {
+					returned = judgeBlockReturned(stringFromEventData(output, "text"), "archon-pick")
+				}
+				if returned != "" {
+					text := capper.text(returned)
+					failure.Returned = &text
+				}
+				pick.JudgeFailures = append(pick.JudgeFailures, failure)
+				continue
+			}
+			evaluation := currentEvidenceEvaluation(evidence, event)
 			if output, ok := latestOutputs[judgeID]; ok && event.NodeID == event.GateID && output.Seq > evaluation.Seq {
-				returned = judgeVerdictReturned(stringFromEventData(output, "text"))
+				returned = judgeBlockReturned(stringFromEventData(output, "text"), "archon-verdict")
 			}
 			if returned != "" {
 				text := capper.text(returned)
@@ -477,11 +530,7 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 				continue
 			}
 			// Only the gate's latest unanswered request can still be pending.
-			for i := range evidence.Evaluations {
-				for j := range evidence.Evaluations[i].HumanRequests {
-					evidence.Evaluations[i].HumanRequests[j].Pending = false
-				}
-			}
+			settleEvidenceHumanRequests(evidence)
 			evaluation := currentEvidenceEvaluation(evidence, event)
 			evaluation.HumanRequests = append(evaluation.HumanRequests, EvidenceHumanRequest{Seq: event.Seq, Pending: !final})
 		case RunEventHumanVerdictRecorded:
@@ -518,6 +567,84 @@ func projectNodeEvidence(runID, nodeID, kind string, events []RunEvent, final bo
 		}
 	}
 	return evidence
+}
+
+// settleEvidenceHumanRequests marks every request the gate made earlier as
+// no longer pending, verdicts and picks alike.
+func settleEvidenceHumanRequests(evidence *NodeEvidence) {
+	for i := range evidence.Evaluations {
+		for j := range evidence.Evaluations[i].HumanRequests {
+			evidence.Evaluations[i].HumanRequests[j].Pending = false
+		}
+	}
+	for i := range evidence.Picks {
+		for j := range evidence.Picks[i].HumanRequests {
+			evidence.Picks[i].HumanRequests[j].Pending = false
+		}
+	}
+}
+
+// projectPickEvidence adds a pick event of the gate to its evidence and
+// reports whether the event was one: its pick_started, the operator's request
+// and pick, and the pick's verdict (archon-gihe).
+func projectPickEvidence(evidence *NodeEvidence, event RunEvent, final bool, capper *evidenceCapper) bool {
+	pickAt := func(seq int) *EvidencePick {
+		for i := range evidence.Picks {
+			if evidence.Picks[i].Seq == seq {
+				return &evidence.Picks[i]
+			}
+		}
+		return nil
+	}
+	switch {
+	case event.Type == RunEventPickStarted:
+		pick := EvidencePick{Seq: event.Seq, NodeID: event.NodeID, Trigger: stringFromEventData(event, "trigger"), Candidates: []int{},
+			Limit: limitFromAny(event.Data["limit"]), JudgeChain: stringsFromEventData(event.Data["judgeChain"])}
+		for _, candidate := range pickCandidatesFromEvent(event) {
+			pick.Candidates = append(pick.Candidates, candidate.Attempt)
+		}
+		evidence.Picks = append(evidence.Picks, pick)
+		return true
+	case !isPickEvent(event):
+		return false
+	case event.Type == RunEventHumanInputRequested:
+		settleEvidenceHumanRequests(evidence)
+		pick := pickAt(intFromRunEventData(pickData(event)["pickSeq"]))
+		if pick == nil {
+			return true
+		}
+		pick.HumanRequests = append(pick.HumanRequests, EvidenceHumanRequest{Seq: event.Seq, Pending: !final})
+		if choice := pickChoiceFromAny(pickData(event)["recommendation"]); choice != nil {
+			pick.Recommendation = &EvidencePickRecommendation{Attempt: choice.Attempt, Reason: capper.text(choice.Reason), DecidedBy: choice.DecidedBy}
+		}
+		return true
+	case event.Type == RunEventHumanVerdictRecorded:
+		requestedSeq := intFromRunEventData(event.Data["requestedSeq"])
+		for i := range evidence.Picks {
+			for j := range evidence.Picks[i].HumanRequests {
+				if request := &evidence.Picks[i].HumanRequests[j]; request.Seq == requestedSeq {
+					request.Pending = false
+					request.Decision = &EvidenceHumanDecision{Seq: event.Seq, Verdict: fmt.Sprintf("attempt %d", intFromRunEventData(pickData(event)["attempt"])),
+						DecidedBy: stringFromEventData(event, "decidedBy"), RelayedBy: stringFromEventData(event, "relayedBy"), Response: capper.text(stringFromEventData(event, "reason"))}
+				}
+			}
+		}
+		return true
+	case event.Type == RunEventGateVerdict:
+		data := pickData(event)
+		pick := pickAt(intFromRunEventData(data["pickSeq"]))
+		if pick == nil {
+			return true
+		}
+		picked := &EvidencePicked{Seq: event.Seq, Attempt: intFromRunEventData(data["attempt"]), Reason: capper.text(stringFromEventData(event, "reason")), DecidedBy: stringFromAny(data["decidedBy"])}
+		picked.Evidence, picked.EvidenceOmitted = evidenceItems(event.Data["evidence"], capper)
+		pick.Picked = picked
+		if choice := pickChoiceFromAny(data["recommendation"]); choice != nil && pick.Recommendation == nil {
+			pick.Recommendation = &EvidencePickRecommendation{Attempt: choice.Attempt, Reason: capper.text(choice.Reason), DecidedBy: choice.DecidedBy}
+		}
+		return true
+	}
+	return false
 }
 
 // currentEvidenceAttempt returns the latest attempt, opening one when output
@@ -618,6 +745,11 @@ func runOpenNodesAt(events []RunEvent, index int) []string {
 		case RunEventNodeOutput:
 			closeNode(event.NodeID)
 		case RunEventGateEvaluating, RunEventHumanInputRequested:
+			closeNode(gateID)
+			open = append(open, gateID)
+		case RunEventPickStarted:
+			// The step runs no more; its gate picks (archon-gihe).
+			closeNode(event.NodeID)
 			closeNode(gateID)
 			open = append(open, gateID)
 		case RunEventGateVerdict:

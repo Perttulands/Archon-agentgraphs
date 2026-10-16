@@ -36,6 +36,9 @@ type GateRequest struct {
 	AskedSeats []AskedSeat `json:"askedSeats"`
 	// FallbackReason says why the ask went to the notify command instead.
 	FallbackReason string `json:"fallbackReason,omitempty"`
+	// Pick marks a request to pick a step's best attempt rather than give a
+	// verdict, answered with gate pick (archon-gihe).
+	Pick *formations.PendingPick `json:"pick,omitempty"`
 }
 
 // AskedSeat is a seat that received a human gate's ask.
@@ -285,7 +288,7 @@ func (c *Coordinator) Handler() http.Handler {
 	// and verdict to the exact-request coordinator guard. No duplicate patterns
 	// or request-local engines are mounted. Resume and abort share this owner.
 	h := api.NewFormationsHandlerWithStores(c.store, c.personas)
-	h.SetRuntime(api.RuntimeHandlers{Start: c.start, Get: c.get, Events: c.events, Stream: c.stream, Resume: c.resume, Abort: c.abort, Verdict: c.verdict, Escalations: c.escalations})
+	h.SetRuntime(api.RuntimeHandlers{Start: c.start, Get: c.get, Events: c.events, Stream: c.stream, Resume: c.resume, Abort: c.abort, Verdict: c.verdict, Pick: c.pick, Escalations: c.escalations})
 	h.RegisterRoutes(mux)
 	c.mu.Lock()
 	liveness := c.agentLiveness
@@ -663,7 +666,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 	asks := formations.HumanAskRecords(events)
 	if !status.Final {
 		for _, event := range formations.OpenHumanRequests(events) {
-			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, RequestedAt: event.Timestamp, AskedSeats: []AskedSeat{}}
+			gate := GateRequest{GateID: event.GateID, RequestedSeq: event.Seq, RequestedAt: event.Timestamp, AskedSeats: []AskedSeat{}, Pick: formations.PendingPickOf(event)}
 			if record := asks[event.Seq]; record != nil {
 				for createdSeq, delivered := range record.Delivered {
 					gate.AskedSeats = append(gate.AskedSeats, AskedSeat{NodeID: delivered.NodeID, SlotID: delivered.SlotID, CreatedSeq: createdSeq, DeliveredSeq: delivered.Seq})
@@ -741,14 +744,13 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		failure(w, err)
 		return
 	}
-	match := false
-	for _, gate := range p.WaitingGates {
-		if gate.GateID == gateID && gate.RequestedSeq == req.RequestedSeq {
-			match = true
-		}
-	}
-	if !match {
+	gate, ok := waitingGate(p, gateID, req.RequestedSeq)
+	if !ok {
 		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
+		return
+	}
+	if gate.Pick != nil {
+		reply(w, 409, map[string]string{"error": formations.ErrHumanRequestIsAPick.Error()})
 		return
 	}
 	_, err = c.engine.RecordHumanGateVerdict(runID, formations.HumanGateVerdictRequest{GateID: gateID, RequestedSeq: req.RequestedSeq, Verdict: req.Verdict, Reason: req.Reason, Actor: "human:operator", RelayedBy: req.RelayedBy})
@@ -756,7 +758,77 @@ func (c *Coordinator) verdict(w http.ResponseWriter, r *http.Request) {
 		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
 		return
 	}
+	if errors.Is(err, formations.ErrHumanRequestIsAPick) {
+		reply(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
 	if err != nil {
+		failure(w, err)
+		return
+	}
+	c.continueAfterVerdict(runID)
+	reply(w, 202, map[string]string{"runId": runID})
+}
+
+// waitingGate is the gate's pending request with that sequence.
+func waitingGate(p *Projection, gateID string, requestedSeq int) (GateRequest, bool) {
+	for _, gate := range p.WaitingGates {
+		if gate.GateID == gateID && gate.RequestedSeq == requestedSeq {
+			return gate, true
+		}
+	}
+	return GateRequest{}, false
+}
+
+// pick records the operator's pick of a step's best attempt on a gate's
+// pending pick. Like a verdict it needs no run command; the run's worker
+// routes it as the gate's pass (archon-gihe).
+func (c *Coordinator) pick(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Actor        string `json:"actor"`
+		RequestedSeq int    `json:"requestedSeq"`
+		Attempt      int    `json:"attempt"`
+		Reason       string `json:"reason"`
+		RelayedBy    string `json:"relayedBy"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.RequestedSeq <= 0 || req.Attempt <= 0 {
+		reply(w, 400, map[string]string{"error": "requestedSeq and the attempt picked are required"})
+		return
+	}
+	if req.RelayedBy != "" && formations.ValidateRelayedBy(req.RelayedBy) != nil {
+		reply(w, 400, map[string]string{"error": "relayedBy must be a slot ID: a letter or digit, then up to 63 letters, digits, underscores or hyphens"})
+		return
+	}
+	runID, gateID := r.PathValue("runId"), r.PathValue("gateId")
+	p, err := c.Project(runID)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	gate, ok := waitingGate(p, gateID, req.RequestedSeq)
+	if !ok {
+		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
+		return
+	}
+	if gate.Pick == nil {
+		reply(w, 409, map[string]string{"error": formations.ErrHumanRequestNotAPick.Error()})
+		return
+	}
+	_, err = c.engine.RecordHumanGatePick(runID, formations.HumanGatePickRequest{GateID: gateID, RequestedSeq: req.RequestedSeq, Attempt: req.Attempt, Reason: req.Reason, Actor: "human:operator", RelayedBy: req.RelayedBy})
+	switch {
+	case errors.Is(err, formations.ErrHumanRequestNotPending), errors.Is(err, formations.ErrRunFinal):
+		reply(w, 409, map[string]string{"error": "human gate request is no longer pending"})
+		return
+	case errors.Is(err, formations.ErrHumanRequestNotAPick):
+		reply(w, 409, map[string]string{"error": err.Error()})
+		return
+	case errors.Is(err, formations.ErrPickNotACandidate):
+		reply(w, 400, map[string]string{"error": err.Error()})
+		return
+	case err != nil:
 		failure(w, err)
 		return
 	}

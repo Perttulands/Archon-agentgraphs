@@ -116,6 +116,17 @@ func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence
 				}
 				fmt.Fprintln(stdout, line)
 			}
+			if pick := attempt.Picked; pick != nil {
+				gate := pick.GateID
+				if pick.GateTitle != "" {
+					gate = fmt.Sprintf("%q", pick.GateTitle)
+				}
+				line := fmt.Sprintf("    picked as the best by %s through %s", pick.DecidedBy, gate)
+				if reason := firstLine(pick.Reason.Text); reason != "" {
+					line += ": " + reason
+				}
+				fmt.Fprintln(stdout, line)
+			}
 			for _, file := range attempt.Files {
 				fmt.Fprintf(stdout, "    file %s %d bytes %s\n", file.Name, file.Size, file.Kind)
 			}

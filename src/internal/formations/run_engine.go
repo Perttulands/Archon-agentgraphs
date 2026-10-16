@@ -83,6 +83,10 @@ type FormationExecution struct {
 	// JudgeGateID adds the verdict contract; FinalJudge validates the chain result.
 	JudgeGateID string
 	FinalJudge  bool
+	// PickAttempts, on a judge, asks it to pick the best of these attempts
+	// instead of judging: the pick contract replaces the verdict contract
+	// (archon-gihe).
+	PickAttempts []int
 	// Deadline uses the ledger clock and covers the entire formation attempt.
 	Deadline      time.Time
 	Cwd           string
@@ -824,6 +828,9 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 	if req.RequestedSeq != 0 && req.RequestedSeq != requestEvent.Seq {
 		return nil, ErrHumanRequestNotPending
 	}
+	if isPickEvent(requestEvent) {
+		return nil, ErrHumanRequestIsAPick
+	}
 	board, err := e.readRunBoard(runID)
 	if err != nil {
 		return nil, err
@@ -868,6 +875,10 @@ func (e *RunEngine) RecordHumanGateVerdict(runID string, req HumanGateVerdictReq
 }
 
 func (e *RunEngine) validateHumanRequestKindResults(runID string, gate GateNode, request RunEvent, events []RunEvent) error {
+	if isPickEvent(request) {
+		// A pick asks after the gate judged every candidate (archon-gihe).
+		return nil
+	}
 	seqs := intMapFromRunEventData(request.Data["kindResultSeqs"])
 	perKind := stringMapFromRunEventData(request.Data["codePerKind"])
 	input := runInputRefFromAny(request.Data["inputRef"])
@@ -1219,6 +1230,13 @@ func (e *RunEngine) resumeSnapshot(runID string, board *BoardDocument, mission M
 		}
 		return err
 	}
+	// A resume with --pick-best picks the stopped step's best attempt first.
+	if err := e.pickOnResume(runID, board, gateByID, ready, queued, &queue); err != nil {
+		if errors.Is(err, errRunStopped) {
+			return nil
+		}
+		return err
+	}
 	// A run interrupted before its Input card delivered the brief, its first
 	// output, starts there.
 	if !slices.ContainsFunc(events, func(event RunEvent) bool { return event.Type == RunEventNodeOutput }) {
@@ -1287,8 +1305,7 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 			continue
 		}
 		nextAttempt := attempts[nodeID] + 1
-		attempts[nodeID] = nextAttempt
-		if err := e.startFormationExecution(runID, board, formation, RunEvent{
+		spent, err := e.startFormationUnlessSpent(runID, board, formation, RunEvent{
 			Type:    RunEventNodeStarted,
 			NodeID:  nodeID,
 			Attempt: nextAttempt,
@@ -1298,9 +1315,19 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 				"reason":    startReason,
 				"brief":     formationBriefEventData(formationBriefValue(formation)),
 			},
-		}); err != nil {
+		})
+		if err != nil {
 			return stopped(err)
 		}
+		if spent != nil {
+			// A spent card whose whenSpent is best picks the step's best
+			// attempt and goes on; any other blocks the run (archon-gihe).
+			if err := e.pickOrBlock(runID, board, gates, nodeID, *spent, false, ready, queued, queue); err != nil {
+				return stopped(err)
+			}
+			continue
+		}
+		attempts[nodeID] = nextAttempt
 		result, err := e.executeFormation(FormationExecution{
 			RunID:           runID,
 			NodeID:          nodeID,
@@ -1311,6 +1338,13 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 			Attempt:         nextAttempt,
 			KeepSeatsOnCall: RunHumanChannel(board, current) == HumanChannelSession && FormationKeepsSeatsOnCall(board, nodeID),
 		})
+		if limit := (*LimitReachedError)(nil); errors.As(err, &limit) {
+			// The limit cut the attempt short; it is never a candidate.
+			if err := e.pickOrBlock(runID, board, gates, nodeID, limit.Use, true, ready, queued, queue); err != nil {
+				return stopped(err)
+			}
+			continue
+		}
 		if err != nil {
 			return e.appendExecutionFailureAndBlock(runID, nodeID, err)
 		}
@@ -1610,6 +1644,10 @@ func replayedEvaluations(board *BoardDocument, events []RunEvent) []replayedEval
 				if eventGateID(later) != gateID {
 					continue
 				}
+				if isPickEvent(later) {
+					// A pick ends no evaluation (archon-gihe).
+					continue
+				}
 				switch later.Type {
 				case RunEventGateVerdict:
 					evaluation.verdict = j
@@ -1656,6 +1694,13 @@ func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gate
 			if err := r.output(i, event); err != nil {
 				return err
 			}
+		case RunEventPickStarted:
+			// The pick settled the step's send-back, as its output would.
+			markPortsRead(ready, event.NodeID)
+			if queued[event.NodeID] {
+				queued[event.NodeID] = false
+				*queue = slices.DeleteFunc(*queue, func(nodeID string) bool { return nodeID == event.NodeID })
+			}
 		case RunEventGateVerdict:
 			if r.applied[i] {
 				continue
@@ -1671,6 +1716,15 @@ func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gate
 		if evaluation := &r.evaluations[index]; !evaluation.claimed && evaluation.verdict < 0 && !evaluation.settled {
 			evaluation.claimed = true
 			if err := r.finish(*evaluation); err != nil {
+				return err
+			}
+		}
+	}
+	// A pick the run started and did not end finishes last, from the judge
+	// outputs the ledger holds (archon-gihe).
+	for _, event := range events {
+		if event.Type == RunEventPickStarted && !pickSettled(events, event.Seq) {
+			if err := e.runPick(runID, board, gates, event, ready, queued, queue); err != nil {
 				return err
 			}
 		}
@@ -1934,9 +1988,22 @@ func (e *RunEngine) deliverInputCard(runID string, board *BoardDocument, gates m
 // new engine replenishes an allowance; only a grant does. The run's worker
 // serializes this read and append with other executions.
 func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, formation FormationNode, event RunEvent) error {
+	spent, err := e.startFormationUnlessSpent(runID, board, formation, event)
+	if err != nil || spent == nil {
+		return err
+	}
+	if err := e.appendLimitBlock(runID, board, formation.ID, *spent); err != nil {
+		return err
+	}
+	return errRunStopped
+}
+
+// startFormationUnlessSpent records the step's start, or returns the limit
+// starting it would pass and records nothing; its caller picks or blocks.
+func (e *RunEngine) startFormationUnlessSpent(runID string, board *BoardDocument, formation FormationNode, event RunEvent) (*RunLimitReached, error) {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	started := e.store.now()
 	spent := limitSpentBefore(board, events, formation, started)
@@ -1947,13 +2014,10 @@ func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, 
 		}
 	}
 	if spent != nil {
-		if err := e.appendLimitBlock(runID, board, formation.ID, *spent); err != nil {
-			return err
-		}
-		return errRunStopped
+		return spent, nil
 	}
 	event.Timestamp = started.Format(time.RFC3339Nano)
-	return e.store.AppendRunEvent(runID, event)
+	return nil, e.store.AppendRunEvent(runID, event)
 }
 
 // executeFormation runs one attempt in its own artifact directory and accepts
@@ -2361,7 +2425,7 @@ func (e *RunEngine) evaluateGateKinds(runID string, board *BoardDocument, gates 
 				Kinds:     []string{"formation"},
 				Criterion: gate.Criterion,
 				Input:     input,
-			}, judgeChainForGate(board, gate.ID))
+			}, judgeChainForGate(board, gate.ID), nil)
 			if err != nil {
 				return err
 			}
@@ -2566,7 +2630,7 @@ func verdictWaitsOnAStep(events []RunEvent, verdict RunEvent) bool {
 		switch {
 		case event.Type == RunEventNodeStarted && event.Seq < verdict.Seq && stringFromEventData(event, "nodeKind") == "formation":
 			working[event.NodeID] = true
-		case event.Type == RunEventNodeOutput:
+		case event.Type == RunEventNodeOutput, event.Type == RunEventPickStarted:
 			delete(working, event.NodeID)
 		}
 	}
@@ -2586,6 +2650,9 @@ func (e *RunEngine) routeHumanVerdict(runID string, board *BoardDocument, gates 
 		return fmt.Errorf("%w: Gate %q verdict names invalid human request %d", ErrRunLedgerInvalid, gate.ID, requestedSeq)
 	}
 	request := events[requestedSeq-1]
+	if isPickEvent(request) {
+		return e.routeHumanPick(runID, board, gates, events, request, recorded, ready, queued, queue)
+	}
 	// The verdict answers the evaluation that asked, even when the gate has
 	// evaluated again since.
 	attempt := 0
@@ -2784,8 +2851,10 @@ func callGateEvaluator(evaluator GateEvaluator, req GateEvaluation) (result Gate
 // judge's output, and returns the last judge's text. A judge that already
 // produced output for this evaluation, after the gate's latest
 // gate_evaluating, is not run again: resuming after a crash inside the chain
-// continues from the first judge without output (archon-n7u.57).
-func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode) (string, error) {
+// continues from the first judge without output (archon-n7u.57). With pick,
+// the chain picks the best attempt instead, anchored at its pick_started
+// (archon-gihe).
+func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chain []FormationNode, pick *judgePickMode) (string, error) {
 	events, err := e.store.ReadRunEvents(req.RunID)
 	if err != nil {
 		return "", err
@@ -2796,17 +2865,22 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			attempt, evaluating = attempt+1, event.Seq
 		}
 	}
+	invalidCode, reason := "invalid_judge_result", "judge"
+	var pickAttempts []int
+	if pick != nil {
+		evaluating, invalidCode, reason, pickAttempts = pick.anchorSeq, RunBlockInvalidJudgePick, "pick", pick.attempts
+	}
 	answered := map[string]RunEvent{}
 	for _, event := range events[evaluating:] {
 		if event.Type == RunEventNodeOutput {
 			answered[event.NodeID] = event
 		}
 		// Preserve earlier reviews but discard the rejected final answer on resume.
-		if event.Type == RunEventBlocked && event.GateID == req.GateID && stringFromEventData(event, "code") == "invalid_judge_result" {
+		if event.Type == RunEventBlocked && event.GateID == req.GateID && stringFromEventData(event, "code") == invalidCode {
 			delete(answered, chain[len(chain)-1].ID)
 		}
 	}
-	if text, ok := takenJudgeFail(events[evaluating:], req.GateID); ok {
+	if text, ok := takenJudgeFail(events[evaluating:], req.GateID); ok && pick == nil {
 		return text, nil
 	}
 	input := req.Input
@@ -2835,7 +2909,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 						nodeAttempt = event.Attempt + 1
 					}
 				}
-				if event.Seq > evaluating && index == len(chain)-1 && event.Type == RunEventBlocked && event.GateID == req.GateID && stringFromEventData(event, "code") == "invalid_judge_result" {
+				if event.Seq > evaluating && index == len(chain)-1 && event.Type == RunEventBlocked && event.GateID == req.GateID && stringFromEventData(event, "code") == invalidCode {
 					nodeAttempt++
 				}
 			}
@@ -2846,22 +2920,23 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 				Data: map[string]any{
 					"nodeKind":  "formation",
 					"inputRefs": []RunInputRef{input},
-					"reason":    "judge",
+					"reason":    reason,
 					"brief":     formationBriefEventData(formationBriefValue(formation)),
 				},
 			}); err != nil {
 				return "", err
 			}
 			result, err := e.executeFormation(FormationExecution{
-				JudgeGateID: req.GateID,
-				FinalJudge:  index == len(chain)-1,
-				RunID:       req.RunID,
-				NodeID:      formation.ID,
-				Title:       formation.Title,
-				Formation:   formation,
-				Brief:       formationBriefValue(formation),
-				Inputs:      []RunInputRef{input},
-				Attempt:     nodeAttempt,
+				JudgeGateID:  req.GateID,
+				FinalJudge:   index == len(chain)-1,
+				PickAttempts: pickAttempts,
+				RunID:        req.RunID,
+				NodeID:       formation.ID,
+				Title:        formation.Title,
+				Formation:    formation,
+				Brief:        formationBriefValue(formation),
+				Inputs:       []RunInputRef{input},
+				Attempt:      nodeAttempt,
 			})
 			if err != nil {
 				if blockErr := e.appendExecutionFailureAndBlock(req.RunID, formation.ID, err); blockErr != nil {
@@ -2876,7 +2951,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 				return "", err
 			}
 			data := formationOutputEventData(result)
-			data["reason"] = "judge"
+			data["reason"] = reason
 			if err := e.store.AppendRunEvent(req.RunID, RunEvent{
 				Type:    RunEventNodeOutput,
 				NodeID:  formation.ID,

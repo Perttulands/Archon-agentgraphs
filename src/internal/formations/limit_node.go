@@ -22,6 +22,12 @@ import (
 // time left reaches the card's warnSeconds. Tokens count what the covered
 // seats spend, by the approximate definition in token_usage.go; crossing the
 // budget stops the working step (archon-o7p.9).
+//
+// What a spent card does is its whenSpent (archon-gihe): stop, the default,
+// stored as absent, blocks the run for a grant; best picks the best attempt
+// the step already made and goes on through its gate's pass route. Only a
+// step's card can pick, and only when the step has a selecting gate
+// (selectingGate) that a judge or a human decides.
 
 // FindingInvalidLimit reports a Limit card that covers nothing, covers a node
 // it cannot, holds a value that is not a positive whole number, or shares its
@@ -46,6 +52,26 @@ const RunBlockLimitReached = "limit_reached"
 // ResumePolicyGrant marks a block that resumes only with a grant.
 const ResumePolicyGrant = "grant"
 
+// What a spent Limit card does (archon-gihe).
+const (
+	LimitWhenSpentStop = "stop"
+	LimitWhenSpentBest = "best"
+)
+
+// NormalizeLimitWhenSpent returns the stored form of a card's whenSpent:
+// empty for stop or no value, best for best. Any other value is an
+// ErrInvalidLimit naming the allowed values.
+func NormalizeLimitWhenSpent(value string) (string, error) {
+	switch whenSpent := strings.TrimSpace(value); whenSpent {
+	case "", LimitWhenSpentStop:
+		return "", nil
+	case LimitWhenSpentBest:
+		return whenSpent, nil
+	default:
+		return "", fmt.Errorf("%w: whenSpent %q must be stop or best", ErrInvalidLimit, value)
+	}
+}
+
 // ErrInvalidLimit refuses a Limit card write with a malformed value or target.
 var ErrInvalidLimit = errors.New("invalid_limit")
 
@@ -61,9 +87,13 @@ type LimitNode struct {
 	Seconds     *int   `json:"seconds,omitempty"`
 	WarnSeconds *int   `json:"warnSeconds,omitempty"`
 	Tokens      *int   `json:"tokens,omitempty"`
+	// WhenSpent is best when the spent card picks the step's best attempt;
+	// empty means stop (archon-gihe).
+	WhenSpent string `json:"whenSpent,omitempty"`
 }
 
-// LimitCreateRequest sets each knob that is not zero.
+// LimitCreateRequest sets each knob that is not zero. WhenSpent is stop, the
+// default, or best.
 type LimitCreateRequest struct {
 	Title       string
 	Target      string
@@ -71,6 +101,7 @@ type LimitCreateRequest struct {
 	Seconds     int
 	WarnSeconds int
 	Tokens      int
+	WhenSpent   string
 	X           int
 	Y           int
 	UpdatedBy   string
@@ -83,7 +114,7 @@ type LimitCreateResult struct {
 }
 
 // LimitUpdateRequest changes only the fields it sets. A knob set to 0 is
-// cleared.
+// cleared; whenSpent stop is stored as absent.
 type LimitUpdateRequest struct {
 	LimitID     string
 	Title       *string
@@ -92,6 +123,7 @@ type LimitUpdateRequest struct {
 	Seconds     *int
 	WarnSeconds *int
 	Tokens      *int
+	WhenSpent   *string
 	UpdatedBy   string
 }
 
@@ -152,8 +184,12 @@ func (s *Store) CreateLimit(slug string, req LimitCreateRequest, opts WriteOptio
 	if opts.ExpectedETag == "" || opts.ExpectedRev == 0 {
 		return nil, ErrPreconditionRequired
 	}
+	whenSpent, err := NormalizeLimitWhenSpent(req.WhenSpent)
+	if err != nil {
+		return nil, err
+	}
 	limit := LimitNode{ID: newPrefixedID("lim"), Title: strings.TrimSpace(req.Title), Target: strings.TrimSpace(req.Target),
-		Rounds: knob(req.Rounds), Seconds: knob(req.Seconds), WarnSeconds: knob(req.WarnSeconds), Tokens: knob(req.Tokens)}
+		Rounds: knob(req.Rounds), Seconds: knob(req.Seconds), WarnSeconds: knob(req.WarnSeconds), Tokens: knob(req.Tokens), WhenSpent: whenSpent}
 	if limit.Title == "" {
 		limit.Title = defaultLimitTitle()
 	}
@@ -188,6 +224,13 @@ func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptio
 		if err := checkLimitWrite(current, target, req.Rounds, req.Seconds, req.WarnSeconds, req.Tokens); err != nil {
 			return nil, err
 		}
+		var whenSpent string
+		if req.WhenSpent != nil {
+			var err error
+			if whenSpent, err = NormalizeLimitWhenSpent(*req.WhenSpent); err != nil {
+				return nil, err
+			}
+		}
 		if req.Title != nil {
 			title := strings.TrimSpace(*req.Title)
 			if title == "" {
@@ -213,6 +256,13 @@ func (s *Store) UpdateLimit(slug string, req LimitUpdateRequest, opts WriteOptio
 				lines = setScalarInLineRange(lines, start+1, end, knob.key, renderInt(*knob.value))
 			}
 			start, end, _ = findLimitBlockByID(lines, req.LimitID)
+		}
+		if req.WhenSpent != nil {
+			if whenSpent == "" {
+				lines = removeScalarInLineRange(lines, start+1, end, "whenSpent")
+			} else {
+				lines = setScalarInLineRange(lines, start+1, end, "whenSpent", renderString(whenSpent))
+			}
 		}
 		return renderTOMLLines(lines), nil
 	})
@@ -300,6 +350,9 @@ func appendLimitBlock(raw []byte, limit LimitNode) []byte {
 	if limit.Tokens != nil {
 		b.WriteString("tokens = " + renderInt(*limit.Tokens) + "\n")
 	}
+	if limit.WhenSpent != "" {
+		b.WriteString("whenSpent = " + renderString(limit.WhenSpent) + "\n")
+	}
 	return []byte(b.String())
 }
 
@@ -333,6 +386,14 @@ func decodeLimitNodes(document map[string]any) ([]LimitNode, error) {
 		}
 		if node.Target, err = tomlString(table, "target"); err != nil {
 			return nil, err
+		}
+		// A hand-written value other than stop or best is kept, so validation
+		// can name it.
+		if node.WhenSpent, err = tomlString(table, "whenSpent"); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(node.WhenSpent) == LimitWhenSpentStop {
+			node.WhenSpent = ""
 		}
 		for _, knob := range []struct {
 			key   string
@@ -418,8 +479,36 @@ func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
 			warnings = append(warnings, BoardFinding{Code: FindingEmptyLimit, NodeID: limit.ID,
 				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds, time or tokens, or delete it", name)})
 		}
+		if problem := whenSpentProblem(board, limit); problem != "" {
+			add(problem)
+		}
 	}
 	return errs, warnings
+}
+
+// whenSpentProblem says why a card cannot do what its whenSpent asks, or
+// nothing. Best needs a card on a step whose selecting gate a judge or a
+// human decides, so there is someone to pick.
+func whenSpentProblem(board *BoardDocument, limit LimitNode) string {
+	name := nodeName(board, limit.ID)
+	switch strings.TrimSpace(limit.WhenSpent) {
+	case "", LimitWhenSpentStop:
+		return ""
+	case LimitWhenSpentBest:
+	default:
+		return fmt.Sprintf("Limit %s holds whenSpent = %q: set it to stop or best", name, limit.WhenSpent)
+	}
+	if _, ok := findMission(board, limit.Target); ok {
+		return fmt.Sprintf("Limit %s picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop", name)
+	}
+	if _, ok := findFormation(board.Formations, limit.Target); !ok {
+		return ""
+	}
+	_, problem := selectingGate(board, limit.Target)
+	if problem != "" {
+		return fmt.Sprintf("Limit %s picks the best attempt of %s when spent, but %s", name, nodeName(board, limit.Target), problem)
+	}
+	return ""
 }
 
 // durationWords says whole seconds plainly: "45 s", "5 min", "1 h 30 min",

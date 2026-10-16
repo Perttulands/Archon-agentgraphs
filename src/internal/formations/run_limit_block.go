@@ -333,19 +333,34 @@ func limitReason(board *BoardDocument, use RunLimitReached) string {
 }
 
 // appendLimitBlock stops the run at a spent limit before nodeID starts. The
-// block names the limit and resumes only with a grant.
+// block names the limit and resumes with a grant, or, when the step's own
+// card is spent and its selecting gate judged an attempt, with a grant or a
+// pick of the best attempt (archon-gihe).
 func (e *RunEngine) appendLimitBlock(runID string, board *BoardDocument, nodeID string, use RunLimitReached) error {
-	reason := limitReason(board, use)
-	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, NodeID: nodeID, Data: map[string]any{
-		"code": RunBlockLimitReached, "message": reason, "reason": reason, "boundary": "limits", "nodeId": nodeID, "recoverable": true, "limit": use,
-	}}); err != nil {
+	if err := e.appendLimitError(runID, board, nodeID, use); err != nil {
 		return err
 	}
-	block := runBlockedEvent(reason, nodeID, "", "", nil)
+	events, err := e.store.ReadRunEvents(runID)
+	if err != nil {
+		return err
+	}
+	policy := ResumePolicyGrant
+	if _, ok := pickFor(board, events, nodeID, use); ok {
+		policy = ResumePolicyGrantOrPick
+	}
+	block := runBlockedEvent(limitReason(board, use), nodeID, "", "", nil)
 	block.Data["code"] = RunBlockLimitReached
 	block.Data["limit"] = use
-	block.Data["resumePolicy"] = ResumePolicyGrant
+	block.Data["resumePolicy"] = policy
 	return e.store.AppendRunEvent(runID, block)
+}
+
+// appendLimitError records that a spent limit stopped nodeID.
+func (e *RunEngine) appendLimitError(runID string, board *BoardDocument, nodeID string, use RunLimitReached) error {
+	reason := limitReason(board, use)
+	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, NodeID: nodeID, Data: map[string]any{
+		"code": RunBlockLimitReached, "message": reason, "reason": reason, "boundary": "limits", "nodeId": nodeID, "recoverable": true, "limit": use,
+	}})
 }
 
 // runLimitReached is the limit the block at index records, or nil.
@@ -353,7 +368,12 @@ func runLimitReached(events []RunEvent, index int) *RunLimitReached {
 	if index < 0 || index >= len(events) || events[index].Type != RunEventBlocked {
 		return nil
 	}
-	switch raw := events[index].Data["limit"].(type) {
+	return limitFromAny(events[index].Data["limit"])
+}
+
+// limitFromAny reads a limit an event recorded, or nil.
+func limitFromAny(value any) *RunLimitReached {
+	switch raw := value.(type) {
 	case RunLimitReached:
 		return &raw
 	case *RunLimitReached:
@@ -421,10 +441,38 @@ func runBlockResumeAllowed(events []RunEvent, index int) bool {
 	return boolFromEventData(events[index], "resumeAllowed")
 }
 
+// ResumeLimitRefusal is why a resume, granting or picking as asked, cannot
+// continue a block whose resume policy is policy, or nil. A spent limit
+// resumes only with a grant, or, where the step can pick, with a grant or a
+// pick of its best attempt; nothing else takes either (archon-o7p.8,
+// archon-gihe).
+func ResumeLimitRefusal(policy string, grant, pickBest bool) error {
+	needsGrant := policy == ResumePolicyGrant || policy == ResumePolicyGrantOrPick
+	switch {
+	case grant && pickBest:
+		return ErrRunGrantOrPick
+	case pickBest && policy != ResumePolicyGrantOrPick:
+		return ErrRunNothingToPick
+	case pickBest:
+		return nil
+	case grant && !needsGrant:
+		return ErrRunNothingToGrant
+	case !grant && policy == ResumePolicyGrantOrPick:
+		return ErrRunGrantOrPickRequired
+	case !grant && needsGrant:
+		return ErrRunGrantRequired
+	}
+	return nil
+}
+
 // runBlockNeedsGrant reports whether the block at index resumes only with a
-// grant: a spent limit.
+// grant, or a grant or a pick: a spent limit.
 func runBlockNeedsGrant(events []RunEvent, index int) bool {
-	return stringFromEventData(events[index], "resumePolicy") == ResumePolicyGrant
+	switch stringFromEventData(events[index], "resumePolicy") {
+	case ResumePolicyGrant, ResumePolicyGrantOrPick:
+		return true
+	}
+	return false
 }
 
 // claimLimitWarning records that a seat gets a time card's warning, once: a

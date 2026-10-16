@@ -415,7 +415,7 @@ func TestNodeEvidenceShowsRejectedJudgeVerdict(t *testing.T) {
 		{Seq: 2, Type: RunEventNodeStarted, NodeID: "fmn_judge", Attempt: 1, Data: map[string]any{"reason": "judge"}},
 		{Seq: 3, Type: RunEventSlotDispatch, NodeID: "fmn_judge", SlotID: "slot_j", Attempt: 1, Data: map[string]any{"dispatchId": "dsp_1", "harness": "openai-codex"}},
 		{Seq: 4, Type: RunEventSlotResult, NodeID: "fmn_judge", SlotID: "slot_j", Data: map[string]any{"dispatchId": "dsp_1", "status": "ok"}},
-		{Seq: 5, Type: RunEventJudgeAttemptFailed, GateID: "gate_review", NodeID: "fmn_judge", SlotID: "slot_j", Attempt: 1, Data: map[string]any{"code": "invalid_judge_result", "reason": firstErr.Error(), "correction": true, "returned": judgeVerdictReturned(first)}},
+		{Seq: 5, Type: RunEventJudgeAttemptFailed, GateID: "gate_review", NodeID: "fmn_judge", SlotID: "slot_j", Attempt: 1, Data: map[string]any{"code": "invalid_judge_result", "reason": firstErr.Error(), "correction": true, "returned": judgeBlockReturned(first, "archon-verdict")}},
 		{Seq: 6, Type: RunEventSlotDispatch, NodeID: "fmn_judge", SlotID: "slot_j", Attempt: 1, Data: map[string]any{"dispatchId": "dsp_2", "harness": "openai-codex", "phase": "judge-correction"}},
 		{Seq: 7, Type: RunEventSlotResult, NodeID: "fmn_judge", SlotID: "slot_j", Data: map[string]any{"dispatchId": "dsp_2", "status": "ok"}},
 		evidenceEvent(8, RunEventNodeOutput, "fmn_judge", map[string]any{"status": "done", "text": second}),

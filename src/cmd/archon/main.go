@@ -267,6 +267,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 			return runGateVerdict(formations.NewStore(config.Workspace), args[2:], stdout, stderr, "pass")
 		case "reject":
 			return runGateVerdict(formations.NewStore(config.Workspace), args[2:], stdout, stderr, "fail")
+		case "pick":
+			return runGatePick(formations.NewStore(config.Workspace), args[2:], stdout, stderr)
 		default:
 			return offlineUnavailable(stderr, "gate", args[1])
 		}
@@ -1263,6 +1265,15 @@ const takeFailUsage = "settle a gate blocked on a judge verdict Archon rejected 
 
 const grantUsage = "give the step a spent Limit card stopped one more allowance (one more round, or the card's time or tokens again); the ledger records the grant and who gave it"
 
+// pickBestUsage describes run resume --pick-best, offline and remote (archon-gihe).
+const pickBestUsage = "pick the best attempt the stopped step's gate judged and go on through the gate's pass route, whatever the card's whenSpent; not with --grant"
+
+// Flags of gate pick, offline and remote (archon-gihe).
+const (
+	pickAttemptUsage = "the attempt picked, one of the pending pick's candidates"
+	pickReasonUsage  = "why this attempt; the ledger records it with the pick"
+)
+
 // relayedByUsage describes gate approve|reject --relayed-by, offline and remote.
 const relayedByUsage = "slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator"
 
@@ -1303,6 +1314,51 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	// With no daemon this command is the run's worker: it routes the verdict
 	// and runs what follows, as the daemon does after a verdict.
+	status, err := engine.ContinueRun(fs.Arg(0))
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	if *jsonOut {
+		return writeJSON(stdout, status)
+	}
+	fmt.Fprintf(stdout, "%s\t%s\n", status.RunID, status.Status)
+	return 0
+}
+
+// runGatePick records the operator's pick of a step's best attempt on a
+// gate's pending pick and, as the run's worker, routes it (archon-gihe).
+func runGatePick(store *formations.Store, args []string, stdout, stderr io.Writer) int {
+	fs := commandFlags("gate pick", stderr)
+	attempt := fs.Int("attempt", 0, pickAttemptUsage)
+	reason := fs.String("reason", "", pickReasonUsage)
+	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
+	actor := fs.String("actor", "human:operator", "deciding actor")
+	relayedBy := fs.String("relayed-by", "", relayedByUsage)
+	jsonOut := fs.Bool("json", false, "write JSON")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+		return 2
+	}
+	if fs.NArg() != 2 || *attempt <= 0 {
+		fmt.Fprintln(stderr, commandUsage("gate pick"))
+		return 2
+	}
+	release, err := holdStateLock(store.Workspace)
+	if err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
+	defer release()
+	personas := formations.NewPersonaStore(formations.AgentsDir(store.Workspace))
+	engine := newArchonRunEngine(store, personas, "archon")
+	if _, err := engine.RecordHumanGatePick(fs.Arg(0), formations.HumanGatePickRequest{
+		GateID:       fs.Arg(1),
+		RequestedSeq: *seq,
+		Attempt:      *attempt,
+		Reason:       *reason,
+		Actor:        *actor,
+		RelayedBy:    *relayedBy,
+	}); err != nil {
+		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
+	}
 	status, err := engine.ContinueRun(fs.Arg(0))
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))
@@ -1766,6 +1822,11 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 // output a succeeded run delivered.
 func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjection) {
 	fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", status.RunID, status.Status, status.BoardSlug, status.EventCount)
+	// A pass a spent limit picked is named, so a reader knows the gate did
+	// not pass that work itself (archon-gihe).
+	for _, pick := range status.Picks {
+		fmt.Fprintf(stdout, "pick\t%s attempt %d, picked from %s by %s, went on through %s\n", pick.NodeID, pick.Attempt, formations.AttemptListWords(pick.Candidates), pick.DecidedBy, pick.GateID)
+	}
 	for _, output := range status.Outputs {
 		fmt.Fprintln(stdout, runOutputLine(output))
 	}
@@ -1896,9 +1957,10 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 	mode := fs.String("mode", "reattach", "resume mode")
 	reason := fs.String("reason", "", "resume reason")
 	grant := fs.Bool("grant", false, grantUsage)
+	pickBest := fs.Bool("pick-best", false, pickBestUsage)
 	takeFail := fs.Bool("take-fail", false, takeFailUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "grant": true, "take-fail": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "grant": true, "take-fail": true, "pick-best": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -1918,6 +1980,7 @@ func runResume(store *formations.Store, args []string, stdout, stderr io.Writer)
 		Reason:   *reason,
 		Grant:    *grant,
 		TakeFail: *takeFail,
+		PickBest: *pickBest,
 	})
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "run", fs.Arg(0))

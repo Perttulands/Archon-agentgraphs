@@ -3,8 +3,10 @@ package coordinator
 import (
 	"bytes"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +32,9 @@ import (
 type scriptedJudgeLab struct {
 	lab    formations.FormationExecutor
 	judges map[string][]string
+	// picks names, by its place among the candidates, the attempt each judge
+	// picks when its gate picks a step's best attempt (archon-gihe).
+	picks map[string]int
 	// clock, when set, is the run's only clock: each step takes work[node]
 	// on it, stopping at its deadline as a real seat is stopped.
 	clock *workClock
@@ -75,6 +80,14 @@ func (e *scriptedJudgeLab) ExecuteFormation(req formations.FormationExecution) (
 	if err != nil || !judge {
 		return result, err
 	}
+	if len(req.PickAttempts) > 0 {
+		attempt := pickByPlace(req.PickAttempts, e.picks[req.NodeID])
+		result.Text = "```archon-pick\n{\"attempt\":" + strconv.Itoa(attempt) + ",\"reason\":\"scripted pick\",\"evidence\":[]}\n```"
+		for port := range result.Outputs {
+			result.Outputs[port] = formations.FormationOutputPayload{Text: result.Text}
+		}
+		return result, nil
+	}
 	verdict := "pass"
 	if req.Attempt-1 < len(script) {
 		verdict = script[req.Attempt-1]
@@ -93,6 +106,12 @@ type restartCase struct {
 	verdicts map[string][]string
 	// judges script each judge formation's verdicts by gate attempt.
 	judges map[string][]string
+	// picks names, by its place among the candidates, the attempt each
+	// judge, or each human gate's operator, picks when a spent limit picks
+	// the step's best attempt (archon-gihe). A restart that cut a start short
+	// numbers the later attempts one higher, so a place, not a number, is the
+	// same attempt wherever the restart fell.
+	picks map[string]int
 	// session runs the gates on the session channel, with seats kept on call.
 	session bool
 	// work, when set, runs the case on a work clock: each step takes its
@@ -163,6 +182,9 @@ func scriptedVerdict(tc restartCase, events []formations.RunEvent, gateID string
 	return "pass"
 }
 
+// pickAttemptLine is the line that opens each attempt in a pick's input.
+var pickAttemptLine = regexp.MustCompile(`(?m)^attempt \d+$`)
+
 type runOutcome struct {
 	Status  string
 	EndIDs  []string
@@ -205,7 +227,17 @@ func inputSummary(started formations.RunEvent) string {
 	parts := make([]string, 0, len(raw))
 	for _, item := range raw {
 		fields, _ := item.(map[string]any)
-		part := fmt.Sprintf("[from %v to %v: %q", fields["fromNodeId"], fields["toPortId"], fields["text"])
+		text, _ := fields["text"].(string)
+		if strings.HasPrefix(text, "Pick the best attempt of ") {
+			// A pick lists the attempts by number, which a restart that cut
+			// a start short raises by one: compare them by place.
+			place := 0
+			text = pickAttemptLine.ReplaceAllStringFunc(text, func(string) string {
+				place++
+				return "attempt #" + strconv.Itoa(place)
+			})
+		}
+		part := fmt.Sprintf("[from %v to %v: %q", fields["fromNodeId"], fields["toPortId"], text)
 		for feedback, _ := fields["feedback"].(map[string]any); feedback != nil; feedback, _ = feedback["earlier"].(map[string]any) {
 			part += fmt.Sprintf(" feedback %v %v %q", feedback["gateId"], feedback["verdict"], feedback["reason"])
 		}
@@ -280,7 +312,7 @@ func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) 
 		if tc.session {
 			return &keeperExecutor{store: store}
 		}
-		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges, clock: clock, work: tc.work, onStart: onStart}
+		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges, picks: tc.picks, clock: clock, work: tc.work, onStart: onStart}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -341,8 +373,9 @@ func driveToEnd(t *testing.T, c *Coordinator, id string, tc restartCase) *Projec
 					break
 				}
 			}
-			// A spent Limit card resumes only with a grant (archon-o7p.8).
-			grant := strconv.FormatBool(p.ResumePolicy == formations.ResumePolicyGrant)
+			// A spent Limit card resumes with a grant (archon-o7p.8), or, where
+			// the step's gate judged attempts, a grant or a pick (archon-gihe).
+			grant := strconv.FormatBool(p.ResumePolicy == formations.ResumePolicyGrant || p.ResumePolicy == formations.ResumePolicyGrantOrPick)
 			if w := post(t, c, "/api/runs/"+id+"/resume", `{"mode":"`+mode+`","reason":"continue after a restart","grant":`+grant+`}`); w.Code != 202 {
 				t.Fatalf("resume %d %s: %s", w.Code, w.Body.String(), ledgerTrail(events))
 			}
@@ -356,8 +389,15 @@ func driveToEnd(t *testing.T, c *Coordinator, id string, tc restartCase) *Projec
 					gate = waiting
 				}
 			}
-			verdict := scriptedVerdict(tc, events, gate.GateID, gate.RequestedSeq)
-			w := post(t, c, "/api/runs/"+id+"/gates/"+gate.GateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(gate.RequestedSeq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
+			var w *httptest.ResponseRecorder
+			if gate.Pick != nil {
+				// A pick of the step's best attempt (archon-gihe).
+				attempt := strconv.Itoa(pickByPlace(gate.Pick.Candidates, tc.picks[gate.GateID]))
+				w = post(t, c, "/api/runs/"+id+"/gates/"+gate.GateID+"/pick", `{"requestedSeq":`+strconv.Itoa(gate.RequestedSeq)+`,"attempt":`+attempt+`,"reason":"scripted pick"}`)
+			} else {
+				verdict := scriptedVerdict(tc, events, gate.GateID, gate.RequestedSeq)
+				w = post(t, c, "/api/runs/"+id+"/gates/"+gate.GateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(gate.RequestedSeq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
+			}
 			if w.Code != 202 {
 				t.Fatalf("verdict %d %s: %s", w.Code, w.Body.String(), ledgerTrail(events))
 			}
@@ -589,6 +629,72 @@ seconds = 95
 			work:     map[string]time.Duration{"fmn_a": 30 * time.Second, "fmn_b": 40 * time.Second},
 			want:     runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2, "fmn_b": 1}, Grants: 1},
 		},
+		{
+			// Work may try three times; the judge fails each try, then picks
+			// the second, which ends the run (archon-gihe).
+			name:       "a judge picking the best attempt at a spent card",
+			board:      strings.Replace(judgeLoopBoard(`target = "fmn_work"`), "rounds = 2", "rounds = 3\nwhenSpent = \"best\"", 1),
+			judges:     map[string][]string{"fmn_judge": {"fail", "fail", "fail"}},
+			picks:      map[string]int{"fmn_judge": 2},
+			invariants: requirePicked("gate_judge", 2, 3),
+			want:       runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 4}},
+		},
+		{
+			// The operator sends A back twice, then picks the first try.
+			name: "an operator picking the best attempt at a spent card",
+			board: gateBoard(gateBoardFormation("fmn_a") + gateBoardHumanGate("gate_review") + endNodes + `
+[[limit]]
+id = "lim_cap"
+title = "Cap"
+target = "fmn_a"
+rounds = 2
+whenSpent = "best"
+` +
+				gateBoardConnection("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
+				gateBoardConnection("edge_a_gate", "fmn_a:port_out", "gate_review:in") +
+				endWire("edge_pass", "gate_review:pass", "end_done") +
+				gateBoardConnection("edge_back", "gate_review:fail", "fmn_a:port_in")),
+			verdicts:   map[string][]string{"gate_review": {"fail", "fail"}},
+			picks:      map[string]int{"gate_review": 1},
+			invariants: requirePicked("gate_review", 1, 2),
+			want:       runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2}},
+		},
+	}
+}
+
+// pickByPlace is the candidate at place (from 1), or the first.
+func pickByPlace(candidates []int, place int) int {
+	if place >= 1 && place <= len(candidates) {
+		return candidates[place-1]
+	}
+	return candidates[0]
+}
+
+// requirePicked fails unless the run's one pick took the candidate at place
+// (from 1) of count candidates, with no block on the way.
+func requirePicked(gateID string, place, count int) func(*testing.T, *formations.BoardDocument, []formations.RunEvent) {
+	return func(t *testing.T, _ *formations.BoardDocument, events []formations.RunEvent) {
+		t.Helper()
+		var picks []formations.RunPick
+		started := 0
+		for _, event := range events {
+			if event.Type == formations.RunEventPickStarted {
+				started++
+			}
+			if event.Type == formations.RunEventBlocked {
+				if code, _ := event.Data["code"].(string); code == formations.RunBlockLimitReached {
+					t.Fatalf("a best card blocked:\n%s", fullTrail(events))
+				}
+			}
+		}
+		status, err := formations.ProjectRunEvents(events[0].RunID, events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		picks = status.Picks
+		if started != 1 || len(picks) != 1 || picks[0].GateID != gateID || len(picks[0].Candidates) != count || picks[0].Attempt != picks[0].Candidates[place-1] {
+			t.Fatalf("picks = %+v after %d pick_started:\n%s", picks, started, fullTrail(events))
+		}
 	}
 }
 

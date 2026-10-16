@@ -42,13 +42,13 @@ type NeedsYouAsk struct {
 	NodeID   string
 	GateID   string
 	Ask      string // gate prompt, escalation or block reason, or final reason
-	Severity string // escalation severity, or "verdict" for a human gate
+	Severity string // escalation severity, or "verdict" or "pick" for a human gate
 	Blocks   bool
 	// Status is the run status a blocked or final ask reports.
 	Status        string
 	ResumeAllowed bool
-	// ResumePolicy is grant when the block is a spent limit (archon-o7p.8),
-	// and Limit that limit.
+	// ResumePolicy is grant, or grant_or_pick, when the block is a spent limit
+	// (archon-o7p.8, archon-gihe), and Limit that limit.
 	ResumePolicy string
 	Limit        *RunLimitReached
 }
@@ -105,8 +105,12 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 
 	asks := make([]NeedsYouAsk, 0)
 
-	// Human gates: every request still waiting for a verdict.
+	// Human gates: every request still waiting for a verdict or a pick.
 	for _, event := range OpenHumanRequests(events) {
+		severity := "verdict"
+		if isPickEvent(event) {
+			severity = "pick"
+		}
 		asks = append(asks, NeedsYouAsk{
 			RunID:    event.RunID,
 			Seq:      event.Seq,
@@ -114,7 +118,7 @@ func projectOpenNeedsYouAsks(events []RunEvent) []NeedsYouAsk {
 			GateID:   event.GateID,
 			NodeID:   needsYouNodeID(event),
 			Ask:      stringFromEventData(event, "prompt"),
-			Severity: "verdict",
+			Severity: severity,
 			Blocks:   true,
 		})
 	}

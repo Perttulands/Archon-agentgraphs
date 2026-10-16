@@ -3,6 +3,7 @@ package coordinator
 import (
 	"log"
 	"net/http"
+	"slices"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
@@ -28,7 +29,11 @@ type PendingGateRequest struct {
 	Criterion    string           `json:"criterion"`
 	Input        PendingGateInput `json:"input"`
 	// Routes say where each verdict leads on the run's frozen board (archon-n7u.7).
+	// A pick has only the pass route, which the picked attempt takes.
 	Routes []formations.GateRoute `json:"routes,omitempty"`
+	// Pick marks a request to pick the step's best attempt, with the
+	// candidate attempts (archon-gihe); the input shows them side by side.
+	Pick *formations.PendingPick `json:"pick,omitempty"`
 }
 
 // pendingGateRequest serves the latest human request for a gate while it is
@@ -66,7 +71,7 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 		reply(w, http.StatusConflict, map[string]string{"error": "human gate request is no longer pending"})
 		return
 	}
-	body := PendingGateRequest{GateID: gateID, RequestedSeq: request.Seq}
+	body := PendingGateRequest{GateID: gateID, RequestedSeq: request.Seq, Pick: formations.PendingPickOf(*request)}
 	body.Criterion, _ = request.Data["prompt"].(string)
 	input, _ := request.Data["inputRef"].(map[string]any)
 	body.Input.FromNodeID, _ = input["fromNodeId"].(string)
@@ -77,6 +82,9 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 	// the cockpit falls back to the plain verbs.
 	if board, err := c.store.ReadRunBoard(runID); err == nil {
 		body.Routes = formations.HumanGateRoutes(board, events, gateID, c.store.CurrentTime())
+		if body.Pick != nil {
+			body.Routes = slices.DeleteFunc(body.Routes, func(route formations.GateRoute) bool { return route.Verdict != "pass" })
+		}
 	} else {
 		log.Printf("run %s: gate %s routes unavailable: %v", runID, gateID, err)
 	}
