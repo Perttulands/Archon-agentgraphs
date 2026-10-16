@@ -463,12 +463,20 @@ which replaces the declared outputs; an empty list clears them. The Input
 card's window edits them beside the inputs, each bound by choosing a step
 output port.
 
-When a run finishes at a done End, each declared output is the latest accepted
-payload of its bound port and the attempt that produced it: the text for a
-text output, the snapshot path for a file or folder. A required output whose
-port never produced anything (its step did not run on the path taken, or its
-text was blank) fails the run with `run_failed` code `missing_output`, actor
-`archond`, and a reason naming the output and its `from`. So does a file or
+When a run finishes at a done End, each declared output is a payload of its
+bound port that went down the path to that End, and the attempt that produced
+it: the text for a text output, the kept snapshot path for a file or folder.
+Archon follows the routed payloads back from each delivery to a done End,
+through gate pass routes and the inputs of the attempts that ran, by the
+`origin` each routed input carries; when the bound port's output reached the
+End more than once, the latest attempt wins. A gate's fail route is never
+followed, so an attempt a gate rejected is never the run's output: when a
+fixing step's output went on to the End, that is the output. An earlier
+attempt a gate routes on as its pass is the one returned. A required output
+whose port delivered nothing to the End (its step did not run on the path
+taken, only rejected attempts of it ran, or its text was blank) fails the run
+with `run_failed` code `missing_output`, actor `archond`, and a reason naming
+the output and its `from`. So does a file or
 folder output, required or not, whose path no longer exists or is no longer of
 its kind when the run ends. An optional output the run did not produce is left
 out. A run that fails at a rejected End promises nothing: it fails with
@@ -598,7 +606,11 @@ run's paths reached; a `run_failed` with code `path_rejected` names the
 rejected End node as its `nodeId` and the routing gate as its `gateId`.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `seat_created`, `seat_prompt_consumed`, `slot_result`, `seat_cleanup`,
-`gate_kind_result`, `gate_verdict`, and a run outcome. Malformed judges emit
+`gate_kind_result`, `gate_verdict`, and a run outcome. `node_output` carries
+the `attempt` whose output it is, and every routed input, in `node_started`'s
+`inputRefs` and `gate_evaluating`'s `inputRef`, carries `origin` (`nodeId`, `portId`,
+`attempt`): the step attempt whose output it is, kept through gate pass and
+fail routes. Malformed judges emit
 `judge_attempt_failed`. Session-channel runs add `human_ask_delivered` and
 `human_ask_fallback` (see [Human gates on the session
 channel](#human-gates-on-the-session-channel)). Pending human requests appear in
@@ -708,7 +720,7 @@ contains run/node/slot identity, the role (`agent: vanilla (no role)` for a slot
 formation brief, file/link references, routed inputs, gate feedback, human
 responses, output ports and their kinds, the attempt directory and completion instructions.
 Orchestrated controllers also get their bound workers and may direct only those
-workers. The operator may type into any live seat at any time, through the seat
+workers; the workers' briefs name the same attempt directory. The operator may type into any live seat at any time, through the seat
 terminal or in CHROTE, and talk to the agent normally, whether it is working a
 dispatch or idle. The runtime pastes a brief only while the agent is idle and its
 input line is empty, waiting within the step's time limit if it has one (a long wait is
@@ -1046,16 +1058,30 @@ path of the file (any type) or directory the output is, and `text` is a one-line
 summary. A blank, relative or missing path, or one that is not a regular file
 or a directory as the kind says, blocks the step with `invalid_output_ref` or
 `unavailable_output_ref`, and the output is not recorded. When the output is
-accepted, a path outside the attempt directory is copied into it, to
-`outputs/<port-id>/<base name>`: a copy-on-write clone (`FICLONE`) where the
-file system supports one, otherwise an ordinary copy, never a hard link. A
-directory's symlinks are copied as links, its special files are left out, and
-the run's artifact directory inside it is not copied. The copy's path is what
-the ledger records, the next step receives and run evidence shows, so a later
-attempt that rewrites the same workspace file in place leaves every earlier
-attempt's output as it was. A path already inside the attempt directory is
-recorded as it is. Snapshots are always taken and live with the run's
-artifacts; a large folder output is copied in full. Routed
+accepted, Archon keeps a copy of it in the attempt directory, at
+`outputs/<port-id>/<base name>`, wherever the seat wrote it, the attempt
+directory included: a copy-on-write clone (`FICLONE`) where the file system
+supports one, otherwise an ordinary copy, never a hard link. Only a path the
+seat itself wrote under `outputs/` is kept where it is. In a folder, a symlink
+to something inside the folder stays a link (to the copy), a symlink that
+leads out of the folder is replaced by a copy of what it points at, a dangling
+one is kept as it is, special files are left out, and the run's artifact
+directory inside it is not copied. The kept copy is read-only, its files and
+directories alike. Its path is what the ledger records, the next step
+receives and run evidence shows, so neither a later attempt that rewrites the
+same workspace file in place nor a step handed the path can change an earlier
+attempt's output. A brief whose inputs include a kept file or folder says so:
+"Input paths are kept copies of earlier work and are read-only; write new
+versions in your own attempt directory." Deleting a run's artifacts takes
+`chmod -R u+w` first. Snapshots are always taken and live with the run's
+artifacts; a large folder output is copied in full. The copy runs after the
+step's seats finished, outside its time limit, and a run cancel or daemon
+shutdown stops it. A copy that fails or is stopped does not lose the
+attempt: the run blocks (code `output_not_kept`, or `coordinator_shutdown`
+for a shutdown) with the attempt's output in the block, and `run resume`
+copies it again and routes it without running the step again; resume in
+`redispatch` mode runs the step again instead. The resumed copy reads the
+paths as they are then. Routed
 data is never redacted: inline payload text, a ref file's text, controller
 plans and peer openings reach the next step exactly as the seat wrote them.
 Redaction applies only to text Archon displays to a person (run evidence, file
@@ -1866,7 +1892,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
 - `/api/runs/{runId}/evidence/attempts` returns `data.attempts`, `{runId, steps}`:
   every step that ran, in the order it first ran, or with `?node=<id>` only
   that step (an unknown step returns 404). A step has `nodeId`, `title`,
-  `judgeOf` (the gates it judged for, when it is a judge), `outputs` (its
+  `judgeOf` (the gates of the frozen mission it judges for, when it is a
+  judge), `outputs` (its
   output ports from the frozen mission: `id`, `label`, `kind`) and `attempts`,
   oldest first. An attempt has `attempt`, `status` (`running`, `done` or
   `stopped`), `startedSeq`, `startedAt`, `endedAt`, `outputSeq`, `directory`
@@ -1874,13 +1901,18 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   it exists), `outputs` (`portId`, `label`, `kind`, `text`, and for a path
   `path`, `artifact` for the artifact routes, `size` and `fileKind`: `image`,
   `pdf`, `markdown`, `json`, `text`, `binary` or `folder`), `verdicts`, each
-  gate evaluation of that attempt's output (`gateId`, `gateTitle`,
+  gate evaluation of that attempt's output, by the `origin` of the input the
+  gate judged, so a gate on another gate's fail route or after a human pass
+  judges the attempt whose output it carries (`gateId`, `gateTitle`,
   `evaluationSeq`, and once decided `seq`, `verdict`, `reason`, `evidence`,
-  `evidenceOmitted` and `decidedBy`, or `pending` while it waits), and `files`,
+  `evidenceOmitted` and `decidedBy`; `pending` while it waits; `superseded`
+  when the gate was evaluated again before its human request was answered, so
+  that request no longer waits), and `files`,
   the regular files in its directory (`name`, `path`, `size`, `modifiedAt`,
   `kind`), with `filesTruncated` past the artifact list's limits. Bytes come
   from `/api/runs/{runId}/artifacts/{name...}` by a file's `name` or an
-  output's `artifact`. Texts share the node evidence caps. `archon run attempts
+  output's `artifact`. Texts share the node evidence caps, spent on the newest
+  attempts first, so a long run cuts its oldest attempts' texts. `archon run attempts
   <runId> [--node <id>] [--json]` prints the same, offline or through
   `--server`.
 - `/api/runs/{runId}/evidence/artifacts/{name...}` returns

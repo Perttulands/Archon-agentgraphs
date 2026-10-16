@@ -222,9 +222,30 @@ type RunInputRef struct {
 	ArtifactRef string        `json:"artifactRef,omitempty"`
 	// Kind is file or folder when Ref is the path of a file or folder output.
 	Kind string `json:"kind,omitempty"`
+	// Origin is the step output this delivery carries, which travels
+	// unchanged through gates: a pass routes it as it came, and a fail
+	// route's feedback names the output the gate rejected.
+	Origin *OutputOrigin `json:"origin,omitempty"`
 	// unread marks a delivery in a formation's port that the formation has
 	// not yet run on (deliverToPort); it never leaves the engine.
 	unread bool
+}
+
+// OutputOrigin names one output: the node and port that produced it and the
+// attempt it came from, as node_output records it. The Input card's output
+// is attempt 0.
+type OutputOrigin struct {
+	NodeID  string `json:"nodeId"`
+	PortID  string `json:"portId"`
+	Attempt int    `json:"attempt"`
+}
+
+func outputOriginFromAny(value any) *OutputOrigin {
+	fields, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return &OutputOrigin{NodeID: stringFromAny(fields["nodeId"]), PortID: stringFromAny(fields["portId"]), Attempt: intFromRunEventData(fields["attempt"])}
 }
 
 func NewRunEngine(store *Store, personas *PersonaStore, executor FormationExecutor) *RunEngine {
@@ -469,9 +490,10 @@ func (e *RunEngine) runSingleFormation(runID string, board *BoardDocument, event
 			return err
 		}
 		if err := e.store.AppendRunEvent(runID, RunEvent{
-			Type:   RunEventNodeOutput,
-			NodeID: formation.ID,
-			Data:   formationOutputEventData(result),
+			Type:    RunEventNodeOutput,
+			NodeID:  formation.ID,
+			Attempt: attempt,
+			Data:    formationOutputEventData(result),
 		}); err != nil {
 			return err
 		}
@@ -558,16 +580,32 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 		if err := e.store.AppendRunEvent(runID, RunEvent{Type: "seat_result_recovered", NodeID: recoveredRef.NodeID, SlotID: recoveredRef.SlotID, Data: map[string]any{"dispatchId": recoveredRef.DispatchID}}); err != nil {
 			return nil, err
 		}
+		attempt := latestNodeAttempt(events, recoveredRef.NodeID)
 		if formation, ok := findFormation(board.Formations, recoveredRef.NodeID); ok {
-			if err := e.store.acceptAttemptOutputs(runID, formation, latestNodeAttempt(events, formation.ID), recovered.Outputs); err != nil {
+			kept, err := e.keepAttemptOutputs(runID, formation, attempt, isJudgeFormation(board, formation.ID), *recovered)
+			if err != nil {
 				if blockErr := e.appendExecutionFailureAndBlock(runID, formation.ID, err); blockErr != nil {
 					return nil, blockErr
 				}
 				return e.projectAndNotify(runID)
 			}
+			recovered = &kept
 		}
-		if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventNodeOutput, NodeID: recoveredRef.NodeID, Data: formationOutputEventData(*recovered)}); err != nil {
+		if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventNodeOutput, NodeID: recoveredRef.NodeID, Attempt: attempt, Data: formationOutputEventData(*recovered)}); err != nil {
 			return nil, err
+		}
+		events, err = e.store.ReadRunEvents(runID)
+		if err != nil {
+			return nil, err
+		}
+	} else if pending := pendingOutputFromEvent(resumeEvent); pending != nil && req.Mode != "redispatch" {
+		// The attempt finished but its outputs were not kept: keep them now,
+		// rather than run the step again.
+		if stopped, err := e.keepPendingOutput(runID, board, *pending); err != nil || stopped {
+			if err != nil {
+				return nil, err
+			}
+			return e.projectAndNotify(runID)
 		}
 		events, err = e.store.ReadRunEvents(runID)
 		if err != nil {
@@ -587,6 +625,9 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 			}
 		} else {
 			handled, err := e.reattachOpenDispatches(runID, board, openDispatches)
+			if errors.Is(err, errRunStopped) {
+				return e.projectAndNotify(runID)
+			}
 			if err != nil {
 				// A failed reattach keeps the run resumable; the reason is durable.
 				if blockErr := e.appendOpenDispatchReattachFailure(runID, openDispatches, err.Error()); blockErr != nil {
@@ -987,16 +1028,25 @@ func (e *RunEngine) reattachOpenDispatches(runID string, board *BoardDocument, r
 	if err != nil {
 		return true, err
 	}
-	if err := e.store.acceptAttemptOutputs(runID, formation, latestNodeAttempt(events, formation.ID), result.Outputs); err != nil {
+	attempt := latestNodeAttempt(events, formation.ID)
+	if result, err = e.keepAttemptOutputs(runID, formation, attempt, isJudgeFormation(board, formation.ID), result); err != nil {
+		var pending *pendingOutputError
+		if errors.As(err, &pending) {
+			if blockErr := e.appendExecutionFailureAndBlock(runID, formation.ID, err); blockErr != nil {
+				return true, blockErr
+			}
+			return true, errRunStopped
+		}
 		return true, err
 	}
 	if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
 		return true, err
 	}
 	if err := e.store.AppendRunEvent(runID, RunEvent{
-		Type:   RunEventNodeOutput,
-		NodeID: ref.NodeID,
-		Data:   formationOutputEventData(result),
+		Type:    RunEventNodeOutput,
+		NodeID:  ref.NodeID,
+		Attempt: attempt,
+		Data:    formationOutputEventData(result),
 	}); err != nil {
 		return true, err
 	}
@@ -1271,14 +1321,15 @@ func (e *RunEngine) drainRun(runID string, board *BoardDocument, gates map[strin
 			return stopped(err)
 		}
 		if err := e.store.AppendRunEvent(runID, RunEvent{
-			Type:   RunEventNodeOutput,
-			NodeID: nodeID,
-			Data:   formationOutputEventData(result),
+			Type:    RunEventNodeOutput,
+			NodeID:  nodeID,
+			Attempt: nextAttempt,
+			Data:    formationOutputEventData(result),
 		}); err != nil {
 			return err
 		}
 		markPortsRead(ready, nodeID)
-		if err := e.deliverFormationOutput(runID, board, gates, nodeID, result, ready, queued, queue); err != nil {
+		if err := e.deliverOutputPayloads(runID, board, gates, nodeID, nextAttempt, result.Outputs, ready, queued, queue); err != nil {
 			return stopped(err)
 		}
 	}
@@ -1631,12 +1682,8 @@ func (e *RunEngine) replayLedgerToReady(runID string, board *BoardDocument, gate
 // Judge chains are evaluated by their owning gate: their outputs are durable
 // evidence, never workflow inputs, including links between judges.
 func (r *ledgerReplay) output(i int, event RunEvent) error {
-	for _, gate := range r.board.Gates {
-		for _, judge := range judgeChainForGate(r.board, gate.ID) {
-			if judge.ID == event.NodeID {
-				return nil
-			}
-		}
+	if isJudgeFormation(r.board, event.NodeID) {
+		return nil
 	}
 	for _, connection := range outgoingConnections(r.board.Connections, event.NodeID) {
 		_, fromPort := endpointParts(connection.From)
@@ -1647,7 +1694,7 @@ func (r *ledgerReplay) output(i int, event RunEvent) error {
 			}
 			return errRunStopped
 		}
-		input := runInputRefForConnection(r.runID, connection, payload)
+		input := runInputRefForConnection(r.runID, connection, payload, event.Attempt)
 		input.OutputSeq = r.ordinals[connection.ID]
 		if err := r.deliver(i, connection, input); err != nil {
 			return err
@@ -1877,7 +1924,7 @@ func (e *RunEngine) deliverInputCard(runID string, board *BoardDocument, gates m
 	}); err != nil {
 		return err
 	}
-	return e.deliverOutputPayloads(runID, board, gates, mission.ID, missionOutputs, ready, queued, queue)
+	return e.deliverOutputPayloads(runID, board, gates, mission.ID, 0, missionOutputs, ready, queued, queue)
 }
 
 // startFormationExecution records a step's start before the executor can
@@ -1910,7 +1957,7 @@ func (e *RunEngine) startFormationExecution(runID string, board *BoardDocument, 
 }
 
 // executeFormation runs one attempt in its own artifact directory and accepts
-// its output: file and folder outputs are checked and snapshotted there.
+// its output: file and folder outputs are checked and kept there.
 func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecutionResult, error) {
 	if e.executor == nil {
 		return FormationExecutionResult{}, ErrRunExecutorUnavailable
@@ -1924,17 +1971,43 @@ func (e *RunEngine) executeFormation(req FormationExecution) (FormationExecution
 	if err != nil {
 		return result, err
 	}
-	if err := e.store.acceptAttemptOutputs(req.RunID, req.Formation, req.Attempt, result.Outputs); err != nil {
-		return FormationExecutionResult{}, err
+	return e.keepAttemptOutputs(req.RunID, req.Formation, req.Attempt, req.JudgeGateID != "", result)
+}
+
+// keepAttemptOutputs accepts a finished attempt's result: each file and
+// folder output is checked and kept as a read-only snapshot in the attempt's
+// directory, which the result then names. A copy that fails, or that a cancel
+// or shutdown interrupts, leaves the result pending (pendingOutputError) so a
+// resume keeps it without running the step again. The copy runs after the
+// step's seats, outside its time limit.
+func (e *RunEngine) keepAttemptOutputs(runID string, formation FormationNode, attempt int, judge bool, result FormationExecutionResult) (FormationExecutionResult, error) {
+	outputs, err := e.store.acceptAttemptOutputs(e.runContext(runID), runID, formation, attempt, result.Outputs)
+	if err != nil {
+		var notKept *outputNotKeptError
+		if !errors.As(err, &notKept) {
+			return FormationExecutionResult{}, err
+		}
+		data := formationOutputEventData(result)
+		if judge {
+			data["reason"] = "judge"
+		}
+		return FormationExecutionResult{}, &pendingOutputError{NodeID: formation.ID, Attempt: attempt, Output: data, Err: notKept}
 	}
+	result.Outputs = outputs
 	return result, nil
 }
 
-func (e *RunEngine) dispatchFormation(req FormationExecution) (FormationExecutionResult, error) {
-	ctx := context.Background()
+// runContext is the run's execution context, which a cancel or the
+// coordinator's shutdown ends.
+func (e *RunEngine) runContext(runID string) context.Context {
 	if e.executionContext != nil {
-		ctx = e.executionContext(req.RunID)
+		return e.executionContext(runID)
 	}
+	return context.Background()
+}
+
+func (e *RunEngine) dispatchFormation(req FormationExecution) (FormationExecutionResult, error) {
+	ctx := e.runContext(req.RunID)
 	if err := dispatchContextError(ctx); err != nil {
 		return FormationExecutionResult{}, err
 	}
@@ -2078,7 +2151,7 @@ func (e *RunEngine) ensureFormationOutputPayloads(runID string, formation Format
 	return nil
 }
 
-func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, outputs map[string]FormationOutputPayload, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, attempt int, outputs map[string]FormationOutputPayload, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
 	for _, connection := range outgoingConnections(board.Connections, fromNodeID) {
 		_, fromPort := endpointParts(connection.From)
 		payload, ok := outputs[fromPort]
@@ -2088,7 +2161,7 @@ func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, ga
 			}
 			return errRunStopped
 		}
-		input := runInputRefForConnection(runID, connection, payload)
+		input := runInputRefForConnection(runID, connection, payload, attempt)
 		if err := e.deliverConnection(runID, board, gates, connection, input, ready, queued, queue); err != nil {
 			return err
 		}
@@ -2096,11 +2169,9 @@ func (e *RunEngine) deliverOutputPayloads(runID string, board *BoardDocument, ga
 	return nil
 }
 
-func (e *RunEngine) deliverFormationOutput(runID string, board *BoardDocument, gates map[string]GateNode, fromNodeID string, result FormationExecutionResult, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	return e.deliverOutputPayloads(runID, board, gates, fromNodeID, result.Outputs, ready, queued, queue)
-}
-
-func runInputRefForConnection(runID string, connection BoardConnection, payload FormationOutputPayload) RunInputRef {
+// runInputRefForConnection is the delivery of one output, which attempt
+// produced, along a connection.
+func runInputRefForConnection(runID string, connection BoardConnection, payload FormationOutputPayload, attempt int) RunInputRef {
 	fromNode, fromPort := endpointParts(connection.From)
 	_, toPort := endpointParts(connection.To)
 	ref := payload.Ref
@@ -2117,6 +2188,7 @@ func runInputRefForConnection(runID string, connection BoardConnection, payload 
 		ReportRef:   payload.ReportRef,
 		ArtifactRef: payload.ArtifactRef,
 		Kind:        payload.Kind,
+		Origin:      &OutputOrigin{NodeID: fromNode, PortID: fromPort, Attempt: attempt},
 	}
 }
 
@@ -2746,9 +2818,11 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 		}
 		fromPortID := formation.Outputs[0].ID
 		var payload FormationOutputPayload
+		var outputAttempt int
 		if output, ok := answered[formation.ID]; ok && replaying {
 			finalText = stringFromEventData(output, "text")
 			payload, _ = outputPayloadForPortFromEvent(output, fromPortID)
+			outputAttempt = output.Attempt
 		} else {
 			replaying = false
 			nodeAttempt := attempt
@@ -2804,14 +2878,16 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			data := formationOutputEventData(result)
 			data["reason"] = "judge"
 			if err := e.store.AppendRunEvent(req.RunID, RunEvent{
-				Type:   RunEventNodeOutput,
-				NodeID: formation.ID,
-				Data:   data,
+				Type:    RunEventNodeOutput,
+				NodeID:  formation.ID,
+				Attempt: nodeAttempt,
+				Data:    data,
 			}); err != nil {
 				return "", err
 			}
 			finalText = result.Text
 			payload = result.Outputs[fromPortID]
+			outputAttempt = nodeAttempt
 		}
 		input = RunInputRef{
 			FromNodeID:  formation.ID,
@@ -2821,6 +2897,7 @@ func (e *RunEngine) runJudgeChain(board *BoardDocument, req GateEvaluation, chai
 			ReportRef:   payload.ReportRef,
 			ArtifactRef: payload.ArtifactRef,
 			Kind:        payload.Kind,
+			Origin:      &OutputOrigin{NodeID: formation.ID, PortID: fromPortID, Attempt: outputAttempt},
 		}
 		if input.Ref == "" {
 			input.Ref = fmt.Sprintf("ledger://%s/%s", req.RunID, formation.ID)
@@ -2922,6 +2999,10 @@ type executionFailureDetails struct {
 }
 
 func (e *RunEngine) appendExecutionFailureAndBlock(runID, nodeID string, err error) error {
+	var pending *pendingOutputError
+	if errors.As(err, &pending) {
+		return e.appendPendingOutputBlock(runID, *pending)
+	}
 	var limit *LimitReachedError
 	if errors.As(err, &limit) {
 		board, readErr := e.readRunBoard(runID)
@@ -3095,6 +3176,7 @@ func runInputRefFromAny(value any) RunInputRef {
 		ReportRef:   stringFromAny(raw["reportRef"]),
 		ArtifactRef: stringFromAny(raw["artifactRef"]),
 		Kind:        stringFromAny(raw["kind"]),
+		Origin:      outputOriginFromAny(raw["origin"]),
 	}
 }
 

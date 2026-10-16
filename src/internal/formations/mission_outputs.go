@@ -225,33 +225,17 @@ func portName(port FormationPort) string {
 	return port.ID
 }
 
-// resolveMissionOutputs lists the outputs a run that reached a done End
-// produced: for each declared output, the latest accepted payload of its bound
-// port and the attempt that produced it. It returns the failure reason when a
-// required output was never produced or a produced path no longer exists.
+// resolveMissionOutputs lists the outputs of a run that reached a done End:
+// each declared output is its bound port's payload from the attempt the run
+// carried to a done End (doneEndOutputs), with that attempt. It returns the
+// failure reason when no attempt of a required output's port reached a done
+// End or a produced path no longer exists.
 func resolveMissionOutputs(board *BoardDocument, events []RunEvent) ([]RunOutput, string) {
 	card := missionInputCard(board)
 	if card == nil || len(card.Outputs) == 0 {
 		return nil, ""
 	}
-	type produced struct {
-		payload FormationOutputPayload
-		attempt int
-	}
-	latest := map[string]produced{}
-	attempts := map[string]int{}
-	for _, event := range events {
-		switch event.Type {
-		case RunEventNodeStarted:
-			if event.Attempt > 0 {
-				attempts[event.NodeID] = event.Attempt
-			}
-		case RunEventNodeOutput:
-			for portID, payload := range outputPayloadsFromAny(event.Data["outputs"]) {
-				latest[event.NodeID+":"+portID] = produced{payload: payload, attempt: attempts[event.NodeID]}
-			}
-		}
-	}
+	reached := doneEndOutputs(board, events)
 	var outputs []RunOutput
 	var problems []string
 	for _, output := range card.Outputs {
@@ -260,7 +244,7 @@ func resolveMissionOutputs(board *BoardDocument, events []RunEvent) ([]RunOutput
 			kind = MissionInputText
 		}
 		nodeID, portID, _ := splitEndpoint(output.From)
-		got, ok := latest[output.From]
+		got, ok := reached[OutputOrigin{NodeID: nodeID, PortID: portID}]
 		value := ""
 		if ok {
 			value = got.payload.Text
@@ -270,7 +254,7 @@ func resolveMissionOutputs(board *BoardDocument, events []RunEvent) ([]RunOutput
 		}
 		if !ok || strings.TrimSpace(value) == "" {
 			if output.Required {
-				problems = append(problems, fmt.Sprintf("required output %s was not produced by %s", output.Name, output.From))
+				problems = append(problems, fmt.Sprintf("required output %s: no output of %s reached a done End", output.Name, output.From))
 			}
 			continue
 		}
@@ -284,6 +268,108 @@ func resolveMissionOutputs(board *BoardDocument, events []RunEvent) ([]RunOutput
 		return outputs, strings.Join(problems, "; ")
 	}
 	return outputs, ""
+}
+
+// reachedOutput is one attempt's payload on a port.
+type reachedOutput struct {
+	payload FormationOutputPayload
+	attempt int
+}
+
+// doneEndOutputs follows what reached each done End back to the outputs it
+// came from, keyed by node and port with Attempt zero. A delivery names the
+// output it carries (RunInputRef.Origin), which passes through gates
+// unchanged, and each attempt's node_started names what it took in. From
+// every delivery to a done End, a step's output and a gate's pass route
+// alike, the walk goes to the output delivered and on through the inputs of
+// the attempt that produced it. A delivery a gate's fail route made carries
+// rejected work and is not followed, so a rejected attempt is never reached
+// through it. A pass that routes an earlier attempt's output, as best of N
+// does, reaches that attempt. Where several attempts of one port were
+// reached, the latest counts.
+func doneEndOutputs(board *BoardDocument, events []RunEvent) map[OutputOrigin]reachedOutput {
+	gates := map[string]bool{}
+	for _, gate := range board.Gates {
+		gates[gate.ID] = true
+	}
+	judges := judgedGates(board)
+	type attemptKey struct {
+		nodeID  string
+		attempt int
+	}
+	inputs := map[attemptKey][]RunInputRef{}
+	produced := map[attemptKey]map[string]FormationOutputPayload{}
+	var queue []OutputOrigin
+	follow := func(input RunInputRef) {
+		if input.Origin != nil && !(gates[input.FromNodeID] && input.FromPortID == "fail") {
+			queue = append(queue, *input.Origin)
+		}
+	}
+	toDoneEnd := func(connection BoardConnection) bool {
+		toNode, _ := endpointParts(connection.To)
+		end, ok := findEnd(board, toNode)
+		return ok && end.Outcome != EndOutcomeRejected
+	}
+	for _, event := range events {
+		switch event.Type {
+		case RunEventNodeStarted:
+			inputs[attemptKey{event.NodeID, event.Attempt}] = runInputRefsFromAny(event.Data["inputRefs"])
+		case RunEventNodeOutput:
+			if len(judges[event.NodeID]) > 0 {
+				continue
+			}
+			payloads := outputPayloadsFromAny(event.Data["outputs"])
+			produced[attemptKey{event.NodeID, event.Attempt}] = payloads
+			for _, connection := range outgoingConnections(board.Connections, event.NodeID) {
+				_, fromPort := endpointParts(connection.From)
+				if _, ok := payloads[fromPort]; ok && toDoneEnd(connection) {
+					queue = append(queue, OutputOrigin{NodeID: event.NodeID, PortID: fromPort, Attempt: event.Attempt})
+				}
+			}
+		case RunEventGateVerdict:
+			if stringFromEventData(event, "routePort") != "pass" {
+				continue
+			}
+			for _, route := range gateVerdictRoutes(board, event, eventGateID(event), "pass") {
+				if toDoneEnd(route) {
+					follow(runInputRefFromAny(event.Data["inputRef"]))
+				}
+			}
+		}
+	}
+	reached := map[OutputOrigin]reachedOutput{}
+	seen := map[OutputOrigin]bool{}
+	for len(queue) > 0 {
+		origin := queue[0]
+		queue = queue[1:]
+		if seen[origin] {
+			continue
+		}
+		seen[origin] = true
+		key := attemptKey{origin.NodeID, origin.Attempt}
+		payload, ok := produced[key][origin.PortID]
+		if !ok {
+			continue
+		}
+		port := OutputOrigin{NodeID: origin.NodeID, PortID: origin.PortID}
+		if got, ok := reached[port]; !ok || origin.Attempt > got.attempt {
+			reached[port] = reachedOutput{payload: payload, attempt: origin.Attempt}
+		}
+		for _, input := range inputs[key] {
+			follow(input)
+		}
+	}
+	return reached
+}
+
+// runInputRefsFromAny reads a node_started's inputRefs.
+func runInputRefsFromAny(value any) []RunInputRef {
+	items, _ := value.([]any)
+	refs := make([]RunInputRef, 0, len(items))
+	for _, item := range items {
+		refs = append(refs, runInputRefFromAny(item))
+	}
+	return refs
 }
 
 // RunOutputsFromEventData reads the outputs recorded on run_succeeded.

@@ -513,7 +513,7 @@ paths:
         type: string
     get:
       summary: List every attempt of every step, with its outputs, verdicts and files (archon-5tg1)
-      description: Steps in the order they first ran, attempts oldest first. Texts share the node evidence caps (64 KiB each, 2 MiB per response) and redaction. File bytes come from /api/runs/{runId}/artifacts/{name} by a file's name or an output's artifact.
+      description: Steps in the order they first ran, attempts oldest first. Texts share the node evidence caps (64 KiB each, 2 MiB per response, spent on the newest attempts first) and redaction. File bytes come from /api/runs/{runId}/artifacts/{name} by a file's name or an output's artifact.
       responses:
         '200':
           description: Enveloped data.attempts.
@@ -1114,7 +1114,7 @@ components:
           - folder
         value:
           type: string
-          description: The text, or the absolute snapshot path of a file or folder.
+          description: The text, or the absolute path of the read-only kept copy of a file or folder.
         nodeId:
           type: string
         portId:
@@ -1137,7 +1137,7 @@ components:
                 type: string
               judgeOf:
                 type: array
-                description: The gates this step judged for, when it is a judge.
+                description: The gates of the run's frozen mission this step judges for, when it is a judge.
                 items:
                   type: string
               outputs:
@@ -1211,7 +1211,7 @@ components:
                             - folder
                     verdicts:
                       type: array
-                      description: Each gate evaluation of this attempt's output.
+                      description: Each gate evaluation of this attempt's output, matched by the origin of the input the gate judged, whichever route brought it there.
                       items:
                         type: object
                         properties:
@@ -1229,6 +1229,9 @@ components:
                             - fail
                           pending:
                             type: boolean
+                          superseded:
+                            type: boolean
+                            description: The gate was evaluated again before its human request was answered; that request no longer waits.
                           reason:
                             $ref: '#/components/schemas/EvidenceText'
                           evidence:

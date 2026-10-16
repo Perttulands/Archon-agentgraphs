@@ -172,8 +172,9 @@ archon $S mission output "$M"
 `mission output "$M" <name>` declares an output or changes only the flags
 given (`--kind`, `--from`, `--required` or `--optional`, `--description`);
 `--delete` removes it, and without a name it lists them. Names follow the input
-rule. When the run ends at a `done` End, each output is the latest accepted
-payload of its port. A required output its path never produced, or a file or
+rule. When the run ends at a `done` End, each output is the payload of its
+port that went down the path to that End, never one a gate rejected. A
+required output that path never delivered, or a file or
 folder no longer there, fails the run (`run_failed`, code `missing_output`); a
 run that ends at a `rejected` End promises nothing. Validation reports
 `unbound_mission_output` (no `--from`, or no such step port),

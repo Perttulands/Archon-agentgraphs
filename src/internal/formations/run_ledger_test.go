@@ -222,6 +222,7 @@ func TestS4RejectAppendAfterFinal(t *testing.T) {
 func s4RunFixture(t *testing.T) (*Store, *PersonaStore) {
 	t.Helper()
 	workspace := t.TempDir()
+	thawAfter(t, workspace)
 	agentsDir := filepath.Join(t.TempDir(), "agents")
 	return NewStore(workspace), NewPersonaStore(agentsDir)
 }

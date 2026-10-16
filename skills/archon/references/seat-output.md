@@ -26,14 +26,16 @@ and only its declared output port IDs, then this run's exact sentinel:
     existing file or directory, of any type; `text` is a one-line summary. A
     missing ref, or a path that is not a file (or not a directory), blocks
     routing like a bad text ref.
-- When Archon accepts a file or folder output that lies outside the attempt
-  directory, it copies it to `<attempt>/outputs/<port>/<basename>` (a reflink
-  where the filesystem offers one, otherwise an ordinary copy) and routes and
-  records the copy's path. A later attempt that rewrites the same project file
-  therefore leaves every earlier version readable. A path already inside the
-  attempt directory is routed as it is.
+- When Archon accepts a file or folder output, wherever it lies, it copies it
+  to `<attempt>/outputs/<port>/<basename>` (a reflink where the filesystem
+  offers one, otherwise an ordinary copy), makes the copy read-only, and routes
+  and records the copy's path. In a folder, links inside it stay links and
+  links that lead out of it are replaced by what they point at. A later attempt
+  that rewrites the same project file, or a step handed the path, therefore
+  leaves every earlier version as it was.
 - A step downstream of a file or folder port receives the path in its brief as
-  `input file: <path>` or `input folder: <path>`.
+  `input file: <path>` or `input folder: <path>`. Input paths are kept copies
+  and read-only: write new versions in your own attempt directory.
 - Free-form answer text outside the block is not routed.
 - The sentinel must carry this run's ID; another run's sentinel never completes
   a dispatch.

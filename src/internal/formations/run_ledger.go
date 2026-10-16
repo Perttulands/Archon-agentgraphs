@@ -563,6 +563,9 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if openDispatches, ok := last.Data["openDispatches"]; ok {
 			data["openDispatches"] = openDispatches
 		}
+		if pending, ok := last.Data["pendingOutput"]; ok {
+			data["pendingOutput"] = pending
+		}
 		if req.CompletedDispatchID != "" {
 			refs := unresolvedDispatches(events)
 			if len(refs) != 1 || refs[0].DispatchID != req.CompletedDispatchID {

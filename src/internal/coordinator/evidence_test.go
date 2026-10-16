@@ -345,7 +345,7 @@ outputs = [{ name = "result", from = "fmn_after:port_after_out", required = true
 		t.Fatal(err)
 	}
 	steps := body.Data.Attempts.Steps
-	if body.Data.Attempts.RunID != id || len(steps) != 2|| steps[0].NodeID != "fmn_work" || steps[1].NodeID != "fmn_after" {
+	if body.Data.Attempts.RunID != id || len(steps) != 2 || steps[0].NodeID != "fmn_work" || steps[1].NodeID != "fmn_after" {
 		t.Fatalf("attempts = %s", w.Body.String())
 	}
 	work := steps[0].Attempts

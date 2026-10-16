@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"syscall"
 )
@@ -18,9 +20,6 @@ import (
 
 // evidenceKindHeadBytes is how much of a file is read to classify it.
 const evidenceKindHeadBytes = 512
-
-// attemptAt locates one attempt: its step's index and its own.
-type attemptAt struct{ step, attempt int }
 
 // Attempt statuses.
 const (
@@ -83,7 +82,9 @@ type AttemptOutput struct {
 }
 
 // AttemptVerdict is one gate evaluation of the attempt's output and the
-// verdict it reached, or Pending while it waits.
+// verdict it reached, or Pending while it waits. Superseded marks a human
+// request a later evaluation of the gate replaced before anyone answered it;
+// it never gets a verdict.
 type AttemptVerdict struct {
 	GateID          string         `json:"gateId"`
 	GateTitle       string         `json:"gateTitle,omitempty"`
@@ -91,6 +92,7 @@ type AttemptVerdict struct {
 	Seq             int            `json:"seq,omitempty"`
 	Verdict         string         `json:"verdict,omitempty"`
 	Pending         bool           `json:"pending,omitempty"`
+	Superseded      bool           `json:"superseded,omitempty"`
 	Reason          EvidenceText   `json:"reason"`
 	Evidence        []EvidenceItem `json:"evidence"`
 	EvidenceOmitted int            `json:"evidenceOmitted,omitempty"`
@@ -151,15 +153,32 @@ func (s *Store) ProjectRunAttempts(runID, nodeID string) (*RunAttemptsEvidence, 
 	return evidence, nil
 }
 
+// verdictAt locates one evaluation's verdict: the step, its attempt number
+// and the verdict's index in that attempt.
+type verdictAt struct {
+	nodeID  string
+	attempt int
+	index   int
+}
+
+// openEvaluation is a gate's latest evaluation still waiting on its verdict;
+// asked marks one that asked a human.
+type openEvaluation struct {
+	at    verdictAt
+	asked bool
+}
+
+// projectRunAttempts reads the attempts from the ledger. Each node_output
+// names its attempt, and each gate evaluation's input names the output it
+// judges (RunInputRef.Origin), whichever route brought it there, so a verdict
+// joins the attempt it judged. A judge's gates come from the run's board.
 func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []RunEvent, status *RunStatusProjection, artifactRoots []string) *RunAttemptsEvidence {
 	evidence := &RunAttemptsEvidence{RunID: runID, Steps: []StepAttempts{}}
-	capper := &evidenceCapper{remaining: EvidenceNodeBudgetBytes}
+	// Each text is capped here; the response's budget is spent newest
+	// attempt first once every attempt is read (spendAttemptsBudget).
+	capper := &evidenceCapper{remaining: math.MaxInt}
+	judges := judgedGates(board)
 	stepIndex := map[string]int{}
-	// outputAttempt maps a node_output seq to the attempt that produced it.
-	outputAttempt := map[int]attemptAt{}
-	latestOutput := map[string]int{}
-	verdictAt := map[string]attemptAt{}
-	verdictIndex := map[string]int{}
 	current := func(nodeID string) *StepAttempt {
 		index, ok := stepIndex[nodeID]
 		if !ok || len(evidence.Steps[index].Attempts) == 0 {
@@ -168,6 +187,27 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 		attempts := evidence.Steps[index].Attempts
 		return &attempts[len(attempts)-1]
 	}
+	find := func(nodeID string, number int) *StepAttempt {
+		index, ok := stepIndex[nodeID]
+		if !ok {
+			return nil
+		}
+		attempts := evidence.Steps[index].Attempts
+		for i := len(attempts) - 1; i >= 0; i-- {
+			if attempts[i].Attempt == number {
+				return &attempts[i]
+			}
+		}
+		return nil
+	}
+	verdict := func(at verdictAt) *AttemptVerdict {
+		if attempt := find(at.nodeID, at.attempt); attempt != nil && at.index < len(attempt.Verdicts) {
+			return &attempt.Verdicts[at.index]
+		}
+		return nil
+	}
+	open := map[string]openEvaluation{}
+	asked := map[int]verdictAt{}
 	for index, event := range events {
 		switch event.Type {
 		case RunEventNodeStarted:
@@ -191,7 +231,7 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 					port.Kind = PortKind(port)
 					outputs = append(outputs, port)
 				}
-				evidence.Steps = append(evidence.Steps, StepAttempts{NodeID: formation.ID, Title: capper.text(formation.Title).Text, Outputs: outputs, Attempts: []StepAttempt{}})
+				evidence.Steps = append(evidence.Steps, StepAttempts{NodeID: formation.ID, Title: capper.text(formation.Title).Text, JudgeOf: judges[formation.ID], Outputs: outputs, Attempts: []StepAttempt{}})
 			}
 			step := &evidence.Steps[at]
 			// A restart before dispatch records the same attempt again.
@@ -205,51 +245,79 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 				Outputs: []AttemptOutput{}, Verdicts: []AttemptVerdict{}, Files: []AttemptFile{},
 			})
 		case RunEventNodeOutput:
-			attempt := current(event.NodeID)
+			attempt := find(event.NodeID, event.Attempt)
 			if attempt == nil {
 				continue
 			}
 			step := &evidence.Steps[stepIndex[event.NodeID]]
 			attempt.Status, attempt.OutputSeq, attempt.EndedAt = AttemptDone, event.Seq, event.Timestamp
 			attempt.Outputs = attemptOutputs(step.Outputs, outputPayloadsFromAny(event.Data["outputs"]), capper, artifactRoots)
-			outputAttempt[event.Seq] = attemptAt{stepIndex[event.NodeID], len(step.Attempts) - 1}
-			latestOutput[event.NodeID] = event.Seq
 		case RunEventGateEvaluating:
-			input := runInputRefFromAny(event.Data["inputRef"])
-			outputSeq, ok := latestOutput[input.FromNodeID]
+			gateID := eventGateID(event)
+			// A new evaluation replaces a request still waiting: the gate
+			// takes a verdict only on its latest request.
+			if waiting, ok := open[gateID]; ok {
+				if replaced := verdict(waiting.at); replaced != nil && waiting.asked {
+					replaced.Pending, replaced.Superseded = false, true
+				}
+				delete(open, gateID)
+			}
+			origin := runInputRefFromAny(event.Data["inputRef"]).Origin
+			if origin == nil {
+				continue
+			}
+			attempt := find(origin.NodeID, origin.Attempt)
+			if attempt == nil {
+				continue
+			}
+			judged := AttemptVerdict{GateID: gateID, EvaluationSeq: event.Seq, Pending: !status.Final, Reason: capper.text(""), Evidence: []EvidenceItem{}}
+			if gate, ok := findGate(board.Gates, gateID); ok {
+				judged.GateTitle = capper.text(gate.Title).Text
+			}
+			attempt.Verdicts = append(attempt.Verdicts, judged)
+			open[gateID] = openEvaluation{at: verdictAt{nodeID: origin.NodeID, attempt: origin.Attempt, index: len(attempt.Verdicts) - 1}}
+		case RunEventHumanInputRequested:
+			if waiting, ok := open[eventGateID(event)]; ok {
+				waiting.asked = true
+				open[eventGateID(event)] = waiting
+				asked[event.Seq] = waiting.at
+			}
+		case RunEventHumanVerdictRecorded:
+			at, ok := asked[intFromRunEventData(event.Data["requestedSeq"])]
 			if !ok {
 				continue
 			}
-			at := outputAttempt[outputSeq]
-			attempt := &evidence.Steps[at.step].Attempts[at.attempt]
-			verdict := AttemptVerdict{GateID: event.GateID, EvaluationSeq: event.Seq, Pending: !status.Final, Reason: capper.text(""), Evidence: []EvidenceItem{}}
-			if gate, ok := findGate(board.Gates, event.GateID); ok {
-				verdict.GateTitle = capper.text(gate.Title).Text
+			if decided := verdict(at); decided != nil {
+				decided.Verdict, decided.Pending = normalizeGateVerdict(stringFromEventData(event, "verdict")), false
+				decided.Reason = capper.text(stringFromEventData(event, "reason"))
+				decided.DecidedBy = stringFromEventData(event, "decidedBy")
 			}
-			attempt.Verdicts = append(attempt.Verdicts, verdict)
-			verdictAt[event.GateID] = at
-			verdictIndex[event.GateID] = len(attempt.Verdicts) - 1
-			for _, judge := range stringsFromEventData(event.Data["judgeChain"]) {
-				if step, ok := stepIndex[judge]; ok && !containsToolString(evidence.Steps[step].JudgeOf, event.GateID) {
-					evidence.Steps[step].JudgeOf = append(evidence.Steps[step].JudgeOf, event.GateID)
-				}
-			}
-		case RunEventHumanVerdictRecorded:
-			if verdict := pendingAttemptVerdict(evidence, verdictAt, verdictIndex, event.GateID); verdict != nil {
-				verdict.DecidedBy = stringFromEventData(event, "decidedBy")
+			if waiting, ok := open[eventGateID(event)]; ok && waiting.at == at {
+				delete(open, eventGateID(event))
 			}
 		case RunEventGateVerdict:
-			verdict := pendingAttemptVerdict(evidence, verdictAt, verdictIndex, event.GateID)
-			if verdict == nil {
+			gateID := eventGateID(event)
+			waiting, ok := open[gateID]
+			at := waiting.at
+			if requestedSeq := intFromRunEventData(event.Data["requestedSeq"]); requestedSeq > 0 {
+				at, ok = asked[requestedSeq]
+			}
+			if !ok {
 				continue
 			}
-			verdict.Seq, verdict.Verdict, verdict.Pending = event.Seq, stringFromEventData(event, "verdict"), false
-			verdict.Reason = capper.text(stringFromEventData(event, "reason"))
-			verdict.Evidence, verdict.EvidenceOmitted = evidenceItems(event.Data["evidence"], capper)
-			if decidedBy := stringFromEventData(event, "decidedBy"); decidedBy != "" {
-				verdict.DecidedBy = decidedBy
+			if waiting.at == at {
+				delete(open, gateID)
 			}
-			delete(verdictAt, event.GateID)
+			decided := verdict(at)
+			if decided == nil {
+				continue
+			}
+			decided.Seq, decided.Verdict, decided.Pending, decided.Superseded = event.Seq, stringFromEventData(event, "verdict"), false, false
+			decided.Reason = capper.text(stringFromEventData(event, "reason"))
+			decided.Evidence, decided.EvidenceOmitted = evidenceItems(event.Data["evidence"], capper)
+			if decidedBy := stringFromEventData(event, "decidedBy"); decidedBy != "" {
+				decided.DecidedBy = decidedBy
+			}
 		case RunEventBlocked, RunEventError, RunEventFailed, RunEventCanceled:
 			for _, nodeID := range runProblemNodes(events, index) {
 				if attempt := current(nodeID); attempt != nil && attempt.Status == AttemptRunning && event.Type != RunEventError {
@@ -257,9 +325,20 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 				}
 			}
 		case RunEventResumed:
-			// A resumed run may reattach a stopped attempt and record its output.
-			for _, step := range evidence.Steps {
-				if attempt := current(step.NodeID); attempt != nil && attempt.Status == AttemptStopped && attempt.OutputSeq == 0 {
+			// A resume carries on only the attempts it reattaches, or whose
+			// pending outputs it keeps; a redispatch runs them again instead.
+			if stringFromEventData(event, "resumeMode") == "redispatch" {
+				continue
+			}
+			var resumed []*StepAttempt
+			for _, ref := range enrichOpenDispatchRefs(events[:index], openDispatchRefsFromEvent(event)) {
+				resumed = append(resumed, current(ref.NodeID))
+			}
+			if pending := pendingOutputFromEvent(event); pending != nil {
+				resumed = append(resumed, find(pending.NodeID, pending.Attempt))
+			}
+			for _, attempt := range resumed {
+				if attempt != nil && attempt.Status == AttemptStopped && attempt.OutputSeq == 0 {
 					attempt.Status, attempt.EndedAt = AttemptRunning, ""
 				}
 			}
@@ -274,16 +353,49 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			}
 		}
 	}
+	spendAttemptsBudget(evidence)
 	return evidence
 }
 
-// pendingAttemptVerdict is the evaluation of a gate still waiting on its verdict.
-func pendingAttemptVerdict(evidence *RunAttemptsEvidence, at map[string]attemptAt, index map[string]int, gateID string) *AttemptVerdict {
-	where, ok := at[gateID]
-	if !ok {
-		return nil
+// spendAttemptsBudget spends the response's text budget on the step titles
+// and port labels first, then attempt by attempt, newest first, so a long run
+// keeps its latest attempts whole and its oldest give way.
+func spendAttemptsBudget(evidence *RunAttemptsEvidence) {
+	remaining := EvidenceNodeBudgetBytes
+	spendString := func(text *string) {
+		*text, _ = CapEvidenceText(*text, remaining)
+		remaining -= len(*text)
 	}
-	return &evidence.Steps[where.step].Attempts[where.attempt].Verdicts[index[gateID]]
+	spend := func(text *EvidenceText) {
+		capped, truncated := CapEvidenceText(text.Text, remaining)
+		text.Text, text.Truncated = capped, text.Truncated || truncated
+		remaining -= len(capped)
+	}
+	var newestFirst []*StepAttempt
+	for i := range evidence.Steps {
+		step := &evidence.Steps[i]
+		spendString(&step.Title)
+		for j := range step.Outputs {
+			spendString(&step.Outputs[j].Label)
+		}
+		for j := range step.Attempts {
+			newestFirst = append(newestFirst, &step.Attempts[j])
+		}
+	}
+	sort.SliceStable(newestFirst, func(i, j int) bool { return newestFirst[i].StartedSeq > newestFirst[j].StartedSeq })
+	for _, attempt := range newestFirst {
+		for i := range attempt.Outputs {
+			spend(&attempt.Outputs[i].Text)
+		}
+		for i := range attempt.Verdicts {
+			verdict := &attempt.Verdicts[i]
+			spendString(&verdict.GateTitle)
+			spend(&verdict.Reason)
+			for j := range verdict.Evidence {
+				spend(&verdict.Evidence[j].Text)
+			}
+		}
+	}
 }
 
 // attemptOutputs lists an output's payloads in the step's port order, with

@@ -295,8 +295,8 @@ effort = "medium"
 }
 
 // siteExecutor builds each folder step's site in its attempt directory. Work's
-// text says whether lint passed; After removes the site it was handed when
-// removeSite is set, as a careless later step might.
+// text says whether lint passed; After forces the read-only site it was
+// handed away when removeSite is set, as a careless later step might.
 type siteExecutor struct {
 	workText   string
 	removeSite bool
@@ -306,7 +306,10 @@ func (e *siteExecutor) ExecuteFormation(req FormationExecution) (FormationExecut
 	port := req.Formation.Outputs[0]
 	if PortKind(port) == PortKindText {
 		if e.removeSite {
-			if err := os.RemoveAll(req.Inputs[0].Ref); err != nil {
+			if err := thawDir(filepath.Dir(req.Inputs[0].Ref)); err != nil {
+				return FormationExecutionResult{}, err
+			}
+			if err := removeKept(req.Inputs[0].Ref); err != nil {
 				return FormationExecutionResult{}, err
 			}
 		}
@@ -326,21 +329,40 @@ func TestMissionOutputsResolveWhereTheRunEnds(t *testing.T) {
 	const site = `[{ name = "site", kind = "folder", from = "fmn_work:port_work_out", required = true }]`
 	t.Run("a present folder is the run's output", func(t *testing.T) {
 		store, status := startDraftRun(t, siteBoardFixture(site), &siteExecutor{workText: "LINT OK"})
-		want := []RunOutput{{Name: "site", Kind: PortKindFolder, Value: filepath.Join(store.Workspace, ".archon", "artifacts", status.RunID, "fmn_work", "1", "site"), NodeID: "fmn_work", PortID: "port_work_out", Attempt: 1}}
+		// The site the seat built in its attempt directory is kept under outputs/.
+		want := []RunOutput{{Name: "site", Kind: PortKindFolder, Value: filepath.Join(store.Workspace, ".archon", "artifacts", status.RunID, "fmn_work", "1", "outputs", "port_work_out", "site"), NodeID: "fmn_work", PortID: "port_work_out", Attempt: 1}}
 		if status.Status != RunStatusSucceeded || !reflect.DeepEqual(status.Outputs, want) {
 			t.Fatalf("status = %+v, want succeeded with %+v", status, want)
 		}
+		readOnly(t, filepath.Join(want[0].Value, "index.html"))
+		readOnly(t, want[0].Value)
 	})
 	t.Run("a required folder the run never produced fails it", func(t *testing.T) {
 		outputs := `[{ name = "fixed", kind = "folder", from = "fmn_fix:port_fix_out", required = true }]`
 		store, status := startDraftRun(t, siteBoardFixture(outputs), &siteExecutor{workText: "LINT OK"})
 		failed := lastRunEvent(t, store, status.RunID)
 		reason, _ := failed.Data["reason"].(string)
-		if status.Status != RunStatusFailed || failed.Type != RunEventFailed || failed.Data["code"] != RunFailureMissingOutput || !strings.Contains(reason, "required output fixed was not produced by fmn_fix:port_fix_out") {
+		if status.Status != RunStatusFailed || failed.Type != RunEventFailed || failed.Data["code"] != RunFailureMissingOutput || !strings.Contains(reason, "required output fixed: no output of fmn_fix:port_fix_out reached a done End") {
 			t.Fatalf("status = %+v, failure = %+v", status, failed)
 		}
 		if len(status.Outputs) != 0 {
 			t.Fatalf("a failed run listed outputs: %+v", status.Outputs)
+		}
+	})
+	t.Run("an attempt a gate rejected is never the run's output", func(t *testing.T) {
+		// Work's site fails lint; the fail route sends it to Fix, whose
+		// own site reaches the done End.
+		store, status := startDraftRun(t, siteBoardFixture(site), &siteExecutor{workText: "lint failed"})
+		failed := lastRunEvent(t, store, status.RunID)
+		reason, _ := failed.Data["reason"].(string)
+		if status.Status != RunStatusFailed || failed.Data["code"] != RunFailureMissingOutput || !strings.Contains(reason, "required output site: no output of fmn_work:port_work_out reached a done End") {
+			t.Fatalf("status = %+v, failure = %+v; want the rejected site refused", status, failed)
+		}
+		fixed := `[{ name = "fixed", kind = "folder", from = "fmn_fix:port_fix_out", required = true }]`
+		store, status = startDraftRun(t, siteBoardFixture(fixed), &siteExecutor{workText: "lint failed"})
+		want := []RunOutput{{Name: "fixed", Kind: PortKindFolder, Value: filepath.Join(store.Workspace, ".archon", "artifacts", status.RunID, "fmn_fix", "1", "outputs", "port_fix_out", "site"), NodeID: "fmn_fix", PortID: "port_fix_out", Attempt: 1}}
+		if status.Status != RunStatusSucceeded || !reflect.DeepEqual(status.Outputs, want) {
+			t.Fatalf("status = %+v, want succeeded with %+v", status, want)
 		}
 	})
 	t.Run("an optional output the run never produced is left out", func(t *testing.T) {
@@ -565,51 +587,5 @@ func TestSeatPromptNamesTheAttemptDirectoryAndOutputKinds(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, prompt)
 		}
-	}
-}
-
-// A folder snapshot copies files, keeps symlinks as links, leaves out the run's
-// own artifact directories inside it, and stays put when the source is
-// rewritten in place, so it is a copy and never a hard link.
-func TestSnapshotOutputCopiesAFolderOnce(t *testing.T) {
-	source := filepath.Join(t.TempDir(), "site")
-	artifacts := filepath.Join(source, ".archon", "artifacts", "run_x")
-	for _, dir := range []string{filepath.Join(source, "pages"), artifacts} {
-		if err := os.MkdirAll(dir, 0o770); err != nil {
-			t.Fatal(err)
-		}
-	}
-	page := filepath.Join(source, "pages", "index.html")
-	for path, body := range map[string]string{page: "first", filepath.Join(artifacts, "old.md"): "artifact"} {
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Symlink("pages/index.html", filepath.Join(source, "home.html")); err != nil {
-		t.Fatal(err)
-	}
-	parent := filepath.Join(t.TempDir(), "outputs", "port_site")
-	copied, err := snapshotOutput(source, parent, []string{artifacts})
-	if err != nil || copied != filepath.Join(parent, "site") {
-		t.Fatalf("snapshot = %q, %v", copied, err)
-	}
-	if err := os.WriteFile(page, []byte("rewritten"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if body, err := os.ReadFile(filepath.Join(copied, "pages", "index.html")); err != nil || string(body) != "first" {
-		t.Fatalf("snapshot page = %q, %v; want the first version", body, err)
-	}
-	if link, err := os.Readlink(filepath.Join(copied, "home.html")); err != nil || link != "pages/index.html" {
-		t.Fatalf("snapshot link = %q, %v", link, err)
-	}
-	if _, err := os.Stat(filepath.Join(copied, ".archon", "artifacts", "run_x")); !os.IsNotExist(err) {
-		t.Fatalf("the run's artifact directory was copied: %v", err)
-	}
-	// Accepting the same attempt again replaces its earlier copy.
-	if again, err := snapshotOutput(source, parent, []string{artifacts}); err != nil || again != copied {
-		t.Fatalf("second snapshot = %q, %v", again, err)
-	}
-	if body, _ := os.ReadFile(filepath.Join(copied, "pages", "index.html")); string(body) != "rewritten" {
-		t.Fatalf("second snapshot page = %q", body)
 	}
 }

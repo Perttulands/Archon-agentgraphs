@@ -1,6 +1,8 @@
 package formations
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,16 +16,23 @@ import (
 // Every attempt of every step, judges included, has its own artifact
 // directory, .archon/artifacts/<run>/<node>/<attempt>/, created at dispatch
 // (archon-5tg1). The seat is told to write the files it produces there. When
-// the attempt's output is accepted, each file or folder output whose path lies
-// outside that directory is copied in, to outputs/<port>/<basename>, so a later
-// attempt that rewrites the same workspace file in place cannot change what an
-// earlier attempt produced. The copy is what the ledger records and routes.
+// the attempt's output is accepted, each file or folder output is copied to
+// outputs/<port>/<basename> in that directory, wherever the seat wrote it, and
+// the copy is made read-only, files and directories alike. The copy is what
+// the ledger records and routes, so neither a later attempt rewriting the same
+// workspace file nor a later step handed the path can change what an earlier
+// attempt produced. The copy follows links that leave the folder, so it holds
+// their content as it was.
 
 // attemptOutputsDir holds an attempt's snapshots of its file and folder outputs.
 const attemptOutputsDir = "outputs"
 
 // ficlone is the Linux FICLONE ioctl, a copy-on-write clone of a whole file.
 const ficlone = 0x40049409
+
+// copyChunkBytes is how much a copy moves between checks for a cancel or a
+// shutdown.
+const copyChunkBytes = 8 << 20
 
 // attemptArtifactDir is the absolute artifact directory of one attempt.
 func (s *Store) attemptArtifactDir(runID, nodeID string, attempt int) (string, error) {
@@ -60,16 +69,149 @@ func latestNodeAttempt(events []RunEvent, nodeID string) int {
 	return attempt
 }
 
-// acceptAttemptOutputs checks an attempt's file and folder outputs and
-// snapshots each into the attempt's directory. A text output gets its kind and
-// nothing else. The check fails like an unreadable ref does: the step blocks.
-func (s *Store) acceptAttemptOutputs(runID string, formation FormationNode, attempt int, outputs map[string]FormationOutputPayload) error {
-	if len(outputs) == 0 {
+// isJudgeFormation reports whether a step judges for a gate.
+func isJudgeFormation(board *BoardDocument, nodeID string) bool {
+	return len(judgedGates(board)[nodeID]) > 0
+}
+
+// judgedGates maps each judge step to the gates it judges for.
+func judgedGates(board *BoardDocument) map[string][]string {
+	gates := map[string][]string{}
+	for _, gate := range board.Gates {
+		for _, judge := range judgeChainForGate(board, gate.ID) {
+			gates[judge.ID] = append(gates[judge.ID], gate.ID)
+		}
+	}
+	return gates
+}
+
+// outputNotKeptError is a file or folder output that was valid but could not
+// be copied: the copy failed, or a cancel or shutdown interrupted it.
+type outputNotKeptError struct {
+	message string
+	err     error
+}
+
+func (e *outputNotKeptError) Error() string { return e.message }
+func (e *outputNotKeptError) Unwrap() error { return e.err }
+
+// pendingOutputError is an attempt whose seats finished but whose outputs
+// were not kept (outputNotKeptError). Output is the attempt's node_output
+// data as its seats returned it; the block it leaves carries it, so a resume
+// keeps the outputs without running the step again.
+type pendingOutputError struct {
+	NodeID  string
+	Attempt int
+	Output  map[string]any
+	Err     error
+}
+
+func (e *pendingOutputError) Error() string { return e.Err.Error() }
+func (e *pendingOutputError) Unwrap() error { return e.Err }
+
+// pendingOutput is the attempt result a block carries (pendingOutputError).
+type pendingOutput struct {
+	NodeID  string
+	Attempt int
+	Output  map[string]any
+}
+
+func pendingOutputFromEvent(event RunEvent) *pendingOutput {
+	fields, ok := event.Data["pendingOutput"].(map[string]any)
+	if !ok {
 		return nil
 	}
+	output, _ := fields["output"].(map[string]any)
+	pending := &pendingOutput{NodeID: stringFromAny(fields["nodeId"]), Attempt: intFromRunEventData(fields["attempt"]), Output: output}
+	if pending.NodeID == "" || output == nil {
+		return nil
+	}
+	return pending
+}
+
+// appendPendingOutputBlock blocks a run whose attempt finished without its
+// outputs kept. Resume keeps them (keepPendingOutput); resume in redispatch
+// mode runs the step again instead.
+func (e *RunEngine) appendPendingOutputBlock(runID string, pending pendingOutputError) error {
+	carried := map[string]any{"nodeId": pending.NodeID, "attempt": pending.Attempt, "output": pending.Output}
+	if errors.Is(pending.Err, ErrCoordinatorShutdown) {
+		block := runBlockedEvent("coordinator shutdown while keeping "+pending.NodeID+"'s outputs; resume keeps them without running the step again", pending.NodeID, "", "", nil)
+		block.Data["code"] = RunBlockCoordinatorShutdown
+		block.Data["pendingOutput"] = carried
+		return e.store.AppendRunEvent(runID, block)
+	}
+	message := redactLedgerText(pending.Err.Error())
+	reason := message + "; resume keeps the outputs without running the step again"
+	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, NodeID: pending.NodeID, Data: map[string]any{
+		"code": RunBlockOutputNotKept, "message": message, "reason": reason, "boundary": "engine", "nodeId": pending.NodeID, "recoverable": true,
+	}}); err != nil {
+		return err
+	}
+	block := runBlockedEvent(reason, pending.NodeID, "", "", nil)
+	block.Data["code"] = RunBlockOutputNotKept
+	block.Data["pendingOutput"] = carried
+	return e.store.AppendRunEvent(runID, block)
+}
+
+// RunBlockOutputNotKept is the code of the block an attempt leaves when its
+// seats finished and its file or folder outputs could not be copied.
+const RunBlockOutputNotKept = "output_not_kept"
+
+// keepPendingOutput keeps the outputs of an attempt a block left pending and
+// records its node_output, as the attempt would have when it finished. It
+// reports whether the run stopped again.
+func (e *RunEngine) keepPendingOutput(runID string, board *BoardDocument, pending pendingOutput) (bool, error) {
+	formation, ok := findFormation(board.Formations, pending.NodeID)
+	if !ok {
+		return false, fmt.Errorf("%w: formation %q", ErrNotFound, pending.NodeID)
+	}
+	reason := stringFromAny(pending.Output["reason"])
+	result, err := e.keepAttemptOutputs(runID, formation, pending.Attempt, reason == "judge", formationResultFromEventData(pending.Output))
+	if err != nil {
+		return true, e.appendExecutionFailureAndBlock(runID, formation.ID, err)
+	}
+	if result.Status == "" {
+		result.Status = "done"
+	}
+	if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
+		if errors.Is(err, errRunStopped) {
+			return true, nil
+		}
+		return true, err
+	}
+	data := formationOutputEventData(result)
+	if reason != "" {
+		data["reason"] = reason
+	}
+	return false, e.store.AppendRunEvent(runID, RunEvent{Type: RunEventNodeOutput, NodeID: formation.ID, Attempt: pending.Attempt, Data: data})
+}
+
+// formationResultFromEventData reads an attempt's result back from its
+// node_output data.
+func formationResultFromEventData(data map[string]any) FormationExecutionResult {
+	return FormationExecutionResult{
+		Status:    stringFromAny(data["status"]),
+		ReportRef: stringFromAny(data["reportRef"]),
+		Text:      stringFromAny(data["text"]),
+		Outputs:   outputPayloadsFromAny(data["outputs"]),
+	}
+}
+
+// acceptAttemptOutputs checks an attempt's file and folder outputs and keeps
+// each as a read-only snapshot in the attempt's directory. It returns the
+// outputs with each kept path as its ref and the port's kind; a text output
+// is returned as it is. An invalid ref fails like an unreadable ref does,
+// and the step blocks; a valid output the copy could not keep is an
+// outputNotKeptError.
+func (s *Store) acceptAttemptOutputs(ctx context.Context, runID string, formation FormationNode, attempt int, outputs map[string]FormationOutputPayload) (map[string]FormationOutputPayload, error) {
+	accepted := make(map[string]FormationOutputPayload, len(outputs))
+	for portID, payload := range outputs {
+		accepted[portID] = payload
+	}
 	var dir string
+	var kept []string
 	for _, port := range formation.Outputs {
-		payload, ok := outputs[port.ID]
+		payload, ok := accepted[port.ID]
 		if !ok {
 			continue
 		}
@@ -79,23 +221,51 @@ func (s *Store) acceptAttemptOutputs(runID string, formation FormationNode, atte
 		}
 		path, err := outputPortPath(formation.ID, port, payload.Ref)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if dir == "" {
 			if dir, err = s.createAttemptArtifactDir(runID, formation.ID, attempt); err != nil {
-				return err
+				return nil, err
 			}
 		}
-		if !resolvedPathWithin(path, dir) {
-			if path, err = snapshotOutput(path, filepath.Join(dir, attemptOutputsDir, port.ID), append(s.runArtifactRoots(runID), dir)); err != nil {
-				return runExecutionError("unavailable_output_ref", fmt.Sprintf("%s output %s at %s could not be copied into the attempt directory: %v", formation.ID, port.ID, payload.Ref, err), "engine", err)
-			}
+		if path, err = keepOutput(ctx, path, dir, port.ID, s.runArtifactRoots(runID)); err != nil {
+			return nil, &outputNotKeptError{message: fmt.Sprintf("%s output %s at %s could not be kept in the attempt directory: %v", formation.ID, port.ID, payload.Ref, err), err: err}
 		}
+		kept = append(kept, filepath.Join(dir, attemptOutputsDir, port.ID))
 		payload.Ref = path
 		payload.Kind = kind
-		outputs[port.ID] = payload
+		accepted[port.ID] = payload
 	}
-	return nil
+	if dir != "" {
+		for _, path := range append(kept, filepath.Join(dir, attemptOutputsDir)) {
+			if err := freezeDir(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return nil, &outputNotKeptError{message: fmt.Sprintf("%s outputs could not be made read-only: %v", formation.ID, err), err: err}
+			}
+		}
+	}
+	return accepted, nil
+}
+
+// keepOutput keeps one file or folder output in the attempt's outputs
+// directory, outputs/<port>/, read-only, and returns the kept path. An output
+// the seat itself wrote under outputs/ is kept where it is.
+func keepOutput(ctx context.Context, path, dir, portID string, artifactRoots []string) (string, error) {
+	outputsDir := filepath.Join(dir, attemptOutputsDir)
+	if resolvedPathWithin(path, outputsDir) {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return "", err
+		}
+		return path, freezeTree(resolved)
+	}
+	// An attempt accepted again, on resume, replaces its earlier copy.
+	parent := filepath.Join(outputsDir, portID)
+	for _, kept := range []string{outputsDir, parent} {
+		if err := thawDir(kept); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+	}
+	return snapshotOutput(ctx, path, parent, append(artifactRoots, dir, outputsDir))
 }
 
 // outputPortPath checks a file or folder output's ref: an absolute path to an
@@ -128,8 +298,7 @@ func pathWithin(path, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// resolvedPathWithin says whether path, its symlinks followed, lies in dir, so
-// a link in the attempt directory to a workspace file is still snapshotted.
+// resolvedPathWithin says whether path, its symlinks followed, lies in dir.
 func resolvedPathWithin(path, dir string) bool {
 	resolvedPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -143,11 +312,16 @@ func resolvedPathWithin(path, dir string) bool {
 }
 
 // snapshotOutput copies a file or a directory tree into parent, keeping its
-// base name, and returns the copy's path. A directory's symlinks are copied as
-// links and its special files are left out. The excluded directories inside
-// the tree, the run's artifact directory and the attempt's own, are not
-// copied, so a folder output that holds the workspace cannot copy itself.
-func snapshotOutput(source, parent string, exclude []string) (string, error) {
+// base name, makes the copy read-only and returns its path. A copy already
+// there is replaced. In a directory, a link to something inside the tree
+// stays a link, pointing at the copy; a link that leads out of the tree is
+// replaced by a copy of what it points at, so the snapshot holds that content
+// as it was; a dangling link is kept as it is. Special files are left out.
+// The excluded directories inside the tree, such as the run's artifact
+// directory and the attempt's own, are not copied, so a folder output that
+// holds the workspace cannot copy itself. A cancel or shutdown on ctx stops
+// the copy.
+func snapshotOutput(ctx context.Context, source, parent string, exclude []string) (string, error) {
 	if err := os.MkdirAll(parent, 0o770); err != nil {
 		return "", err
 	}
@@ -160,8 +334,7 @@ func snapshotOutput(source, parent string, exclude []string) (string, error) {
 		name = "root"
 	}
 	target := filepath.Join(parent, name)
-	// An attempt accepted again, after a restart, replaces its unrecorded copy.
-	if err := os.RemoveAll(target); err != nil {
+	if err := removeKept(target); err != nil {
 		return "", err
 	}
 	info, err := os.Stat(resolved)
@@ -169,25 +342,52 @@ func snapshotOutput(source, parent string, exclude []string) (string, error) {
 		return "", err
 	}
 	if !info.IsDir() {
-		return target, cloneOrCopyFile(resolved, target, info.Mode().Perm())
+		if err := cloneOrCopyFile(ctx, resolved, target, info.Mode().Perm()); err != nil {
+			return "", err
+		}
+		return target, freezeTree(target)
 	}
-	skipped := map[string]bool{}
+	copier := &treeCopier{ctx: ctx, skipped: map[string]bool{}}
 	for _, dir := range append(exclude, parent) {
 		if real, err := filepath.EvalSymlinks(dir); err == nil {
 			dir = real
 		}
-		if dir != resolved && pathWithin(dir, resolved) {
-			skipped[dir] = true
-		}
+		copier.skipped[dir] = true
 	}
-	err = filepath.WalkDir(resolved, func(path string, entry fs.DirEntry, walkErr error) error {
+	if err := copier.copyTree(resolved, target); err != nil {
+		return "", err
+	}
+	return target, freezeTree(target)
+}
+
+// treeCopier copies a directory tree for snapshotOutput. frames are the trees
+// being copied, the folder first and then each tree a link led out to, so a
+// link back into any of them becomes a link to its copy rather than a cycle.
+type treeCopier struct {
+	ctx     context.Context
+	skipped map[string]bool
+	frames  []copyFrame
+}
+
+type copyFrame struct{ source, target string }
+
+func (c *treeCopier) copyTree(source, target string) error {
+	c.frames = append(c.frames, copyFrame{source: source, target: target})
+	defer func() { c.frames = c.frames[:len(c.frames)-1] }()
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if skipped[path] {
-			return filepath.SkipDir
+		if err := copyStopped(c.ctx); err != nil {
+			return err
 		}
-		rel, err := filepath.Rel(resolved, path)
+		if path != source && c.skipped[path] {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(source, path)
 		if err != nil {
 			return err
 		}
@@ -196,30 +396,89 @@ func snapshotOutput(source, parent string, exclude []string) (string, error) {
 		case mode.IsDir():
 			return os.MkdirAll(dest, 0o770)
 		case mode&fs.ModeSymlink != 0:
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, dest)
+			return c.copyLink(path, dest)
 		case mode.IsRegular():
 			info, err := entry.Info()
 			if err != nil {
 				return err
 			}
-			return cloneOrCopyFile(path, dest, info.Mode().Perm())
+			return cloneOrCopyFile(c.ctx, path, dest, info.Mode().Perm())
 		}
 		return nil
 	})
+}
+
+// copyLink copies the link at path to dest: as a relative link to the copy of
+// a target inside a tree being copied, as a copy of a target outside them, or
+// as it is when it dangles or leads into a directory the copy leaves out.
+func (c *treeCopier) copyLink(path, dest string) error {
+	link, err := os.Readlink(path)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return target, nil
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return os.Symlink(link, dest)
+	}
+	for _, frame := range c.frames {
+		if !pathWithin(real, frame.source) {
+			continue
+		}
+		if c.leftOut(real, frame.source) {
+			return os.Symlink(link, dest)
+		}
+		rel, err := filepath.Rel(frame.source, real)
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(filepath.Dir(dest), filepath.Join(frame.target, rel))
+		if err != nil {
+			return err
+		}
+		return os.Symlink(relative, dest)
+	}
+	info, err := os.Stat(real)
+	switch {
+	case err != nil:
+		return os.Symlink(link, dest)
+	case info.IsDir():
+		return c.copyTree(real, dest)
+	case info.Mode().IsRegular():
+		return cloneOrCopyFile(c.ctx, real, dest, info.Mode().Perm())
+	}
+	return nil
+}
+
+// leftOut reports whether path lies in an excluded directory inside source,
+// which the copy of source leaves out.
+func (c *treeCopier) leftOut(path, source string) bool {
+	for dir := range c.skipped {
+		if dir != source && pathWithin(dir, source) && pathWithin(path, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// copyStopped is the error a cancel or shutdown on ctx stops a copy with.
+func copyStopped(ctx context.Context) error {
+	if ctx.Err() == nil {
+		return nil
+	}
+	if shutdownRequested(ctx) {
+		return ErrCoordinatorShutdown
+	}
+	return context.Cause(ctx)
 }
 
 // cloneOrCopyFile writes a copy of source to a new file at target: a
 // copy-on-write clone where the file system supports FICLONE, otherwise an
-// ordinary copy. Never a hard link, so rewriting the source leaves it intact.
-func cloneOrCopyFile(source, target string, perm fs.FileMode) error {
+// ordinary copy, checked for a cancel or shutdown between chunks. Never a hard
+// link, so rewriting the source leaves it intact.
+func cloneOrCopyFile(ctx context.Context, source, target string, perm fs.FileMode) error {
+	if err := copyStopped(ctx); err != nil {
+		return err
+	}
 	in, err := os.Open(source)
 	if err != nil {
 		return err
@@ -230,10 +489,82 @@ func cloneOrCopyFile(source, target string, perm fs.FileMode) error {
 		return err
 	}
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, out.Fd(), ficlone, in.Fd()); errno != 0 {
-		if _, err := io.Copy(out, in); err != nil {
-			_ = out.Close()
-			return err
+		for {
+			if err := copyStopped(ctx); err != nil {
+				_ = out.Close()
+				return err
+			}
+			n, err := io.Copy(out, io.LimitReader(in, copyChunkBytes))
+			if err != nil {
+				_ = out.Close()
+				return err
+			}
+			if n < copyChunkBytes {
+				break
+			}
 		}
 	}
 	return out.Close()
+}
+
+// freezeTree makes a kept file, or every file and directory in a kept tree,
+// read-only. Links are left as they are.
+func freezeTree(root string) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, info.Mode().Perm()&^0o222)
+	})
+}
+
+// freezeDir makes one directory read-only.
+func freezeDir(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	return os.Chmod(path, info.Mode().Perm()&^0o222)
+}
+
+// thawDir gives the owner write access to one directory again.
+func thawDir(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	return os.Chmod(path, info.Mode().Perm()|0o700)
+}
+
+// removeKept removes a kept file or tree, giving its directories write access
+// first.
+func removeKept(path string) error {
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err := filepath.WalkDir(path, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return thawDir(path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return os.RemoveAll(path)
 }

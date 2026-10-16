@@ -128,6 +128,8 @@ type GateFeedback struct {
 	Evidence     []GateEvidenceRef `json:"evidence"`
 	OriginalRef  string            `json:"originalRef"`
 	OriginalText string            `json:"originalText"`
+	// OriginalKind is file or folder when OriginalRef is a kept output's path.
+	OriginalKind string `json:"originalKind,omitempty"`
 	// Earlier is feedback that reached the same port before this, which the
 	// formation had not run on yet (archon-o7p.11).
 	Earlier *GateFeedback `json:"earlier,omitempty"`
@@ -145,6 +147,8 @@ type GateResponse struct {
 	// Preserve what the operator actually approved (archon-qtq1).
 	OriginalRef  string `json:"originalRef"`
 	OriginalText string `json:"originalText"`
+	// OriginalKind is file or folder when OriginalRef is a kept output's path.
+	OriginalKind string `json:"originalKind,omitempty"`
 	// Earlier is a response that reached the same port before this, which the
 	// formation had not run on yet (archon-o7p.11).
 	Earlier *GateResponse `json:"earlier,omitempty"`
@@ -182,7 +186,7 @@ func gatePassInput(events []RunEvent, verdictEvent RunEvent, gateID string, inpu
 		next.Response = &GateResponse{
 			GateID: gateID, GateAttempt: verdictEvent.Attempt, RequestedSeq: requestedSeq,
 			DecidedBy: stringFromEventData(event, "decidedBy"), Text: text,
-			OriginalRef: input.Ref, OriginalText: input.Text,
+			OriginalRef: input.Ref, OriginalText: input.Text, OriginalKind: input.Kind,
 		}
 		return next, nil
 	}
@@ -199,7 +203,7 @@ func gateFailInput(runID string, route BoardConnection, gateID string, attempt i
 	next.Kind = ""
 	next.Feedback = &GateFeedback{
 		GateID: gateID, GateAttempt: attempt, Verdict: "fail", Reason: reason,
-		Evidence: append([]GateEvidenceRef(nil), evidence...), OriginalRef: input.Ref, OriginalText: input.Text,
+		Evidence: append([]GateEvidenceRef(nil), evidence...), OriginalRef: input.Ref, OriginalText: input.Text, OriginalKind: input.Kind,
 	}
 	return next
 }

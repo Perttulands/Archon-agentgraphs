@@ -555,17 +555,17 @@ func outputContractExtraLines(formation FormationNode) []string {
 	)
 	if len(textPorts) > 0 {
 		lines = append(lines,
-			"Text outputs ("+strings.Join(textPorts, ", ")+"): use text for a short, non-secret routed payload or summary. For a longer payload, write a text file in the attempt artifact directory shown below and put its full absolute path in ref; Archon reads that file as the routed text. A bare filename does not resolve. Omit ref for a text-only payload. A missing, unreadable, non-text or oversized ref blocks the run.",
+			"Text outputs ("+strings.Join(textPorts, ", ")+"): use text for a short, non-secret routed payload or summary. For a longer payload, write a text file in the attempt artifact directory shown above and put its full absolute path in ref; Archon reads that file as the routed text. A bare filename does not resolve. Omit ref for a text-only payload. A missing, unreadable, non-text or oversized ref blocks the run.",
 		)
 	}
 	if len(filePorts) > 0 {
 		lines = append(lines,
-			"File outputs ("+strings.Join(filePorts, ", ")+"): ref is required and is the absolute path of the file this output is, of any type; text is a one-line summary. Archon keeps a copy of the file as this attempt produced it and routes the copy's path. A missing ref, or a path that is not an existing file, blocks the run.",
+			"File outputs ("+strings.Join(filePorts, ", ")+"): ref is required and is the absolute path of the file this output is, of any type; text is a one-line summary. Archon keeps a read-only copy of the file as this attempt produced it and routes the copy's path. A missing ref, or a path that is not an existing file, blocks the run.",
 		)
 	}
 	if len(folderPorts) > 0 {
 		lines = append(lines,
-			"Folder outputs ("+strings.Join(folderPorts, ", ")+"): ref is required and is the absolute path of the directory this output is; text is a one-line summary. Archon keeps a copy of the directory as this attempt produced it and routes the copy's path. A missing ref, or a path that is not an existing directory, blocks the run.",
+			"Folder outputs ("+strings.Join(folderPorts, ", ")+"): ref is required and is the absolute path of the directory this output is; text is a one-line summary. Archon keeps a read-only copy of the directory as this attempt produced it and routes the copy's path. A missing ref, or a path that is not an existing directory, blocks the run.",
 		)
 	}
 	lines = append(lines,
@@ -1698,10 +1698,6 @@ func (e *TmuxFormationExecutor) renderPromptWithContext(req FormationExecution, 
 		if strings.TrimSpace(line) != "" {
 			b.WriteString(line + "\n")
 		}
-	}
-	if req.ArtifactDir != "" {
-		b.WriteString("attempt artifact directory: " + req.ArtifactDir + "\n")
-		b.WriteString("Write the files this attempt produces there: long outputs, reports, images and folders. It belongs to this attempt alone; create a file before naming it as a ref in archon-outputs.\n")
 	}
 	b.WriteString("When complete, emit exactly one sentinel line using the run value above: <<<ARCHON-DONE run-id=<the-run-value-above> status=ok artifact=<path-or-ref>>>\n")
 	return b.String()

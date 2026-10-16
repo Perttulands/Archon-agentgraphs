@@ -234,6 +234,8 @@ export interface AttemptVerdict {
   seq?: number
   verdict?: string
   pending?: boolean
+  /** The gate was evaluated again before its human request was answered; the request no longer waits. */
+  superseded?: boolean
   reason: EvidenceText
   evidence: EvidenceItem[]
   evidenceOmitted?: number

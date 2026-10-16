@@ -38,15 +38,17 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 	for _, link := range req.Brief.Links {
 		b.WriteString("brief link: " + link + "\n")
 	}
+	kept := false
 	for _, input := range req.Inputs {
 		// Work that reached the port with a send-back is shown with it, and
 		// every feedback and response the port kept follows (archon-o7p.11).
 		if input.Text != "" && (input.Feedback == nil || input.Text != input.Feedback.OriginalText) {
 			b.WriteString("input: " + input.Text + "\n")
 		}
-		// A file or folder output arrives as the path of its accepted copy.
-		if (input.Kind == PortKindFile || input.Kind == PortKindFolder) && input.Ref != "" {
+		// A file or folder output arrives as the path of its kept copy.
+		if keptKind(input.Kind) && input.Ref != "" {
 			b.WriteString("input " + input.Kind + ": " + input.Ref + "\n")
+			kept = true
 		}
 		for feedback := input.Feedback; feedback != nil; feedback = feedback.Earlier {
 			fmt.Fprintf(b, "\ngate feedback from %s, attempt %d:\nverdict: %s\nreason: %s\n", feedback.GateID, feedback.GateAttempt, feedback.Verdict, feedback.Reason)
@@ -55,11 +57,28 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 			}
 			b.WriteString("original input ref: " + feedback.OriginalRef + "\n")
 			b.WriteString("original input: " + feedback.OriginalText + "\n\n")
+			kept = kept || keptKind(feedback.OriginalKind)
 		}
 		for response := input.Response; response != nil; response = response.Earlier {
 			fmt.Fprintf(b, "\nhuman response from %s, attempt %d:\nverdict: pass\ndecided by: %s\nresponse:\n%s\n", response.GateID, response.GateAttempt, response.DecidedBy, response.Text)
 			b.WriteString("approved input ref: " + response.OriginalRef + "\n")
 			b.WriteString("approved input: " + response.OriginalText + "\n\n")
+			kept = kept || keptKind(response.OriginalKind)
 		}
 	}
+	if kept {
+		b.WriteString("Input paths are kept copies of earlier work and are read-only; write new versions in your own attempt directory.\n")
+	}
+	// Every seat of the attempt, an orchestrated worker included, writes in
+	// the attempt's own directory (archon-5tg1).
+	if req.ArtifactDir != "" {
+		b.WriteString("attempt artifact directory: " + req.ArtifactDir + "\n")
+		b.WriteString("Write the files this attempt produces there: long outputs, reports, images and folders. It belongs to this attempt alone; create a file before naming it as a ref in archon-outputs.\n")
+	}
+}
+
+// keptKind reports whether a delivery of this kind is the path of a kept
+// file or folder output.
+func keptKind(kind string) bool {
+	return kind == PortKindFile || kind == PortKindFolder
 }

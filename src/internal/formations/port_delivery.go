@@ -102,7 +102,8 @@ func gateFeedbackFromAny(value any) *GateFeedback {
 		Verdict: stringFromAny(fields["verdict"]), Reason: stringFromAny(fields["reason"]),
 		Evidence:    gateEvidenceRefsFromRunEventData(fields["evidence"]),
 		OriginalRef: stringFromAny(fields["originalRef"]), OriginalText: stringFromAny(fields["originalText"]),
-		Earlier: gateFeedbackFromAny(fields["earlier"]),
+		OriginalKind: stringFromAny(fields["originalKind"]),
+		Earlier:      gateFeedbackFromAny(fields["earlier"]),
 	}
 }
 
@@ -116,6 +117,7 @@ func gateResponseFromAny(value any) *GateResponse {
 		RequestedSeq: intFromRunEventData(fields["requestedSeq"]),
 		DecidedBy:    stringFromAny(fields["decidedBy"]), Text: stringFromAny(fields["text"]),
 		OriginalRef: stringFromAny(fields["originalRef"]), OriginalText: stringFromAny(fields["originalText"]),
-		Earlier: gateResponseFromAny(fields["earlier"]),
+		OriginalKind: stringFromAny(fields["originalKind"]),
+		Earlier:      gateResponseFromAny(fields["earlier"]),
 	}
 }
