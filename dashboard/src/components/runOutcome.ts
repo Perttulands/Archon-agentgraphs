@@ -149,6 +149,14 @@ export function gateRouteWords(verdict: 'pass' | 'fail', route: GateRoute | unde
       ? 'the mission'
       : route.targets.find(target => target.nodeId === limit.nodeId)?.title || titleOf(limit.nodeId) || limit.nodeId
     const where = [...clauses, ...ends].join('; ')
+    if (route.picksBest) {
+      return {
+        button,
+        outcome: `${verb}: ${where}, but ${who} has used ${spentAllowance(limit)}, so its best judged attempt is picked instead and goes on as if it had passed.`,
+        blocks: false,
+        last: false,
+      }
+    }
     return {
       button,
       outcome: `${verb}: ${where}, but ${who} has used ${spentAllowance(limit)}, so the run blocks instead until you grant ${grantWords(limit)}.`,

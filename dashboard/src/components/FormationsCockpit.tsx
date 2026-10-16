@@ -99,7 +99,7 @@ import { gateWireNeedsLabel, loopConnectionIds, routeJudgeWire, routeLoopWires, 
 import type { ObstacleRect } from './formationsRouting'
 import { findAddedByID } from './formationsBoardModel'
 import { defaultEndTitle, endOutcomeMeaning } from './endNode'
-import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitWarnWords, tetherLine } from './limitCard'
+import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitSpentWords, limitWarnWords, tetherLine } from './limitCard'
 import { inverseUndoStep } from './formationsRedo'
 import { portKindMenuItems } from './portKind'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, portUpdateUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
@@ -1345,7 +1345,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (change.seconds !== undefined) restore.seconds = previous.seconds || 0
     if (change.warnSeconds !== undefined) restore.warnSeconds = previous.warnSeconds || 0
     if (change.tokens !== undefined) restore.tokens = previous.tokens || 0
-    const what = change.target !== undefined ? 'target' : change.rounds !== undefined ? 'rounds' : change.seconds !== undefined ? 'time' : change.tokens !== undefined ? 'tokens' : 'warning'
+    if (change.whenSpent !== undefined) restore.whenSpent = previous.whenSpent || 'stop'
+    const what = change.target !== undefined ? 'target' : change.rounds !== undefined ? 'rounds' : change.seconds !== undefined ? 'time' : change.tokens !== undefined ? 'tokens' : change.whenSpent !== undefined ? 'spent setting' : 'warning'
     recordUndo(`the ${what} of Limit card ${quoted(previous.title, 'untitled')}`, boardStep({ updateLimit: restore }))
     return true
   }, [applyBoardPatch, recordUndo])
@@ -1889,14 +1890,16 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   // A run stopped at a spent Limit card resumes only with a grant (archon-o7p.8):
   // one more round, or the card's time again, as the run bar's button says.
-  const grantActiveRun = useCallback(async (gives: string) => {
-    if (!activeRun?.runId || activeRun.final || activeRun.resumePolicy !== 'grant') return
+  // Where the step's gate judged attempts it may instead pick the best attempt
+  // and go on (archon-gihe); gives is then null.
+  const grantActiveRun = useCallback(async (gives: string | null) => {
+    if (!activeRun?.runId || activeRun.final || !activeRun.resumePolicy) return
+    if (gives === null && activeRun.resumePolicy !== 'grant_or_pick') return
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
         actor: 'agent:ui',
         mode: 'reattach',
-        reason: `${gives} granted in the cockpit`,
-        grant: true,
+        ...(gives === null ? { reason: 'the best attempt picked in the cockpit', pickBest: true } : { reason: `${gives} granted in the cockpit`, grant: true }),
       }))
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
@@ -1906,7 +1909,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       }
       setError('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to grant ${gives}`)
+      setError(err instanceof Error ? err.message : gives === null ? 'Failed to pick the best attempt' : `Failed to grant ${gives}`)
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
@@ -3330,7 +3333,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                 <RunBarActions run={recordingAnswer ? { ...activeRun, status: 'running', resumeAllowed: false, resumePolicy: undefined } : activeRun} points={runPoints} boardTitle={board?.title || ''}
                   titleOf={nodeId => pointTitle(nodeId) || nodeId}
                   waitingGates={waitingGateIds.map(gateId => ({ title: pointTitle(gateId) || gateId, requestedSeq: requestedSeqOf(gateId) }))}
-                  onResume={() => void resumeActiveRun()} onGrant={gives => void grantActiveRun(gives)} onStop={abortActiveRun} />
+                  onResume={() => void resumeActiveRun()} onGrant={gives => void grantActiveRun(gives)} onPick={() => void grantActiveRun(null)} onStop={abortActiveRun} />
               </div>
             ) : null}
         <div className={`viewport${showFlow ? ' flow-mode' : ''}${flowDocked ? ' flow-docked' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
@@ -3742,6 +3745,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                     <span className="leyebrow">Limit{limit.title && limit.title !== 'Limit' ? <> · <span className="ltitle">{limit.title}</span></> : null}</span>
                     <span className={`lknob${limit.rounds || limit.seconds ? '' : ' placeholder'}`} data-testid={`limit-knob-${limit.id}`}>{board ? limitKnobWords(board, limit) : ''}</span>
                     {limitWarnWords(limit) ? <span className="lwarn" data-testid={`limit-warn-${limit.id}`}>{limitWarnWords(limit)}</span> : null}
+                    {board && limitSpentWords(board, limit) ? <span className="lwarn" data-testid={`limit-spent-${limit.id}`}>{limitSpentWords(board, limit)}</span> : null}
                     <span className={`lcovers${wired ? '' : ' placeholder'}`} data-testid={`limit-covers-${limit.id}`}>{covers}</span>
                   </span>
                 </div>

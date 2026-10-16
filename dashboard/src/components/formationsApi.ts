@@ -354,7 +354,7 @@ export async function abortRunRequest(runId: string, body: { reason: string; req
   return result.data
 }
 
-export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string; grant?: boolean; takeFail?: boolean }): Promise<RunStatusProjection | RunStatusResult> {
+export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string; grant?: boolean; pickBest?: boolean; takeFail?: boolean }): Promise<RunStatusProjection | RunStatusResult> {
   const result = await fetchApi<RunStatusProjection | RunStatusResult>(
     `/api/runs/${encodeURIComponent(runId)}/resume`,
     {
@@ -404,8 +404,10 @@ export interface GateRoute {
   endsRun?: boolean
   /** That finish fails the run: a rejected End node on this route, or a path already rejected. */
   runFails?: boolean
-  /** A Limit card the route needs is spent, so taking it blocks the run until a grant. */
+  /** A Limit card the route needs is spent, so taking it blocks the run until a grant, unless picksBest. */
   limit?: RunLimitUse
+  /** The spent card's whenSpent is best: the step's best judged attempt is picked instead and goes on as its gate's pass. */
+  picksBest?: boolean
   /** The mission's Limit card use so far, when a card covers the Input card. */
   missionRounds?: RunLimitUse
   /** The step runs the route starts, judges included, when a card covers the mission. */

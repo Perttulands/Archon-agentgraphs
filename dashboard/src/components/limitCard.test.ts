@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardDocument, LimitNode } from './formationsTypes'
 import {
-  durationInput, durationWords, grantWords, leftWords, limitCoverage, limitCoversWords, limitKnobWords, limitLine, limitMeaning, limitSummary, limitUsePhrase,
+  durationInput, durationWords, grantWords, leftWords, limitCoverage, limitCoversWords, limitKnobWords, limitLine, limitMeaning, limitSpentWords, limitSummary, limitUsePhrase,
   limitWarnWords, limitsCovering, parseDuration, roundsProblem, spentAllowance, tetherLine, timeProblem, tokenWords, tokensProblem, warnProblem,
 } from './limitCard'
 
@@ -52,6 +52,20 @@ describe('Limit card words', () => {
     expect(limitMeaning(board, card('mis', 20))).toContain('The whole mission may make at most 20 step runs, judges included.')
     expect(limitMeaning(board, card('', 3))).toBe('Wired to nothing: drag its handle onto a step, or onto the Input card for the whole mission.')
     expect(limitMeaning(board, card('fmn_review'))).toBe('It sets no limit yet: give it rounds, time or tokens, or delete it.')
+  })
+
+  it('says a step card set to best picks the best attempt instead of blocking (archon-gihe)', () => {
+    const best = (target: string, extra: Partial<LimitNode> = {}): LimitNode => ({ ...card(target, 3), whenSpent: 'best', ...extra })
+    expect(limitMeaning(board, best('fmn_review'))).toBe('Review may run at most 3 times, send-backs and resumed re-runs included. When its rounds are spent its gate picks the best attempt it judged, which goes on as if the gate had passed it; an attempt the limit cut short is never picked.')
+    expect(limitMeaning(board, best('fmn_review', { rounds: undefined, seconds: 1800 }))).toContain('When the time runs out the step stops and its gate picks the best attempt it judged')
+    expect(limitMeaning(board, best('fmn_review', { rounds: undefined, tokens: 50000 }))).toContain('When they are spent the step stops and its gate picks the best attempt it judged')
+    expect(limitSummary(board, best('fmn_review'))).toBe('Cap: at most 3 rounds, then the best attempt goes on')
+    expect(limitSpentWords(board, best('fmn_review'))).toBe('then picks the best')
+    expect(limitSpentWords(board, best('mis'))).toBe('')
+    expect(limitSpentWords(board, card('fmn_review', 3))).toBe('')
+    // A mission card cannot pick: validation says so, and its words still block.
+    expect(limitMeaning(board, best('mis'))).toContain('the run blocks before the next step starts, until you grant one more round')
+    expect(limitSummary(board, best('mis'))).toBe('Cap: the whole mission may make at most 3 step runs')
   })
 
   it('states a tokens knob, alone and beside the others, with how it counts (archon-o7p.9)', () => {

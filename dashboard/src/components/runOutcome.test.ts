@@ -90,6 +90,15 @@ describe('gate route words', () => {
     expect(one.outcome).toBe('Send back: Draft runs again with your response, but Draft has used its only round, so the run blocks instead until you grant one more round.')
   })
 
+  it('says a send-back to a spent best card picks the best attempt', () => {
+    expect(gateRouteWords('fail', sendBack(4, { limit: cap(3), picksBest: true }), titleOf)).toEqual({
+      button: 'Send back to Draft',
+      outcome: 'Send back: Draft runs again with your response, but Draft has used all 3 of its rounds, so its best judged attempt is picked instead and goes on as if it had passed.',
+      blocks: false,
+      last: false,
+    })
+  })
+
   it('says when the mission card is spent', () => {
     const mission = { kind: 'rounds' as const, limitId: 'lim_all', nodeId: 'mis', used: 20, max: 20 }
     const spent = gateRouteWords('pass', { ...approve, missionRounds: mission, roundsNeeded: 1, limit: mission }, titleOf)

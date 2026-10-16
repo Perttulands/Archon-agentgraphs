@@ -3,9 +3,10 @@ import { cockpitFixture, limitReason, timeLimitReason } from './cockpit-fixture'
 
 // Limit cards (archon-o7p.8.1, .8.2, .9): created from the Limit token and the
 // canvas menu, wired by dragging their tether handle onto a step or the Input
-// card, their rounds, time, warning and tokens edited in their window, deleted and
-// restored, each step with undo; Flow states the limit on what it covers, and a
-// run blocked at a spent card offers one more round or the card's time again.
+// card, their rounds, time, warning, tokens and what a spent step card does edited
+// in their window, deleted and restored, each step with undo; Flow states the limit
+// on what it covers, and a run blocked at a spent card offers one more round or the
+// card's time again, or, where the step's gate judged attempts, a pick of the best.
 
 // Screenshots go to the test's own output directory (test-results/), so the
 // spec stays host-neutral.
@@ -65,13 +66,24 @@ test('Limit cards are created, wired, edited, deleted and restored on the canvas
   const capWindow = page.getByRole('dialog', { name: 'Limit card · Cap' })
   await expect(capWindow.getByTestId(`limit-meaning-${cap.id}`)).toHaveText('Execution may run at most 3 times, send-backs and resumed re-runs included. When its rounds are spent the run blocks before it starts again, until you grant one more round.')
   expect(fixture.board().limits![0]).toMatchObject({ title: 'Cap', target: 'execution', rounds: 3 })
+  // A step card may instead pick the best attempt its gate judged and go on (archon-gihe).
+  const whenSpent = capWindow.getByLabel('When spent')
+  await expect(whenSpent).toHaveValue('stop')
+  await whenSpent.selectOption('best')
+  await expect(capWindow.getByTestId(`limit-meaning-${cap.id}`)).toHaveText('Execution may run at most 3 times, send-backs and resumed re-runs included. When its rounds are spent its gate picks the best attempt it judged, which goes on as if the gate had passed it; an attempt the limit cut short is never picked.')
+  await expect(page.getByTestId(`limit-spent-${cap.id}`)).toHaveText('then picks the best')
+  expect(fixture.board().limits![0]).toMatchObject({ title: 'Cap', target: 'execution', rounds: 3, whenSpent: 'best' })
   await expect(page.getByTestId(`draft-marker-${cap.id}`)).toHaveCount(0)
   // Its tether runs to Execution.
   await expect(page.getByTestId(`limit-tether-${cap.id}`)).toHaveCount(1)
+  await whenSpent.scrollIntoViewIfNeeded()
   await shot(page, 'limit-card-window.png')
   await capWindow.getByRole('button', { name: /close/i }).first().click()
 
-  // Undo takes back the title, then the rounds.
+  // Undo takes back the spent setting, then the title, then the rounds.
+  await page.keyboard.press('Control+z')
+  await expect.poll(() => fixture.board().limits![0].whenSpent).toBeUndefined()
+  await expect(page.getByTestId(`limit-spent-${cap.id}`)).toHaveCount(0)
   await page.keyboard.press('Control+z')
   await expect.poll(() => fixture.board().limits![0].title).toBe('Limit')
   await page.keyboard.press('Control+z')
@@ -167,12 +179,37 @@ test('a run blocked at a spent Limit card offers one more round, which posts a g
   const grant = banner.getByRole('button', { name: 'Grant one more round' })
   await expect(grant).toBeVisible()
   await shot(page, 'limit-run-blocked.png')
+  // Its gate judged both attempts, so the run may also pick the better one.
+  await expect(banner.getByRole('button', { name: 'Pick the best attempt' })).toBeVisible()
   await grant.click()
   await expect.poll(() => resumes).toEqual([{ actor: 'agent:ui', mode: 'reattach', reason: 'one more round granted in the cockpit', grant: true }])
   await expect(grant).toHaveCount(0)
+  await expect(banner.getByRole('button', { name: 'Pick the best attempt' })).toHaveCount(0)
   await expect(banner.getByTestId('run-point')).toHaveText('running Execution (attempt 3)')
   expect(fixture.writes).toContain('POST /api/runs/run_browser/resume')
   await shot(page, 'limit-run-granted.png')
+})
+
+test('a run blocked at a spent Limit card whose gate judged attempts picks the best, which posts pickBest', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.addInitScript(() => localStorage.clear())
+  const fixture = await cockpitFixture(page, { blockedAtLimit: true })
+  const resumes: unknown[] = []
+  page.on('request', request => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/runs/run_browser/resume')) resumes.push(request.postDataJSON())
+  })
+  await page.goto('/?mission=browser')
+  const banner = page.getByTestId('run-banner')
+  await expect(banner.getByTestId('run-point')).toHaveText(`blocked at Execution: ${limitReason}`)
+  const pick = banner.getByRole('button', { name: 'Pick the best attempt' })
+  await expect(pick).toBeVisible()
+  await shot(page, 'limit-run-pickable.png')
+  await pick.click()
+  await expect.poll(() => resumes).toEqual([{ actor: 'agent:ui', mode: 'reattach', reason: 'the best attempt picked in the cockpit', pickBest: true }])
+  await expect(pick).toHaveCount(0)
+  await expect(banner.getByRole('button', { name: 'Grant one more round' })).toHaveCount(0)
+  await expect(page.getByTestId('formations-error')).toHaveCount(0)
+  expect(fixture.writes).toContain('POST /api/runs/run_browser/resume')
 })
 
 test('a Limit card\'s time and warning are set in its window and read on the card, the step and Flow, with undo', async ({ page }) => {
@@ -288,6 +325,8 @@ test('a run blocked at a spent time card offers the card\'s time again, which po
   await expect(banner.getByRole('button', { name: 'Resume run' })).toHaveCount(0)
   const grant = banner.getByRole('button', { name: 'Grant 30 min more' })
   await expect(grant).toBeVisible()
+  // Its step was never judged, so there is nothing to pick.
+  await expect(banner.getByRole('button', { name: 'Pick the best attempt' })).toHaveCount(0)
   // The step's window lists the warning its seat was given.
   await page.getByTestId('formation-node-execution').getByText('Execution', { exact: true }).click()
   const execution = page.getByRole('dialog', { name: 'Formation · Execution' })
