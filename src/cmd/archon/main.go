@@ -1815,6 +1815,13 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 		return writeJSON(stdout, status)
 	}
 	writeRunStatusLines(stdout, status)
+	if status.Status == formations.RunStatusBlocked {
+		problems, err := store.ProjectRunProblems(status.RunID)
+		if err != nil {
+			return fail(stderr, err)
+		}
+		writeCurrentRunBlock(stdout, problems)
+	}
 	return 0
 }
 
@@ -1831,6 +1838,26 @@ func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjectio
 		for _, line := range runOutputLines(output) {
 			fmt.Fprintln(stdout, line)
 		}
+	}
+}
+
+// The error immediately preceding a block often holds the useful message;
+// the block itself can carry only a lifecycle reason such as executor_failed.
+func writeCurrentRunBlock(stdout io.Writer, problems []formations.RunProblem) {
+	for i := len(problems) - 1; i >= 0; i-- {
+		problem := problems[i]
+		if problem.Type != formations.RunEventBlocked {
+			continue
+		}
+		if problem.ResumedSeq != 0 {
+			return
+		}
+		code, reason := problem.Code, problem.Reason.Text
+		if i > 0 && problems[i-1].Type == formations.RunEventError && problems[i-1].Seq == problem.Seq-1 {
+			code, reason = problems[i-1].Code, problems[i-1].Reason.Text
+		}
+		fmt.Fprintf(stdout, "blocked\t%s\t%s\n", code, reason)
+		return
 	}
 }
 
@@ -2258,7 +2285,15 @@ func runEventReferencesNode(event formations.RunEvent, nodeID string) bool {
 
 func writeRunEventsText(stdout io.Writer, events []formations.RunEvent) {
 	for _, event := range events {
-		fmt.Fprintf(stdout, "%d\t%s\t%s\n", event.Seq, event.Type, event.NodeID)
+		fmt.Fprintf(stdout, "%d\t%s\t%s", event.Seq, event.Type, event.NodeID)
+		if event.Type == formations.RunEventError || event.Type == formations.RunEventBlocked {
+			reason := stringFromMap(event.Data, "message")
+			if reason == "" {
+				reason = stringFromMap(event.Data, "reason")
+			}
+			fmt.Fprintf(stdout, "\t%s\t%s", stringFromMap(event.Data, "code"), reason)
+		}
+		fmt.Fprintln(stdout)
 	}
 }
 

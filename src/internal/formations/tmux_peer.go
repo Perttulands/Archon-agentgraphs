@@ -94,6 +94,11 @@ func (e *TmuxFormationExecutor) executePeerFormation(parent context.Context, req
 			}
 		}
 	}
+	for _, binding := range bindings {
+		if conversation.Proposal != nil && binding.Slot.ID == conversation.Proposal.SlotID {
+			return owned.finish(e.resultWithOutputCorrection(req, binding, NewSlotDispatcher(e.store, nil), path, text, owned))
+		}
+	}
 	return owned.finish(e.formationResultFromText(req, path, text))
 }
 

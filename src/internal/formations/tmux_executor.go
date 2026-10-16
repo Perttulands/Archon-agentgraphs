@@ -321,8 +321,14 @@ func (e *TmuxFormationExecutor) executeFormationKind(ctx context.Context, req Fo
 	owned.ctx, owned.req = ctx, req
 	defer e.teardownOwnedSessions(owned)
 	outputs := make([]string, 0, len(req.Formation.Slots))
+	var binding tmuxSlotBinding
 	for _, slot := range req.Formation.Slots {
-		output, err := e.executeSlot(req, slot, allowed, dispatcher, "", outputContractExtraLines(req.Formation), owned)
+		var err error
+		binding, err = e.resolveSlotBinding(ctx, req, slot, allowed, owned)
+		if err != nil {
+			return FormationExecutionResult{}, withSlot(err, req.NodeID, slot.ID, "")
+		}
+		output, err := e.executeBoundSlot(req, binding, dispatcher, "", outputContractExtraLines(req.Formation), owned)
 		if err != nil {
 			return FormationExecutionResult{}, err
 		}
@@ -333,7 +339,7 @@ func (e *TmuxFormationExecutor) executeFormationKind(ctx context.Context, req Fo
 		outputs = append(outputs, text)
 	}
 	text := strings.Join(outputs, "\n\n")
-	return owned.finish(e.formationResultFromText(req, fmt.Sprintf("tmux://%s/%s/report", req.RunID, req.NodeID), text))
+	return owned.finish(e.resultWithOutputCorrection(req, binding, dispatcher, fmt.Sprintf("tmux://%s/%s/report", req.RunID, req.NodeID), text, owned))
 }
 
 // finish keeps the seats on call when the formation produced its result and
@@ -405,7 +411,39 @@ func (e *TmuxFormationExecutor) executeOrchestratedFormation(ctx context.Context
 	if strings.TrimSpace(text) == "" {
 		text = leader.summary()
 	}
-	return owned.finish(e.formationResultFromText(req, leader.Artifact, text))
+	return owned.finish(e.resultWithOutputCorrection(req, controllerBinding, dispatcher, leader.Artifact, text, owned))
+}
+
+// Validate the final routing result while its producing seat is still alive.
+// A format repair replaces the whole response and gets exactly one turn.
+func (e *TmuxFormationExecutor) resultWithOutputCorrection(req FormationExecution, binding tmuxSlotBinding, dispatcher *SlotDispatcher, reportRef, text string, owned *ownedSessions) (FormationExecutionResult, error) {
+	result, err := e.formationResultFromText(req, reportRef, text)
+	var rejected *RunExecutionError
+	if !errors.As(err, &rejected) {
+		return result, err
+	}
+	switch rejected.Code {
+	case "missing_output_payload", "invalid_output_payloads", "invalid_output_ref", "unavailable_output_ref", "oversized_output_ref", "oversized_output":
+	default:
+		return result, err
+	}
+	extra := append(outputContractExtraLines(req.Formation),
+		"Your previous output result was rejected: "+err.Error(),
+		"Correct only the output format, preserving the work already done. Emit a fresh complete response with all declared output ports and the completion sentinel. This correction instruction supersedes brief instructions to omit fields.",
+		fmt.Sprintf("Text refs must name readable regular text files of at most %d bytes. To return only a file or folder path on a text port, put the absolute path in text and omit ref; ref reads the file contents. File and folder ports carry paths in ref instead.", e.config.OutputCapBytes))
+	if req.FinalJudge {
+		if len(req.PickAttempts) > 0 {
+			extra = append(extra, pickContract(req.PickAttempts))
+		} else {
+			extra = append(extra, judgeContract)
+		}
+		extra = append(extra, "Preserve your verdict or pick, reason and evidence in its own fresh complete fenced block alongside archon-outputs.")
+	}
+	output, turnErr := e.executeBoundSlotTurn(req, binding, dispatcher, "output-correction", extra, owned)
+	if turnErr != nil {
+		return FormationExecutionResult{}, turnErr
+	}
+	return e.formationResultFromText(req, reportRef, output.Text)
 }
 
 func (e *TmuxFormationExecutor) formationResultFromText(req FormationExecution, reportRef, text string) (FormationExecutionResult, error) {
@@ -414,11 +452,15 @@ func (e *TmuxFormationExecutor) formationResultFromText(req FormationExecution, 
 		return FormationExecutionResult{}, runExecutionError("invalid_output_payloads", err.Error(), "executor", err)
 	}
 	knownPorts := map[string]bool{}
+	var missing []string
 	for _, output := range req.Formation.Outputs {
 		knownPorts[output.ID] = true
 		if _, ok := namedOutputs[output.ID]; !ok {
-			return FormationExecutionResult{}, runExecutionError("missing_output_payload", fmt.Sprintf("formation %q did not emit required output port %q", req.NodeID, output.ID), "executor", nil)
+			missing = append(missing, output.ID)
 		}
+	}
+	if len(missing) > 0 {
+		return FormationExecutionResult{}, runExecutionError("missing_output_payload", fmt.Sprintf("formation %q did not emit required output ports: %s", req.NodeID, strings.Join(missing, ", ")), "executor", nil)
 	}
 	for portID := range namedOutputs {
 		if !knownPorts[portID] {
@@ -456,7 +498,12 @@ func (e *TmuxFormationExecutor) materializeOutputRefs(formation FormationNode, o
 		}
 		body, err := e.readOutputRefArtifact(ref)
 		if err != nil {
-			return err
+			code := "invalid_output_ref"
+			var failure *RunExecutionError
+			if errors.As(err, &failure) {
+				code = failure.Code
+			}
+			return runExecutionError(code, fmt.Sprintf("output port %q: %s", portID, err), "executor", err)
 		}
 		// Routed text reaches the next step exactly as the seat wrote it.
 		payload.Text = body
@@ -551,11 +598,11 @@ func outputContractExtraLines(formation FormationNode) []string {
 		"}",
 		"```",
 		"Use all and only the exact output port ids in that skeleton.",
-		"Do not rely on free-form answer text for routing; it is display-only. Missing or unknown output ids block the run.",
+		"Do not rely on free-form answer text for routing; it is display-only. Missing or unknown output ids get one correction turn before blocking the run.",
 	)
 	if len(textPorts) > 0 {
 		lines = append(lines,
-			"Text outputs ("+strings.Join(textPorts, ", ")+"): use text for a short, non-secret routed payload or summary. For a longer payload, write a text file in the attempt artifact directory shown above and put its full absolute path in ref; Archon reads that file as the routed text. A bare filename does not resolve. Omit ref for a text-only payload. A missing, unreadable, non-text or oversized ref blocks the run.",
+			"Text outputs ("+strings.Join(textPorts, ", ")+"): use text for a short, non-secret routed payload or summary. For a longer payload, write a text file in the attempt artifact directory shown above and put its full absolute path in ref; Archon reads that file as the routed text. A bare filename does not resolve. Omit ref for a text-only payload. To return only a path, put the absolute path in text and omit ref. A missing, unreadable, non-text or oversized ref gets one correction turn before blocking the run.",
 		)
 	}
 	if len(filePorts) > 0 {

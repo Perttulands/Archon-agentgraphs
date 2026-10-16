@@ -670,6 +670,9 @@ func evidenceProblem(events []RunEvent, index int, capper *evidenceCapper) Evide
 	event := events[index]
 	problem := EvidenceProblem{Seq: event.Seq, Type: event.Type, Code: stringFromEventData(event, "code")}
 	reason := stringFromEventData(event, "reason")
+	if event.Type == RunEventError && stringFromEventData(event, "message") != "" {
+		reason = stringFromEventData(event, "message")
+	}
 	if reason == "" {
 		reason = stringFromEventData(event, "message")
 	}

@@ -325,6 +325,21 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		writeRunStatusLines(stdout, &envelope.Data)
+		if envelope.Data.Status == formations.RunStatusBlocked {
+			raw, err := request("GET", "/api/runs/"+url.PathEscape(envelope.Data.RunID)+"/evidence/problems", nil)
+			if err != nil {
+				return fail(stderr, err)
+			}
+			var problems struct {
+				Data struct {
+					Problems []formations.RunProblem `json:"problems"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(raw, &problems); err != nil {
+				return fail(stderr, err)
+			}
+			writeCurrentRunBlock(stdout, problems.Data.Problems)
+		}
 		return 0
 	}
 	fmt.Fprint(stdout, string(raw))

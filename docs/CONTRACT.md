@@ -1246,7 +1246,17 @@ Real formations must emit all and only their declared output IDs in one block:
 A text payload can also include `ref` naming a text file anywhere on disk,
 preferably under the prompt's attempt directory. Use its full absolute
 filesystem path; a relative `ref` is refused with `invalid_output_ref`. A
-missing, unreadable, non-text or oversized reference blocks routing.
+missing, unreadable, non-text or oversized reference rejects the output. To
+route only a file or folder path on a text port, put its absolute path in
+`text` and omit `ref`. A file or folder port is the way to keep the artifact.
+
+A missing or invalid output block, unknown or omitted port, invalid text ref,
+or oversized response gets one correction turn on the same live seat before
+blocking routing. The prompt names the rejected contract and declared ports,
+the text-ref byte cap, and how to return a path as text. The fresh complete
+response replaces the rejected one; a judge preserves its verdict or pick.
+A second invalid output blocks the run. `run status` and `run logs` in text
+mode show the block/error code and message.
 
 The prompt names the attempt directory, `attempt artifact directory:
 <state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>`, which Archon

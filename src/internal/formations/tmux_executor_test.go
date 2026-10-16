@@ -802,6 +802,7 @@ func TestTmuxExecutorBlocksInvalidOutputRefArtifacts(t *testing.T) {
 				pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 				captures: []string{
 					"splitter referenced invalid artifact\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
+					"splitter referenced invalid artifact\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
 				},
 			}
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -1459,6 +1460,7 @@ func (p *fakeWorkerPane) next() string {
 }
 
 type fakeTmuxHarnessClient struct {
+	rawOutputs           bool
 	harness              string
 	sessions             []string
 	pane                 tmuxPaneState
@@ -1694,7 +1696,9 @@ func (f *fakeTmuxHarnessClient) CapturePane(_ context.Context, _, target string,
 		}
 		captured = fmt.Sprintf("agent output\n<<<ARCHON-DONE run-id=%s status=ok artifact=%s>>>\n", runIDFromPrompt(f.lastPrompt), artifact)
 	}
-	captured = withPromptOutputContract(captured, f.lastPrompt)
+	if !f.rawOutputs {
+		captured = withPromptOutputContract(captured, f.lastPrompt)
+	}
 	f.awaitingCapture = false
 	if f.paneText != "" {
 		f.paneText += "\n"

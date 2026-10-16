@@ -20,8 +20,9 @@ and only its declared output port IDs, then this run's exact sentinel:
   earlier or later attempt.
 - A port's kind decides what its payload is:
   - `text` (the default): `text`, or `ref` naming the absolute path of a
-    text file the seat wrote, which Archon reads as the routed text. A missing,
-    unreadable, non-text or oversized ref blocks routing.
+    text file the seat wrote, which Archon reads as the routed text. To route
+    only a path (including an image or large file), put the absolute path in
+    `text` and omit `ref`; use a typed file/folder port to keep the artifact.
   - `file` or `folder`: `ref` is required and is the absolute path of an
     existing file or directory, of any type; `text` is a one-line summary. A
     missing ref, or a path that is not a file (or not a directory), blocks
@@ -41,6 +42,12 @@ and only its declared output port IDs, then this run's exact sentinel:
   a dispatch.
 - A judge also emits exactly one `archon-verdict` block (see Gates in the main
   skill), separate from its `archon-outputs` block.
+
+A missing or invalid output block or text ref gets one correction turn on the
+same live seat. The correction prompt names the ports, failure and text-ref
+byte cap. Return a fresh complete response, preserving the work and any judge
+verdict or pick. A second invalid output blocks routing; `run status` and
+`run logs` show the code and message in text mode.
 
 The cockpit's Produced list opens a run's artifacts, and `archon run attempts
 <runId> [--node <id>]` lists each attempt with its outputs, the verdicts on
