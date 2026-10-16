@@ -130,10 +130,23 @@ func (v HarnessVariant) SpawnCommand() (string, error) {
 	return v.LaunchCommand()
 }
 
+// modelObserved says whether a turn's recorded model is the slot's model.
+// Claude Code records the model a family alias resolved to, so opus matches
+// claude-opus-5-5 (archon-jp4a).
+func (v HarnessVariant) modelObserved(observed string) bool {
+	if observed == v.Model {
+		return true
+	}
+	if v.ID != "claude-code" || !slices.Contains(claudeCodeModels, v.Model) {
+		return false
+	}
+	return strings.HasPrefix(observed, "claude-"+v.Model+"-")
+}
+
 func (v HarnessVariant) verifyTurnSettings(turn codexTranscriptTurn) error {
 	// Claude records model on assistant messages but may omit effort. Codex
 	// records both in turn_context, so missing evidence there is a mismatch.
-	if v.Model != "" && turn.Model != v.Model || (v.ID == "openai-codex" || turn.Effort != "") && turn.Effort != v.effectiveEffort() {
+	if v.Model != "" && !v.modelObserved(turn.Model) || (v.ID == "openai-codex" || turn.Effort != "") && turn.Effort != v.effectiveEffort() {
 		return fmt.Errorf("seat model/effort mismatch: expected %s/%s, observed %s/%s", v.Model, v.effectiveEffort(), turn.Model, turn.Effort)
 	}
 	return nil

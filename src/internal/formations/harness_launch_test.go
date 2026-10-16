@@ -63,6 +63,22 @@ func TestSpawnRunsTheSettingsItStates(t *testing.T) {
 	}
 }
 
+func TestClaudeAliasMatchesResolvedModel(t *testing.T) {
+	v := HarnessVariant{ID: "claude-code", Model: "opus", Effort: "xhigh"}
+	if err := v.verifyTurnSettings(codexTranscriptTurn{Model: "claude-opus-5-5", Effort: "xhigh"}); err != nil {
+		t.Fatalf("resolved alias refused: %v", err)
+	}
+	for _, model := range []string{"claude-sonnet-5-5", "claude-opusx-1", "opus-5-5"} {
+		if err := v.verifyTurnSettings(codexTranscriptTurn{Model: model}); err == nil {
+			t.Fatalf("accepted %s for opus", model)
+		}
+	}
+	codex := HarnessVariant{ID: "openai-codex", Model: "opus"}
+	if err := codex.verifyTurnSettings(codexTranscriptTurn{Model: "claude-opus-5-5", Effort: "medium"}); err == nil {
+		t.Fatal("codex seat accepted a Claude alias resolution")
+	}
+}
+
 func TestHarnessLaunchAndMismatch(t *testing.T) {
 	for _, harness := range []string{"openai-codex", "claude-code"} {
 		t.Run(harness, func(t *testing.T) {
