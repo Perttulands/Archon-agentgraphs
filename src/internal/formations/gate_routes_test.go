@@ -102,6 +102,23 @@ func TestHumanGateRoutesNameDestinationsAndTheLastRound(t *testing.T) {
 	}
 }
 
+// A send-back to a step whose best card is spent picks its best attempt
+// instead of blocking (archon-gihe): the gate's answer judges the attempt it
+// waits on, so there is one to pick. A stop card still blocks.
+func TestHumanGateRoutesSayASpentBestCardPicks(t *testing.T) {
+	for _, whenSpent := range []string{"", LimitWhenSpentBest} {
+		board := limitedGateRoutesBoard(3, 0)
+		board.Limits[0].WhenSpent = whenSpent
+		for attempts := 1; attempts <= 3; attempts++ {
+			sendBack := HumanGateRoutes(board, draftAttempts(attempts), "gate_review", time.Time{})[1]
+			spent := attempts == 3
+			if (sendBack.Limit != nil) != spent || sendBack.PicksBest != (spent && whenSpent == LimitWhenSpentBest) {
+				t.Fatalf("whenSpent %q after %d attempts: limit %+v, picks best %v", whenSpent, attempts, sendBack.Limit, sendBack.PicksBest)
+			}
+		}
+	}
+}
+
 // A mission without a Limit card has no limits (archon-o7p.8): however often
 // the draft was sent back, the next send-back names no rounds and no limit,
 // because the engine will start the draft again.

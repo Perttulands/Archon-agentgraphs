@@ -277,6 +277,27 @@ func judgedSinceLastPick(events []RunEvent, stepID string, candidates []pickCand
 	return false
 }
 
+// routePicksBest reports whether a gate's route to a step whose limit use is
+// spent picks the step's best attempt rather than blocking, as pickOrBlock
+// will decide when the step comes to start. When the answering gate is the
+// step's selecting gate, its answer judges the attempt it waits on, so a
+// candidate judged since the last pick exists.
+func routePicksBest(board *BoardDocument, events []RunEvent, gateID, stepID string, use RunLimitReached) bool {
+	card, ok := findLimit(board, use.LimitID)
+	if !ok || card.WhenSpent != LimitWhenSpentBest || card.Target != stepID || use.NodeID != stepID {
+		return false
+	}
+	gate, problem := selectingGate(board, stepID)
+	if problem != "" {
+		return false
+	}
+	if gate.ID == gateID {
+		return true
+	}
+	candidates := pickCandidates(events, stepID, gate.ID)
+	return len(candidates) > 0 && judgedSinceLastPick(events, stepID, candidates)
+}
+
 // pickOrBlock is what a step does at its spent limit. A card whose whenSpent
 // is best, with an attempt its gate judged since the step's last pick, starts
 // a pick; anything else blocks the run at the limit. cutOff marks an attempt

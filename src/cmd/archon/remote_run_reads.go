@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/coordinator"
+	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
 // The reads use only public projections; sessionName can be matched to tmux
@@ -99,6 +100,12 @@ func printRemoteRunRead(command string, raw []byte, jsonOut bool, stdout, stderr
 		fmt.Fprintf(stdout, "gate %s requested-seq %d\ncriterion: %s\ninput from %s:%s\n%s\n", request.GateID, request.RequestedSeq, request.Criterion, request.Input.FromNodeID, request.Input.FromPortID, request.Input.Text)
 		if request.Input.Truncated {
 			fmt.Fprintln(stdout, "[input truncated]")
+		}
+		if pick := request.Pick; pick != nil {
+			fmt.Fprintf(stdout, "pick the best attempt of %s: attempts %s\n", pick.NodeID, formations.AttemptListWords(pick.Candidates))
+			if rec := pick.Recommendation; rec != nil {
+				fmt.Fprintf(stdout, "recommended: attempt %d by %s: %s\n", rec.Attempt, rec.DecidedBy, rec.Reason)
+			}
 		}
 	}
 	return 0

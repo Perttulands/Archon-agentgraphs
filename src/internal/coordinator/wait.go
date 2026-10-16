@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -94,9 +95,15 @@ type WaitAsk struct {
 	// ResumeAllowed says whether run resume can continue a blocked ask.
 	ResumeAllowed bool `json:"resumeAllowed,omitempty"`
 	// Limit is the spent Limit card a blocked ask resumes past with a grant.
-	Limit  *formations.RunLimitReached `json:"limit,omitempty"`
-	Input  *WaitInput                  `json:"input,omitempty"`
-	Routes []formations.GateRoute      `json:"routes,omitempty"`
+	Limit *formations.RunLimitReached `json:"limit,omitempty"`
+	// ResumePolicy is grant, or grant_or_pick where the stopped step can also
+	// resume by picking its best attempt (archon-gihe).
+	ResumePolicy string                 `json:"resumePolicy,omitempty"`
+	Input        *WaitInput             `json:"input,omitempty"`
+	Routes       []formations.GateRoute `json:"routes,omitempty"`
+	// Pick marks a human gate's ask to pick a step's best attempt rather than
+	// give a verdict, with its candidates (archon-gihe).
+	Pick *formations.PendingPick `json:"pick,omitempty"`
 }
 
 // WaitInput is the start of what a human gate received.
@@ -312,14 +319,20 @@ func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *fo
 		text, _ := input["text"].(string)
 		excerpt, truncated := formations.CapEvidenceText(text, waitInputExcerptBytes)
 		out.Input = &WaitInput{FromNodeID: from, FromTitle: waitTitle(board, from), FromPortID: port, Text: excerpt, Bytes: len(text), Truncated: truncated}
+		out.Pick = formations.PendingPickOf(event)
 		if board != nil {
 			out.Routes = formations.HumanGateRoutes(board, events, ask.GateID, now)
+			if out.Pick != nil {
+				// A pick has only the pass route, which the picked attempt takes.
+				out.Routes = slices.DeleteFunc(out.Routes, func(route formations.GateRoute) bool { return route.Verdict != "pass" })
+			}
 		}
 	default:
 		out.Reason = ask.Ask
 		out.Code, _ = event.Data["code"].(string)
 		out.ResumeAllowed = ask.Kind == formations.NeedsYouKindBlocked && ask.ResumeAllowed
 		out.Limit = ask.Limit
+		out.ResumePolicy = ask.ResumePolicy
 	}
 	return out
 }
