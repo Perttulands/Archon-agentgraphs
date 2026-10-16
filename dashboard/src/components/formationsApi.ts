@@ -440,6 +440,18 @@ export async function recordGateVerdict(runId: string, gateId: string, body: { a
   return fetchRunStatus(runId)
 }
 
+/** The operator's choice for a pending pick: the attempt that goes on as the gate's pass. */
+export async function recordGatePick(runId: string, gateId: string, body: { actor: string; requestedSeq: number; attempt: number; reason: string }): Promise<RunStatusProjection | RunStatusResult> {
+  await fetchApi<{ runId: string }>(
+    `/api/runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/pick`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }
+  )
+  return fetchRunStatus(runId)
+}
+
 export type PatchCreateFormationResult = {
   layout: LayoutDocument
   formation: FormationNode

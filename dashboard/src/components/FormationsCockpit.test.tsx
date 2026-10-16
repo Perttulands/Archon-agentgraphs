@@ -3271,7 +3271,8 @@ describe('FormationsCockpit reference parity', () => {
     const flow = await screen.findByTestId('flow-view')
     const frame = within(await within(flow).findByTestId('flow-step-fmn_frame')).getByLabelText('Run state of Frame')
     await waitFor(() => expect(frame).toHaveTextContent('done'))
-    expect(frame).toHaveTextContent('attempt 2')
+    // A formation that ran again opens its attempts from its row (archon-7963).
+    expect(within(frame).getByTestId('attempts-open-fmn_frame')).toHaveTextContent('2 attempts')
     const review = within(flow).getByLabelText('Run state of Review')
     await waitFor(() => expect(review).toHaveTextContent('blocked at Review: invalid judge result: missing verdict block'))
     fireEvent.click(within(review).getByTestId('run-point'))

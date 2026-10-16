@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, type KeyboardEvent, type ReactNode } from 'react'
 import FloatingFrameHandles from './FloatingFrameHandles'
 import type { FloatingWindowKind, FrameSize } from './floatingWindowSize'
 import type { WindowRect } from './windowGeometry'
@@ -9,7 +9,7 @@ import './floatingWindows.css'
  * A floating window with the standard chrome: a title bar to drag, a close
  * button, and handles on every edge and corner. What it holds is the caller's.
  */
-export default function FloatingWindow({ id, kind, title, label, defaultSize, anchor, keepClear, anchorKind, overCanvas, actions, className, onClose, children, takeFocus = true }: {
+export default function FloatingWindow({ id, kind, title, label, defaultSize, anchor, keepClear, anchorKind, overCanvas, actions, className, onClose, onKeyDown, children, takeFocus = true }: {
   takeFocus?: boolean
   id: string
   kind: FloatingWindowKind
@@ -29,6 +29,11 @@ export default function FloatingWindow({ id, kind, title, label, defaultSize, an
   actions?: ReactNode
   className?: string
   onClose: () => void
+  /**
+   * Keys pressed anywhere in the window, the window itself included, before the
+   * window's own: preventing Escape's default keeps the window open.
+   */
+  onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   children: ReactNode
 }) {
   const win = useFloatingWindow<HTMLElement>({ id, kind, label, defaultSize, anchor, keepClear, anchorKind, overCanvas, onClose })
@@ -51,6 +56,10 @@ export default function FloatingWindow({ id, kind, title, label, defaultSize, an
       aria-label={label}
       data-window-id={id}
       data-window-kind={kind}
+      onKeyDown={event => {
+        onKeyDown?.(event)
+        win.rootProps.onKeyDown(event)
+      }}
     >
       <header className="fwin-head" {...win.moveProps}>
         <span className="fwin-title" tabIndex={0} aria-label={`Move ${label} with arrow keys`} onKeyDown={win.onMoveKeyDown}>{title}</span>

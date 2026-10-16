@@ -10,8 +10,8 @@
  * the window cannot be dragged away to nothing.
  */
 
-/** Peek holds a seat terminal; the other kinds are reserved for node, note, file, gate answer and role windows. */
-export type FloatingWindowKind = 'peek' | 'node' | 'note' | 'file' | 'answer' | 'role'
+/** Peek holds a seat terminal; the other kinds are reserved for node, note, file, gate answer, role and step attempts windows. */
+export type FloatingWindowKind = 'peek' | 'node' | 'note' | 'file' | 'answer' | 'role' | 'attempts'
 
 export interface FrameSize {
   width: number
@@ -31,6 +31,8 @@ export const FLOATING_WINDOW_MINIMUM: Record<FloatingWindowKind, FrameSize> = {
   // A gate answer keeps its response box and its two decisions in view.
   answer: { width: 340, height: 260 },
   role: { width: 280, height: 160 },
+  // A step's attempts keep one attempt's head and a look at its output in view.
+  attempts: { width: 420, height: 320 },
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

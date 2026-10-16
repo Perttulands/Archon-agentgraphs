@@ -1,0 +1,18 @@
+/* What opens a step's attempts where the step lives (archon-7963): a card's
+   run tools use .finspect, a Flow row's status line a link, a window's title
+   bar an action like a file window's. */
+.flow-status .attempts-open {
+  padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.flow-status .attempts-open:hover,
+.flow-status .attempts-open:focus-visible { color: var(--accent); outline: none; }
+
+.attempts-actions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; cursor: default; }
+.attempts-action {
+  flex-shrink: 0; border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-primary); color: var(--text-secondary);
+  padding: 3px 8px; font: 11px var(--font-mono); letter-spacing: .04em; white-space: nowrap; cursor: pointer;
+}
+.attempts-action:hover,
+.attempts-action:focus-visible { border-color: var(--accent); color: var(--text-primary); outline: none; }
+.attempts-action[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
