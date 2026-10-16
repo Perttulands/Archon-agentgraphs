@@ -16,11 +16,12 @@ import (
 // A run has no limits unless a card sets one.
 
 const (
-	limitTargetHelp = "the step it covers by ID or title, or input (the Input card) for the whole mission"
-	limitRoundsHelp = "how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run"
-	limitTimeHelp   = "how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count"
-	limitWarnHelp   = "how much time is left when the covered seats are warned, such as 5m"
-	limitTokensHelp = "how many tokens the step, or every step of the mission, may spend, approximately: input not read from the cache, cache writes included, plus output, subagents included"
+	limitTargetHelp    = "the step it covers by ID or title, or input (the Input card) for the whole mission"
+	limitRoundsHelp    = "how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run"
+	limitTimeHelp      = "how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count"
+	limitWarnHelp      = "how much time is left when the covered seats are warned, such as 5m"
+	limitTokensHelp    = "how many tokens the step, or every step of the mission, may spend, approximately: input not read from the cache, cache writes included, plus output, subagents included"
+	limitWhenSpentHelp = "what the spent card does: stop (the default) blocks the run for a grant; best picks the best attempt the step's gate judged and goes on through its pass route"
 )
 
 func runLimitCommand(store *formations.Store, verb string, args []string, stdout, stderr io.Writer) int {
@@ -45,6 +46,7 @@ type limitFlags struct {
 	time      *string
 	warn      *string
 	tokens    *string
+	whenSpent *string
 	title     *string
 	updatedBy *string
 	jsonOut   *bool
@@ -59,6 +61,7 @@ func newLimitFlags(name string, stderr io.Writer) limitFlags {
 		time:      fs.String("time", "", limitTimeHelp),
 		warn:      fs.String("warn", "", limitWarnHelp),
 		tokens:    fs.String("tokens", "", limitTokensHelp),
+		whenSpent: fs.String("when-spent", "", limitWhenSpentHelp),
 		title:     fs.String("title", "", "Limit card title (default Limit)"),
 		updatedBy: fs.String("updated-by", "agent:archon", "update actor"),
 		jsonOut:   fs.Bool("json", false, "write JSON"),
@@ -173,7 +176,7 @@ func runLimitCreate(store *formations.Store, args []string, stdout, stderr io.Wr
 		return failDefinitionWrite(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
 	}
 	result, err := store.CreateLimit(slug, formations.LimitCreateRequest{
-		Title: *flags.title, Target: target, Rounds: knobs.rounds, Seconds: knobs.seconds, WarnSeconds: knobs.warn, Tokens: knobs.tokens, X: createX, Y: createY, UpdatedBy: *flags.updatedBy,
+		Title: *flags.title, Target: target, Rounds: knobs.rounds, Seconds: knobs.seconds, WarnSeconds: knobs.warn, Tokens: knobs.tokens, WhenSpent: *flags.whenSpent, X: createX, Y: createY, UpdatedBy: *flags.updatedBy,
 	}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
 	if err != nil {
 		return failDefinitionWrite(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
@@ -252,6 +255,9 @@ func limitUpdate(board *formations.BoardDocument, flags limitFlags) (formations.
 	if given["tokens"] {
 		update.Tokens = &knobs.tokens
 	}
+	if given["when-spent"] {
+		update.WhenSpent = flags.whenSpent
+	}
 	return update, nil
 }
 
@@ -320,7 +326,7 @@ func remoteLimitCreate(c *remoteClient, args []string, stdout, stderr io.Writer)
 			return "", nil, err
 		}
 		createX, createY, err := c.freePosition(board, flags.fs, *x, *y)
-		return "createLimit", map[string]any{"title": *flags.title, "target": target, "rounds": knobs.rounds, "seconds": knobs.seconds, "warnSeconds": knobs.warn, "tokens": knobs.tokens, "x": createX, "y": createY}, err
+		return "createLimit", map[string]any{"title": *flags.title, "target": target, "rounds": knobs.rounds, "seconds": knobs.seconds, "warnSeconds": knobs.warn, "tokens": knobs.tokens, "whenSpent": *flags.whenSpent, "x": createX, "y": createY}, err
 	})
 	if err != nil {
 		return remoteFail(stderr, err, *flags.jsonOut, "mission", flags.fs.Arg(0))
@@ -371,6 +377,9 @@ func remoteLimitUpdate(c *remoteClient, args []string, stdout, stderr io.Writer)
 		}
 		if update.Tokens != nil {
 			fields["tokens"] = *update.Tokens
+		}
+		if update.WhenSpent != nil {
+			fields["whenSpent"] = *update.WhenSpent
 		}
 		return "updateLimit", fields, nil
 	})

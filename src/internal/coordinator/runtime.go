@@ -147,6 +147,8 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		Grant  bool   `json:"grant"`
 		// TakeFail settles a gate blocked on a rejected judge verdict as a fail.
 		TakeFail bool `json:"takeFail"`
+		// PickBest picks the best attempt of the step a spent limit stopped.
+		PickBest bool `json:"pickBest"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -168,15 +170,11 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		reply(w, 409, map[string]string{"error": "run is not resumable"})
 		return
 	}
-	// A spent limit resumes only with a grant, and only it takes one (archon-o7p.8).
-	grantable := p.ResumePolicy == formations.ResumePolicyGrant
-	if grantable != req.Grant {
+	// A spent limit resumes only with a grant, or a pick where the step can
+	// pick, and only it takes either (archon-o7p.8, archon-gihe).
+	if err := formations.ResumeLimitRefusal(p.ResumePolicy, req.Grant, req.PickBest); err != nil {
 		c.release(id)
-		message := formations.ErrRunNothingToGrant.Error()
-		if grantable {
-			message = formations.ErrRunGrantRequired.Error()
-		}
-		reply(w, 409, map[string]string{"error": message})
+		reply(w, 409, map[string]string{"error": err.Error()})
 		return
 	}
 	if req.TakeFail && p.BlockCode != "invalid_judge_result" {
@@ -185,7 +183,7 @@ func (c *Coordinator) resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.launch(id, func() error {
-		_, err := c.engine.ResumeRun(id, formations.RunResumeRequest{Actor: req.Actor, Mode: req.Mode, Reason: req.Reason, Grant: req.Grant, TakeFail: req.TakeFail})
+		_, err := c.engine.ResumeRun(id, formations.RunResumeRequest{Actor: req.Actor, Mode: req.Mode, Reason: req.Reason, Grant: req.Grant, TakeFail: req.TakeFail, PickBest: req.PickBest})
 		return err
 	})
 	reply(w, 202, p)

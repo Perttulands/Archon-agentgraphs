@@ -37,7 +37,9 @@ type GateRouteTarget struct {
 // RunFails marks a verdict after which the run fails when it ends: one of its
 // End nodes is rejected, or a rejected path already ended. With EndsRun it
 // fails now; without, once the rest of its open work has ended. Limit is a
-// Limit card the route finds spent, so taking it blocks the run until a grant.
+// Limit card the route finds spent, so taking it blocks the run until a grant,
+// unless PicksBest: the card's whenSpent is best and the step's best judged
+// attempt is picked instead and goes on as its gate's pass (archon-gihe).
 // MissionRounds is the mission card's use so far and RoundsNeeded the step
 // starts the route makes, judges included, when a card caps the mission's
 // rounds; MissionTime is the mission card's time use when it sets time.
@@ -47,6 +49,7 @@ type GateRoute struct {
 	EndsRun       bool              `json:"endsRun,omitempty"`
 	RunFails      bool              `json:"runFails,omitempty"`
 	Limit         *RunLimitReached  `json:"limit,omitempty"`
+	PicksBest     bool              `json:"picksBest,omitempty"`
 	MissionRounds *RunLimitReached  `json:"missionRounds,omitempty"`
 	RoundsNeeded  int               `json:"roundsNeeded,omitempty"`
 	MissionTime   *RunLimitReached  `json:"missionTime,omitempty"`
@@ -87,6 +90,7 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 				// The engine's own rule, so the panel says what the engine will do.
 				if route.Limit == nil {
 					route.Limit = limitSpentBefore(board, events, formation, now)
+					route.PicksBest = route.Limit != nil && routePicksBest(board, events, gateID, nodeID, *route.Limit)
 				}
 				target.WaitsForInputs = formationWaitsForOtherInputs(board, events, nodeID, portID)
 			case "gate":

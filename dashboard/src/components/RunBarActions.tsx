@@ -28,6 +28,8 @@ export interface RunBarActionsProps {
   onResume: () => void
   /** Resumes a run blocked at a spent Limit card with a grant; `gives` says what, "one more round" or "30 min more". */
   onGrant: (gives: string) => void
+  /** Resumes a run blocked at a spent Limit card by picking the best attempt the step's gate judged (archon-gihe). */
+  onPick: () => void
   /** Resolves once the run is canceled, false when the stop failed. */
   onStop: (reason: string) => Promise<boolean>
 }
@@ -55,12 +57,13 @@ function blockFact(block: { reason: string; limit?: RunLimitUse } | null, titleO
   return block.reason || (block.limit ? runLimitPhrase(block.limit, titleOf) : '')
 }
 
-export default function RunBarActions({ run, points, boardTitle, titleOf, waitingGates, onResume, onGrant, onStop }: RunBarActionsProps) {
+export default function RunBarActions({ run, points, boardTitle, titleOf, waitingGates, onResume, onGrant, onPick, onStop }: RunBarActionsProps) {
   const [confirming, setConfirming] = useState(false)
   const stopButton = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef(false)
   const cannotResume = !run.final && run.status === 'blocked' && !run.resumeAllowed
-  const grants = !run.final && Boolean(run.resumeAllowed) && run.resumePolicy === 'grant'
+  const grants = !run.final && Boolean(run.resumeAllowed) && Boolean(run.resumePolicy)
+  const picks = grants && run.resumePolicy === 'grant_or_pick'
   const block = useLatestBlock(run.runId, cannotResume || grants, run.eventCount)
   const fact = cannotResume ? blockFact(block, titleOf) : ''
   // What a grant gives the spent card: one more round, or its time again;
@@ -79,6 +82,10 @@ export default function RunBarActions({ run, points, boardTitle, titleOf, waitin
         <button type="button" className="run-grant" onClick={() => onGrant(gives)}
           title={`The run stopped at a spent Limit card. Grant it ${gives} and the run resumes.`}>{`Grant ${gives}`}</button>
       ) : run.resumeAllowed ? <button type="button" onClick={onResume}>Resume run</button> : null}
+      {picks ? (
+        <button type="button" className="run-grant" onClick={onPick}
+          title="The run stopped at a spent Limit card. Pick the best attempt its gate judged, which goes on as if the gate had passed it.">Pick the best attempt</button>
+      ) : null}
       {cannotResume ? (
         <span className="run-note" role="note" data-testid="run-not-resumable" title={fact ? `This block cannot be resumed: ${fact}.` : 'This block cannot be resumed.'}>
           Can’t resume.
@@ -163,7 +170,7 @@ function ModalLayer({ onEscape, children }: { onEscape: () => void; children: Re
   )
 }
 
-function StopRunDialog({ run, points, boardTitle, titleOf, waitingGates, onStop, onClose }: Omit<RunBarActionsProps, 'onResume' | 'onGrant'> & { onClose: () => void }) {
+function StopRunDialog({ run, points, boardTitle, titleOf, waitingGates, onStop, onClose }: Omit<RunBarActionsProps, 'onResume' | 'onGrant' | 'onPick'> & { onClose: () => void }) {
   const [reason, setReason] = useState('')
   const [stopping, setStopping] = useState(false)
   const keepButton = useRef<HTMLButtonElement>(null)

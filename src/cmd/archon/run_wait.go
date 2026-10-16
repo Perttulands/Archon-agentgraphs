@@ -329,6 +329,10 @@ func describeWaitAskShort(ask coordinator.WaitAsk) string {
 func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.WaitAsk) {
 	switch ask.Kind {
 	case formations.NeedsYouKindHumanGate:
+		if ask.Pick != nil {
+			writeWaitPick(b, server, runID, ask)
+			return
+		}
 		fmt.Fprintf(b, "The gate %q (%s) waits for a verdict, asked at #%d.\n", ask.Title, ask.GateID, ask.Seq)
 		fmt.Fprintf(b, "Criterion: %s\n", ask.Criterion)
 		if ask.Input != nil {
@@ -372,6 +376,8 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 		endSentence(b)
 		b.WriteString("\n")
 		switch {
+		case ask.ResumeAllowed && ask.Limit != nil && ask.ResumePolicy == formations.ResumePolicyGrantOrPick:
+			fmt.Fprintf(b, "Give it %s if the work deserves it, pick the best attempt its gate judged and go on, or stop it:\n  archon --server %s run resume %s --grant --reason 'why more'\n  archon --server %s run resume %s --pick-best --reason 'why go on'\n  archon --server %s run abort %s --reason 'why'\n", formations.GrantWords(*ask.Limit), server, runID, server, runID, server, runID)
 		case ask.ResumeAllowed && ask.Limit != nil:
 			fmt.Fprintf(b, "Give it %s if the work deserves it, or stop it:\n  archon --server %s run resume %s --grant --reason 'why more'\n  archon --server %s run abort %s --reason 'why'\n", formations.GrantWords(*ask.Limit), server, runID, server, runID)
 		case ask.ResumeAllowed:
@@ -380,6 +386,38 @@ func writeWaitAsk(b *strings.Builder, server, runID string, ask coordinator.Wait
 			fmt.Fprintf(b, "It cannot resume. Stop it and start a new run:\n  archon --server %s run abort %s --reason 'why'\n", server, runID)
 		}
 	}
+}
+
+// writeWaitPick says what a gate's pending pick asks (archon-gihe): the step's
+// spent Limit card, the candidate attempts, the judges' recommendation, where
+// the picked attempt goes, and the gate pick command. The whole comparison is
+// gate request; each attempt is run attempts.
+func writeWaitPick(b *strings.Builder, server, runID string, ask coordinator.WaitAsk) {
+	pick := ask.Pick
+	step := pick.NodeID
+	if ask.Input != nil && ask.Input.FromNodeID == pick.NodeID && ask.Input.FromTitle != "" {
+		step = ask.Input.FromTitle
+	}
+	fmt.Fprintf(b, "The gate %q (%s) waits for you to pick the best attempt of %q, asked at #%d: its Limit card is spent, so it runs no more.\n", ask.Title, ask.GateID, step, ask.Seq)
+	fmt.Fprintf(b, "Criterion: %s\n", ask.Criterion)
+	fmt.Fprintf(b, "Candidates: attempts %s. Compare them: archon --server %s gate request %s %s, or archon --server %s run attempts %s --node %s\n",
+		formations.AttemptListWords(pick.Candidates), server, runID, ask.GateID, server, runID, pick.NodeID)
+	if rec := pick.Recommendation; rec != nil {
+		fmt.Fprintf(b, "The judge %s recommends attempt %d: %s\n", firstWaitNonEmpty(rec.DecidedBy, "of the gate"), rec.Attempt, rec.Reason)
+	}
+	for _, route := range ask.Routes {
+		if where := describeGateRoute(route); where != "" {
+			fmt.Fprintf(b, "After the pick: %s.\n", where)
+		}
+	}
+	example := 0
+	if rec := pick.Recommendation; rec != nil {
+		example = rec.Attempt
+	} else if len(pick.Candidates) > 0 {
+		example = pick.Candidates[0]
+	}
+	b.WriteString("Answer it with:\n")
+	fmt.Fprintf(b, "  archon --server %s gate pick %s %s --attempt %d --requested-seq %d --reason 'why this one'\n", server, runID, ask.GateID, example, ask.Seq)
 }
 
 // describeGateRoute says where a verdict leads, as the cockpit's answer panel does.
@@ -438,6 +476,9 @@ func describeGateRoute(route formations.GateRoute) string {
 				who = strconv.Quote(target.Title)
 			}
 		}
+	}
+	if route.PicksBest {
+		return fmt.Sprintf("%s, but %s has used %s, so its best judged attempt is picked instead and goes on as if it had passed", where, who, formations.SpentWords(*limit))
 	}
 	return fmt.Sprintf("%s, but %s has used %s, so the run blocks instead until you grant %s", where, who, formations.SpentWords(*limit), formations.GrantWords(*limit))
 }

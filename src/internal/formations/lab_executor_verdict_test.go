@@ -8,15 +8,15 @@ import (
 func TestCollapseRepeatedLabVerdictsKeepsOneIdenticalFixture(t *testing.T) {
 	block := "```archon-verdict\n{\"verdict\":\"pass\",\"reason\":\"Lab fixture\",\"evidence\":[\"Simulated input\"]}\n```"
 	repeated := "seat one\ninput: brief\n" + block + "\n\nseat two\ninput: brief\n  " + strings.ReplaceAll(block, "\n", "\n  ")
-	if got := collapseRepeatedLabVerdicts(repeated); strings.Count(got, "```archon-verdict") != 1 || !strings.Contains(got, "seat one") || !strings.Contains(got, "seat two") {
+	if got := collapseRepeatedLabBlocks(repeated, "archon-verdict"); strings.Count(got, "```archon-verdict") != 1 || !strings.Contains(got, "seat one") || !strings.Contains(got, "seat two") {
 		t.Fatalf("identical fixtures = %q, want one block and both seats", got)
 	}
 	differing := block + "\n" + strings.Replace(block, `"pass"`, `"fail"`, 1)
-	if got := collapseRepeatedLabVerdicts(differing); got != differing {
+	if got := collapseRepeatedLabBlocks(differing, "archon-verdict"); got != differing {
 		t.Fatalf("differing blocks changed: %q", got)
 	}
 	for _, text := range []string{"no verdict here", block, "```archon-verdict\nunterminated"} {
-		if got := collapseRepeatedLabVerdicts(text); got != text {
+		if got := collapseRepeatedLabBlocks(text, "archon-verdict"); got != text {
 			t.Fatalf("%q changed to %q", text, got)
 		}
 	}

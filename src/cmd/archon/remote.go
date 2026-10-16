@@ -141,7 +141,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	jsonOut := fs.Bool("json", false, "write JSON")
 	var responseFile, missionFilter string
 	mode, reason, relayedBy, seq, grant := new(string), new(string), new(string), new(int), new(bool)
-	takeFail := new(bool)
+	takeFail, pickBest, attempt := new(bool), new(bool), new(int)
 	switch {
 	case verdict:
 		fs.StringVar(reason, "response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
@@ -152,13 +152,19 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(mode, "mode", "reattach", "resume mode: reattach or redispatch")
 		fs.StringVar(reason, "reason", "", "operator reason")
 		fs.BoolVar(grant, "grant", false, grantUsage)
+		fs.BoolVar(pickBest, "pick-best", false, pickBestUsage)
 		fs.BoolVar(takeFail, "take-fail", false, takeFailUsage)
+	case name == "gate pick":
+		fs.IntVar(attempt, "attempt", 0, pickAttemptUsage)
+		fs.StringVar(reason, "reason", "", pickReasonUsage)
+		fs.IntVar(seq, "requested-seq", 0, "exact pending human request sequence; read from the gate's pending pick when omitted")
+		fs.StringVar(relayedBy, "relayed-by", "", relayedByUsage)
 	case name == "run abort":
 		fs.StringVar(reason, "reason", "", "operator reason")
 	case name == "run list":
 		fs.StringVar(&missionFilter, "mission", "", "the mission whose runs to list")
 	}
-	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true, "take-fail": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args[2:], map[string]bool{"json": true, "grant": true, "take-fail": true, "pick-best": true})); err != nil {
 		return 2
 	}
 	pos := fs.Args()
@@ -175,7 +181,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if args[1] == "abort" {
 			body = map[string]any{"reason": *reason, "requestedBy": "operator:archon"}
 		} else {
-			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant, "takeFail": *takeFail}
+			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant, "takeFail": *takeFail, "pickBest": *pickBest}
 		}
 	case "run list":
 		path += "/runs"
@@ -243,6 +249,39 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		path += "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1]) + "/verdict"
 		method = "POST"
 		fields := map[string]any{"requestedSeq": *seq, "verdict": verdict, "reason": *reason}
+		if *relayedBy != "" {
+			fields["relayedBy"] = *relayedBy
+		}
+		body = fields
+	case "gate pick":
+		if len(pos) != 2 || *attempt <= 0 {
+			return remoteUsage(stderr, args[0]+" "+args[1])
+		}
+		gatePath := path + "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1])
+		if *seq <= 0 {
+			// The pick pending now: a later request on this gate is refused.
+			current, err := request("GET", gatePath+"/request", nil)
+			if err != nil {
+				return fail(stderr, err)
+			}
+			var pending struct {
+				Data struct {
+					Request struct {
+						RequestedSeq int `json:"requestedSeq"`
+					} `json:"request"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(current, &pending); err != nil {
+				return fail(stderr, err)
+			}
+			*seq = pending.Data.Request.RequestedSeq
+			if *seq <= 0 {
+				return fail(stderr, errors.New("the gate has no pending pick"))
+			}
+		}
+		path = gatePath + "/pick"
+		method = "POST"
+		fields := map[string]any{"requestedSeq": *seq, "attempt": *attempt, "reason": *reason}
 		if *relayedBy != "" {
 			fields["relayedBy"] = *relayedBy
 		}

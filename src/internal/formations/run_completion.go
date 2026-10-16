@@ -108,6 +108,10 @@ func runPaths(board *BoardDocument, events []RunEvent) runPathState {
 			}
 		case RunEventGateEvaluating:
 			state.owed = slices.DeleteFunc(state.owed, func(id string) bool { return id == gateID })
+		case RunEventPickStarted:
+			// The pick settles the step's send-back, as its output would
+			// (archon-gihe).
+			state.owed = slices.DeleteFunc(state.owed, func(id string) bool { return id == event.NodeID })
 		case RunEventGateVerdict:
 			routePort := stringFromEventData(event, "routePort")
 			if routePort != "pass" && routePort != "fail" {

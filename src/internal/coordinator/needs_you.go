@@ -285,12 +285,16 @@ func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []
 	switch ask.Kind {
 	case formations.NeedsYouKindHumanGate:
 		n.GateTitle = nodeTitle(board, ask.GateID)
-		n.Subject = fmt.Sprintf("Archon needs your answer: %s (%s)", n.GateTitle, n.BoardTitle)
-		fmt.Fprintf(&body, "%s is waiting for your answer at the gate %q.\n\n", n.BoardTitle, n.GateTitle)
 		var request formations.RunEvent
 		if ask.Seq >= 1 && ask.Seq <= len(events) {
 			request = events[ask.Seq-1]
 		}
+		if pick := formations.PendingPickOf(request); pick != nil {
+			writeNeedsYouPick(&body, &n, ask, request, *pick, board, server)
+			break
+		}
+		n.Subject = fmt.Sprintf("Archon needs your answer: %s (%s)", n.GateTitle, n.BoardTitle)
+		fmt.Fprintf(&body, "%s is waiting for your answer at the gate %q.\n\n", n.BoardTitle, n.GateTitle)
 		if criterion, _ := request.Data["prompt"].(string); criterion != "" {
 			fmt.Fprintf(&body, "Gate criterion:\n%s\n\n", criterion)
 		}
@@ -323,7 +327,12 @@ func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []
 			reason = "not recorded"
 		}
 		fmt.Fprintf(&body, "Run %s on %s is blocked.\n\nReason: %s\n\n", ask.RunID, n.BoardTitle, reason)
-		if ask.ResumePolicy == formations.ResumePolicyGrant && ask.Limit != nil {
+		if ask.ResumePolicy == formations.ResumePolicyGrantOrPick && ask.Limit != nil {
+			fmt.Fprintf(&body, "Give it %s if the work deserves it, take the best attempt its gate judged and go on, or stop it:\n", formations.GrantWords(*ask.Limit))
+			fmt.Fprintf(&body, "archon --server %s run resume %s --grant --reason 'why one more'\n", server, ask.RunID)
+			fmt.Fprintf(&body, "archon --server %s run resume %s --pick-best --reason 'why go on'\n", server, ask.RunID)
+			fmt.Fprintf(&body, "archon --server %s run abort %s --reason 'why'\n", server, ask.RunID)
+		} else if ask.ResumePolicy == formations.ResumePolicyGrant && ask.Limit != nil {
 			fmt.Fprintf(&body, "Give it %s if the work deserves it, or stop it:\n", formations.GrantWords(*ask.Limit))
 			fmt.Fprintf(&body, "archon --server %s run resume %s --grant --reason 'why one more'\n", server, ask.RunID)
 			fmt.Fprintf(&body, "archon --server %s run abort %s --reason 'why'\n", server, ask.RunID)
@@ -346,6 +355,38 @@ func renderNeedsYou(config NeedsYouConfig, ask formations.NeedsYouAsk, events []
 	n.Body = body.String()
 	n.Text = n.Subject
 	return n
+}
+
+// writeNeedsYouPick writes the ask to pick a step's best attempt: the
+// attempts side by side, the judge's recommendation when it made one, and the
+// command that answers (archon-gihe).
+func writeNeedsYouPick(body *strings.Builder, n *formations.NeedsYouNotification, ask formations.NeedsYouAsk, request formations.RunEvent, pick formations.PendingPick, board *formations.BoardDocument, server string) {
+	step := nodeTitle(board, pick.NodeID)
+	n.Subject = fmt.Sprintf("Archon needs you to pick: %s (%s)", step, n.BoardTitle)
+	fmt.Fprintf(body, "%s on %s has spent its Limit card. Pick the attempt that goes on through the gate %q as if it had passed.\n\n", step, n.BoardTitle, n.GateTitle)
+	input, _ := request.Data["inputRef"].(map[string]any)
+	text, _ := input["text"].(string)
+	text, truncated := capPendingGateText(text)
+	fmt.Fprintf(body, "%s\n", text)
+	if truncated {
+		body.WriteString("\n[The attempts are longer; this is their first 64 KiB.]\n")
+	}
+	if pick.Recommendation != nil {
+		fmt.Fprintf(body, "\n%s recommends attempt %d: %s\n", nodeTitle(board, pick.Recommendation.DecidedBy), pick.Recommendation.Attempt, pick.Recommendation.Reason)
+	}
+	body.WriteString("\n")
+	if n.BoardURL != "" {
+		fmt.Fprintf(body, "Pick in the cockpit: %s\n\n", n.BoardURL)
+	}
+	attempt := pick.Recommendation
+	example := 1
+	if attempt != nil {
+		example = attempt.Attempt
+	} else if len(pick.Candidates) > 0 {
+		example = pick.Candidates[0]
+	}
+	body.WriteString("Or pick from the Archon host:\n")
+	fmt.Fprintf(body, "archon --server %s gate pick %s %s --attempt %d --requested-seq %d --reason 'why this one'\n", server, ask.RunID, ask.GateID, example, ask.Seq)
 }
 
 func writeCockpitLink(body *strings.Builder, link string) {

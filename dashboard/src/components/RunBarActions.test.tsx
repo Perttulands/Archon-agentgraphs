@@ -13,15 +13,16 @@ function renderBar(props: Partial<Parameters<typeof RunBarActions>[0]> = {}) {
   const onStop = vi.fn(async () => true)
   const onResume = vi.fn()
   const onGrant = vi.fn()
+  const onPick = vi.fn()
   render(
     <div className="fmx">
       <div className="run-banner">
         <RunBarActions run={run()} points={[{ kind: 'waiting', nodeId: 'gate_review', gate: true }]} boardTitle="Runs gate"
-          titleOf={titleOf} waitingGates={[{ title: 'Operator review', requestedSeq: 9 }]} onResume={onResume} onGrant={onGrant} onStop={onStop} {...props} />
+          titleOf={titleOf} waitingGates={[{ title: 'Operator review', requestedSeq: 9 }]} onResume={onResume} onGrant={onGrant} onPick={onPick} onStop={onStop} {...props} />
       </div>
     </div>,
   )
-  return { onStop, onResume, onGrant }
+  return { onStop, onResume, onGrant, onPick }
 }
 
 describe('RunBarActions', () => {
@@ -162,6 +163,17 @@ describe('RunBarActions', () => {
     expect(onGrant).toHaveBeenCalledWith('one more round')
     expect(onResume).not.toHaveBeenCalled()
     expect(screen.queryByTestId('run-not-resumable')).toBeNull()
+    // Without attempts a gate judged there is nothing to pick.
+    expect(screen.queryByRole('button', { name: 'Pick the best attempt' })).toBeNull()
+    cleanup()
+
+    // Where the step's gate judged attempts, the run may also pick the best of them (archon-gihe).
+    const pickable = renderBar({ run: run({ status: 'blocked', resumeAllowed: true, resumePolicy: 'grant_or_pick' }), waitingGates: [] })
+    expect(await screen.findByRole('button', { name: 'Grant one more round' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Pick the best attempt' }))
+    expect(pickable.onPick).toHaveBeenCalledOnce()
+    expect(pickable.onGrant).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull()
     cleanup()
 
     // A time card gives its time again: the card's seconds are max less what was granted.

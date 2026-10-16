@@ -56,6 +56,22 @@ type StepAttempt struct {
 	Verdicts       []AttemptVerdict  `json:"verdicts"`
 	Files          []AttemptFile     `json:"files"`
 	FilesTruncated bool              `json:"filesTruncated,omitempty"`
+	// Picked marks the attempt a spent limit picked as the step's best
+	// (archon-gihe).
+	Picked *AttemptPick `json:"picked,omitempty"`
+}
+
+// AttemptPick is a pick that took this attempt: the gate whose pass route it
+// went on through, the pick's verdict seq, why and who picked, the attempts it
+// chose from, and what started it (whenSpent or resume).
+type AttemptPick struct {
+	GateID     string       `json:"gateId"`
+	GateTitle  string       `json:"gateTitle,omitempty"`
+	Seq        int          `json:"seq"`
+	Reason     EvidenceText `json:"reason"`
+	DecidedBy  string       `json:"decidedBy"`
+	Candidates []int        `json:"candidates"`
+	Trigger    string       `json:"trigger"`
 }
 
 // AttemptDirectory names an attempt's artifact directory: Name relative to the
@@ -179,6 +195,9 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 	capper := &evidenceCapper{remaining: math.MaxInt}
 	judges := judgedGates(board)
 	stepIndex := map[string]int{}
+	// picking marks a step a pick settled; a resume reattaches none of its
+	// attempts.
+	picking := map[string]bool{}
 	current := func(nodeID string) *StepAttempt {
 		index, ok := stepIndex[nodeID]
 		if !ok || len(evidence.Steps[index].Attempts) == 0 {
@@ -234,6 +253,7 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 				evidence.Steps = append(evidence.Steps, StepAttempts{NodeID: formation.ID, Title: capper.text(formation.Title).Text, JudgeOf: judges[formation.ID], Outputs: outputs, Attempts: []StepAttempt{}})
 			}
 			step := &evidence.Steps[at]
+			delete(picking, event.NodeID)
 			// A restart before dispatch records the same attempt again.
 			if last := current(event.NodeID); last != nil && last.Attempt == max(event.Attempt, 1) && last.OutputSeq == 0 {
 				last.Status = AttemptRunning
@@ -295,7 +315,17 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			if waiting, ok := open[eventGateID(event)]; ok && waiting.at == at {
 				delete(open, eventGateID(event))
 			}
+		case RunEventPickStarted:
+			// The step runs no more: an attempt its limit cut short stopped.
+			picking[event.NodeID] = true
+			if attempt := current(event.NodeID); attempt != nil && attempt.Status == AttemptRunning {
+				attempt.Status, attempt.EndedAt = AttemptStopped, event.Timestamp
+			}
 		case RunEventGateVerdict:
+			if pick := pickData(event); pick != nil {
+				markPickedAttempt(find, board, event, pick, capper)
+				continue
+			}
 			gateID := eventGateID(event)
 			waiting, ok := open[gateID]
 			at := waiting.at
@@ -327,14 +357,17 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 		case RunEventResumed:
 			// A resume carries on only the attempts it reattaches, or whose
 			// pending outputs it keeps; a redispatch runs them again instead.
+			// A step a pick settled runs no more.
 			if stringFromEventData(event, "resumeMode") == "redispatch" {
 				continue
 			}
 			var resumed []*StepAttempt
 			for _, ref := range enrichOpenDispatchRefs(events[:index], openDispatchRefsFromEvent(event)) {
-				resumed = append(resumed, current(ref.NodeID))
+				if !picking[ref.NodeID] {
+					resumed = append(resumed, current(ref.NodeID))
+				}
 			}
-			if pending := pendingOutputFromEvent(event); pending != nil {
+			if pending := pendingOutputFromEvent(event); pending != nil && !picking[pending.NodeID] {
 				resumed = append(resumed, find(pending.NodeID, pending.Attempt))
 			}
 			for _, attempt := range resumed {
@@ -395,6 +428,26 @@ func spendAttemptsBudget(evidence *RunAttemptsEvidence) {
 				spend(&verdict.Evidence[j].Text)
 			}
 		}
+		if pick := attempt.Picked; pick != nil {
+			spendString(&pick.GateTitle)
+			spend(&pick.Reason)
+		}
+	}
+}
+
+// markPickedAttempt marks the attempt a pick's verdict took (archon-gihe).
+func markPickedAttempt(find func(nodeID string, number int) *StepAttempt, board *BoardDocument, event RunEvent, pick map[string]any, capper *evidenceCapper) {
+	attempt := find(stringFromAny(pick["nodeId"]), intFromRunEventData(pick["attempt"]))
+	if attempt == nil || attempt.OutputSeq == 0 {
+		return
+	}
+	picked := &AttemptPick{
+		GateID: event.GateID, Seq: event.Seq, Reason: capper.text(stringFromEventData(event, "reason")),
+		DecidedBy: stringFromAny(pick["decidedBy"]), Candidates: intsFromAny(pick["candidates"]), Trigger: stringFromAny(pick["trigger"]),
+	}
+	attempt.Picked = picked
+	if gate, ok := findGate(board.Gates, event.GateID); ok {
+		picked.GateTitle = capper.text(gate.Title).Text
 	}
 }
 

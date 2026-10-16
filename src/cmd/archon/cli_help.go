@@ -72,15 +72,16 @@ var nounHelps = []nounHelp{
 		{"request", "<runId> <gateId> [--json]", "read a waiting human gate's question, routed input and where each verdict leads. Needs --server"},
 		{"approve", "<runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--json]", "pass a waiting human gate. The response travels with the gate's input"},
 		{"reject", "<runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--json]", "send a waiting human gate's work back. The response is the feedback"},
+		{"pick", "<runId> <gateId> --attempt <n> [--reason text] [--requested-seq <seq>] [--relayed-by slot-id] [--json]", "pick the best attempt of a step whose spent Limit card asks the operator to pick. The picked attempt goes on through the gate's pass route; without --requested-seq the gate's pending pick is read first"},
 	}},
 	{noun: "end", summary: "End nodes, which end a path on purpose", about: "An End node ends a path on purpose, done or rejected.", commands: []commandHelp{
 		{"create", "<mission> [--outcome done|rejected] [--title text] [--x n] [--y n] [--json]", "add an End node. Wire a route into it with archon formation wire <mission> <node:port> <end-id>:in"},
 		{"update", "<mission> <end> [--outcome done|rejected] [--title text] [--json]", "change an End node's title or outcome"},
 		{"delete", "<mission> <end> [--json]", "remove an End node"},
 	}},
-	{noun: "limit", summary: "Limit cards, which cap a step or the whole mission", about: "A Limit card caps the step it covers, or the whole mission when it covers the Input card. At the limit the run blocks until run resume --grant.", commands: []commandHelp{
-		{"create", "<mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--title text] [--x n] [--y n] [--json]", "add a Limit card. At the limit the run blocks; run resume --grant gives one more round, or the card's time or tokens again. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included"},
-		{"update", "<mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--title text] [--json]", "change a Limit card. Only the flags you give change; an empty --rounds, --time, --warn or --tokens clears that knob and an empty --target unwires the card"},
+	{noun: "limit", summary: "Limit cards, which cap a step or the whole mission", about: "A Limit card caps the step it covers, or the whole mission when it covers the Input card. At the limit the run blocks until run resume --grant, or, with --when-spent best, picks the step's best attempt and goes on.", commands: []commandHelp{
+		{"create", "<mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--when-spent stop|best] [--title text] [--x n] [--y n] [--json]", "add a Limit card. At the limit the run blocks; run resume --grant gives one more round, or the card's time or tokens again. With --when-spent best a step's card picks the best attempt its gate judged and goes on through the gate's pass route; the step needs one judge or human gate that only it feeds and whose fail returns to it. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included"},
+		{"update", "<mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--when-spent stop|best] [--title text] [--json]", "change a Limit card. Only the flags you give change; an empty --rounds, --time, --warn or --tokens clears that knob and an empty --target unwires the card"},
 		{"delete", "<mission> <limit> [--json]", "remove a Limit card"},
 	}},
 	{noun: "tool", summary: "Tool nodes", about: "A Tool node runs a registered profile on its input.", commands: []commandHelp{
@@ -110,7 +111,7 @@ var nounHelps = []nounHelp{
 		{"wait", "<runId> [--until needs-you|final|any-change] [--since <seq>] [--timeout <duration>] [--reconnect <duration>] [--json]", "block until the run needs you, ends or changes. Needs --server"},
 		{"gates", "<runId> [--json]", "list a run's waiting gates and the seats they asked. Needs --server"},
 		{"seats", "<runId> [--json]", "list a run's seats, their session names and what each waits on. Needs --server"},
-		{"resume", "<runId> [--mode reattach|redispatch] [--grant] [--take-fail] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again. At a judge verdict Archon rejected, resume asks the judge again and --take-fail fails the gate instead"},
+		{"resume", "<runId> [--mode reattach|redispatch] [--grant | --pick-best] [--take-fail] [--reason text] [--actor actor] [--json]", "resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again. --pick-best picks the best attempt the step's gate judged and goes on through its pass route instead, whatever the card's whenSpent. At a judge verdict Archon rejected, resume asks the judge again and --take-fail fails the gate instead"},
 		{"abort", "<runId> [--reason <reason>] [--requested-by <actor>] [--json]", "stop a run"},
 		{"ask", "<runId> [question] [--json]", "summarize what a run has done, offline"},
 	}},

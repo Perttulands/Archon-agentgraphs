@@ -19,6 +19,9 @@ var (
 	ErrRunEpochBlocked     = errors.New("archon run epoch is blocked")
 	// ErrRunGrantRequired refuses a resume without --grant at a spent limit.
 	ErrRunGrantRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time or tokens again")
+	// ErrRunGrantOrPickRequired refuses a plain resume at a spent limit that
+	// can also pick the step's best attempt (archon-gihe).
+	ErrRunGrantOrPickRequired = errors.New("this run stopped at a spent limit: resume it with --grant to give one more round or the card's time or tokens again, or with --pick-best to take the best attempt its gate judged and go on")
 	// ErrRunNothingToGrant refuses --grant on a block no limit recorded.
 	ErrRunNothingToGrant = errors.New("this block is not a spent limit, so there is nothing to grant: resume without --grant")
 	// ErrRunNoVerdictToTake refuses --take-fail on a block that is not a
@@ -87,6 +90,9 @@ type RunResumeRequest struct {
 	// TakeFail settles a gate blocked on a judge verdict Archon rejected: the
 	// gate fails and routes, and the judge is not asked again (archon-lrbd).
 	TakeFail bool
+	// PickBest picks the best attempt of the step whose spent limit stopped
+	// the run, whatever its card's whenSpent, and goes on (archon-gihe).
+	PickBest bool
 	// Set only after explicit completed-turn evidence validation by the engine.
 	CompletedDispatchID string
 }
@@ -139,7 +145,9 @@ type RunStatusProjection struct {
 	EventCount    int         `json:"eventCount"`
 	ResumeAllowed bool        `json:"resumeAllowed"`
 	// ResumePolicy is how a blocked run resumes: grant at a spent limit,
-	// which resumes only with run resume --grant (archon-o7p.8).
+	// which resumes only with run resume --grant (archon-o7p.8), or
+	// grant_or_pick where the step's gate judged attempts, which also resumes
+	// with run resume --pick-best (archon-gihe).
 	ResumePolicy string `json:"resumePolicy,omitempty"`
 	// BlockCode is the code of the block a run rests at, such as
 	// invalid_judge_result, which run resume --take-fail settles.
@@ -153,6 +161,21 @@ type RunStatusProjection struct {
 	// ledger events; a final run ended at UpdatedAt.
 	StartedAt string `json:"startedAt,omitempty"`
 	UpdatedAt string `json:"updatedAt,omitempty"`
+	// Picks are the passes a spent limit picked rather than a gate gave, in
+	// ledger order (archon-gihe). Why each was picked is run evidence.
+	Picks []RunPick `json:"picks,omitempty"`
+}
+
+// RunPick is a pass a pick gave: the step's attempt picked as its best,
+// through which gate, from which attempts, who decided and what started it.
+type RunPick struct {
+	Seq        int    `json:"seq"`
+	GateID     string `json:"gateId"`
+	NodeID     string `json:"nodeId"`
+	Attempt    int    `json:"attempt"`
+	Candidates []int  `json:"candidates"`
+	DecidedBy  string `json:"decidedBy"`
+	Trigger    string `json:"trigger"`
 }
 
 // RunListFilter selects runs. MissionID lists one mission's runs by its
@@ -511,12 +534,8 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 		if last.Type != RunEventBlocked || !runBlockResumeAllowed(lifecycle, len(lifecycle)-1) {
 			return ErrRunResumeNotAllowed
 		}
-		needsGrant := runBlockNeedsGrant(lifecycle, len(lifecycle)-1)
-		switch {
-		case needsGrant && !req.Grant:
-			return ErrRunGrantRequired
-		case req.Grant && !needsGrant:
-			return ErrRunNothingToGrant
+		if err := ResumeLimitRefusal(stringFromEventData(last, "resumePolicy"), req.Grant, req.PickBest); err != nil {
+			return err
 		}
 		actor := defaultRunActor(req.Actor)
 		mode := strings.TrimSpace(req.Mode)
@@ -536,6 +555,10 @@ func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunS
 				return ErrRunNoVerdictToTake
 			}
 			data["judgeVerdict"] = "fail"
+		}
+		if req.PickBest {
+			// The resumed run picks before anything else (pickOnResume).
+			data["pickBest"] = true
 		}
 		if req.Grant {
 			// One more allowance of the knob the block spent, as the ledger
@@ -670,6 +693,12 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 		status.EventCount++
 		status.Epoch = event.Epoch
 		status.UpdatedAt = event.Timestamp
+		if pick := pickData(event); pick != nil && event.Type == RunEventGateVerdict {
+			status.Picks = append(status.Picks, RunPick{
+				Seq: event.Seq, GateID: event.GateID, NodeID: stringFromAny(pick["nodeId"]), Attempt: intFromRunEventData(pick["attempt"]),
+				Candidates: intsFromAny(pick["candidates"]), DecidedBy: stringFromAny(pick["decidedBy"]), Trigger: stringFromAny(pick["trigger"]),
+			})
+		}
 		switch event.Type {
 		case RunEventStarted, RunEventResumed:
 			status.Status = RunStatusRunning
@@ -683,7 +712,7 @@ func ProjectRunEvents(runID string, events []RunEvent) (*RunStatusProjection, er
 			status.ResumePolicy = ""
 			status.BlockCode = runBlockCode(events, i)
 			if runBlockNeedsGrant(events, i) {
-				status.ResumePolicy = ResumePolicyGrant
+				status.ResumePolicy = stringFromEventData(event, "resumePolicy")
 			}
 		case RunEventCanceled:
 			status.Status = RunStatusCanceled

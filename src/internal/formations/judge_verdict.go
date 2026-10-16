@@ -12,16 +12,17 @@ import (
 
 const judgeVerdictKeys = "requires exactly verdict, reason and evidence"
 
-// judgeVerdictReturned is what a judge wrote in its first archon-verdict block,
-// read leniently so a rejected verdict can be shown beside why it was rejected.
-// A reply without a block returns nothing.
-func judgeVerdictReturned(text string) string {
+// judgeBlockReturned is what a judge wrote in its first lang block,
+// archon-verdict or archon-pick, read leniently so a rejected verdict or pick
+// can be shown beside why it was rejected. A reply without a block returns
+// nothing.
+func judgeBlockReturned(text, lang string) string {
 	var body []string
 	inside := false
 	for _, line := range strings.Split(text, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !inside {
-			inside = strings.HasPrefix(trimmed, "```archon-verdict")
+			inside = strings.HasPrefix(trimmed, "```"+lang)
 			continue
 		}
 		if trimmed == "```" {
@@ -160,7 +161,9 @@ type GateResponse struct {
 // response, route the gate input unchanged.
 func gatePassInput(events []RunEvent, verdictEvent RunEvent, gateID string, input RunInputRef) (RunInputRef, error) {
 	requestedSeq := intFromRunEventData(verdictEvent.Data["requestedSeq"])
-	if requestedSeq == 0 {
+	// A pick carries the picked attempt on as it was, without the picker's
+	// reason (archon-gihe).
+	if requestedSeq == 0 || isPickEvent(verdictEvent) {
 		return input, nil
 	}
 	if requestedSeq < 0 || requestedSeq >= verdictEvent.Seq || verdictEvent.Seq > len(events) {

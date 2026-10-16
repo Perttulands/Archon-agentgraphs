@@ -359,6 +359,9 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 		if stringFromEventData(event, "verdict") == "fail" {
 			verdict = "sent back"
 		}
+		if isPickEvent(event) {
+			verdict = fmt.Sprintf("picked attempt %d", intFromRunEventData(pickData(event)["attempt"]))
+		}
 		fmt.Fprintf(&b, "- %s: %s", nodeTitleOnBoard(board, event.GateID), verdict)
 		if response := stringFromEventData(event, "reason"); response != "" {
 			fmt.Fprintf(&b, ", with the response: %s", response)
@@ -369,6 +372,10 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 		b.WriteString("None yet.\n")
 	}
 	slot := delivery.Seat.SlotID
+	if pick := PendingPickOf(request); pick != nil {
+		writeHumanPickHelp(&b, board, request, *pick, runID, server, cli, slot)
+		return b.String()
+	}
 	b.WriteString("\n## How to help\n\n")
 	b.WriteString("- Present the gate's question plainly, from your own work, and help the operator think it through. Offer a view only when asked, and label it as yours.\n")
 	b.WriteString("- Only the operator decides. A complete, unambiguous operator verdict for this pending gate, with the exact response to record, is itself confirmation. Record those exact words immediately, without asking them to confirm again. This applies to both approval and send-back. For example, 'Approve. Response: Keep the scope as written.' or 'Send back. Response: Add the missing constraints.' confirms that verdict and response when addressed to this gate.\n")
@@ -384,6 +391,24 @@ func renderHumanAskBrief(runID string, board *BoardDocument, events []RunEvent, 
 	b.WriteString("- A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first: tell the operator.\n")
 	b.WriteString("- Your formation brief's limits still apply. Running the gate command above is the one exception to its bans.\n")
 	return b.String()
+}
+
+// writeHumanPickHelp tells a kept seat how to help the operator pick the
+// best attempt of its step, whose Limit card is spent (archon-gihe).
+func writeHumanPickHelp(b *strings.Builder, board *BoardDocument, request RunEvent, pick PendingPick, runID, server, cli, slot string) {
+	fmt.Fprintf(b, "\n## The pick\n\n%s has spent its Limit card and runs no more. The operator picks one of its attempts %s, and that attempt goes on through the gate as if it had passed. The attempts, side by side:\n\n%s\n",
+		nodeTitleOnBoard(board, pick.NodeID), AttemptListWords(pick.Candidates), strings.TrimSpace(runInputRefFromAny(request.Data["inputRef"]).Text))
+	if pick.Recommendation != nil {
+		fmt.Fprintf(b, "\nThe judge %s recommends attempt %d: %s\n", nodeTitleOnBoard(board, pick.Recommendation.DecidedBy), pick.Recommendation.Attempt, pick.Recommendation.Reason)
+	}
+	b.WriteString("\n## How to help\n\n")
+	b.WriteString("- Present the attempts plainly, from your own work, and help the operator compare them. Offer a view only when asked, and label it as yours.\n")
+	b.WriteString("- Only the operator picks. A complete, unambiguous pick of one attempt for this pending gate is itself confirmation: record it immediately with the operator's reason, if they gave one, without asking again. If the attempt or the reason is ambiguous, show what you would record and wait for the operator's confirmation.\n")
+	b.WriteString("- Record the confirmed pick with this command. Replace N with the attempt and REASON with the operator's words, quoted for the shell:\n\n")
+	fmt.Fprintf(b, "      %s --server %s gate pick %s %s --attempt N --requested-seq %d --relayed-by %s --reason REASON\n\n", cli, server, runID, request.GateID, request.Seq, slot)
+	b.WriteString("- A 503 means the daemon is restarting: wait a few seconds and run the same command again.\n")
+	b.WriteString("- A 409 saying the human gate request is no longer pending means another seat or the cockpit decided first: tell the operator.\n")
+	b.WriteString("- Your formation brief's limits still apply. Running the gate command above is the one exception to its bans.\n")
 }
 
 // RecordHumanAskDelivered records that a seat received a pending ask, unless the

@@ -721,17 +721,25 @@ func (e *TmuxFormationExecutor) correctJudgeOutput(req FormationExecution, bindi
 	if !req.FinalJudge {
 		return output, nil
 	}
+	lang, code, contract := "archon-verdict", "invalid_judge_result", judgeContract
+	correction := "Correct the format of your previous verdict now, preserving its verdict, reason and evidence."
 	_, parseErr := parseJudgeVerdict(output.Text)
+	if len(req.PickAttempts) > 0 {
+		// A picking judge is held to the pick contract (archon-gihe).
+		lang, code, contract = "archon-pick", RunBlockInvalidJudgePick, pickContract(req.PickAttempts)
+		correction = "Correct the format of your previous pick now, preserving the attempt, reason and evidence."
+		_, parseErr = parseJudgePick(output.Text, req.PickAttempts)
+	}
 	if parseErr == nil {
 		return output, nil
 	}
 	// The corrected reply replaces this one as the node's output, so the
 	// rejected verdict is kept on the failure itself.
-	returned, _ := CapEvidenceText(redactLedgerText(judgeVerdictReturned(output.Text)), EvidenceTextMaxBytes)
-	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventJudgeAttemptFailed, GateID: req.JudgeGateID, NodeID: req.NodeID, SlotID: binding.Slot.ID, Attempt: req.Attempt, Data: map[string]any{"code": "invalid_judge_result", "reason": parseErr.Error(), "correction": true, "returned": returned}}); err != nil {
+	returned, _ := CapEvidenceText(redactLedgerText(judgeBlockReturned(output.Text, lang)), EvidenceTextMaxBytes)
+	if err := e.store.AppendRunEvent(req.RunID, RunEvent{Type: RunEventJudgeAttemptFailed, GateID: req.JudgeGateID, NodeID: req.NodeID, SlotID: binding.Slot.ID, Attempt: req.Attempt, Data: map[string]any{"code": code, "reason": parseErr.Error(), "correction": true, "returned": returned}}); err != nil {
 		return tmuxSlotOutput{}, err
 	}
-	extra := append(outputContractExtraLines(req.Formation), "Your previous judge result was rejected: "+parseErr.Error(), "Correct the format of your previous verdict now, preserving its verdict, reason and evidence. This correction instruction supersedes any brief instruction to omit fields. Emit a fresh complete response with both archon-verdict and archon-outputs and the completion sentinel. Do not repeat the invalid block.", judgeContract)
+	extra := append(outputContractExtraLines(req.Formation), "Your previous judge result was rejected: "+parseErr.Error(), correction+" This correction instruction supersedes any brief instruction to omit fields. Emit a fresh complete response with both "+lang+" and archon-outputs and the completion sentinel. Do not repeat the invalid block.", contract)
 	return e.executeBoundSlotTurn(req, binding, dispatcher, "judge-correction", extra, owned)
 }
 

@@ -18,7 +18,7 @@ import (
 // RuntimeHandlers delegates every runtime route to the owning coordinator.
 // Authoring continues to use the same injected definition and persona stores.
 type RuntimeHandlers struct {
-	Start, Get, Events, Stream, Resume, Abort, Verdict, Escalations http.HandlerFunc
+	Start, Get, Events, Stream, Resume, Abort, Verdict, Pick, Escalations http.HandlerFunc
 }
 
 func (h *FormationsHandler) SetRuntime(runtime RuntimeHandlers) { h.runtime = &runtime }
@@ -62,12 +62,21 @@ type formationsRunResumeRequest struct {
 	Grant  bool   `json:"grant"`
 	// TakeFail settles a gate blocked on a rejected judge verdict as a fail.
 	TakeFail bool `json:"takeFail"`
+	// PickBest picks the best attempt of the step a spent limit stopped.
+	PickBest bool `json:"pickBest"`
 }
 
 type formationsHumanGateVerdictRequest struct {
 	Verdict string `json:"verdict"`
 	Reason  string `json:"reason"`
 	Actor   string `json:"actor"`
+}
+
+type formationsHumanGatePickRequest struct {
+	RequestedSeq int    `json:"requestedSeq"`
+	Attempt      int    `json:"attempt"`
+	Reason       string `json:"reason"`
+	Actor        string `json:"actor"`
 }
 
 type formationsBoardPatchRequest struct {
@@ -215,6 +224,8 @@ type formationsCreateLimitRequest struct {
 	Seconds     int    `json:"seconds"`
 	WarnSeconds int    `json:"warnSeconds"`
 	Tokens      int    `json:"tokens"`
+	// WhenSpent is stop, the default, or best (archon-gihe).
+	WhenSpent   string `json:"whenSpent"`
 	X           int    `json:"x"`
 	Y           int    `json:"y"`
 	ExpectedRev int    `json:"expectedRev"`
@@ -231,6 +242,7 @@ type formationsUpdateLimitRequest struct {
 	Seconds     *int    `json:"seconds"`
 	WarnSeconds *int    `json:"warnSeconds"`
 	Tokens      *int    `json:"tokens"`
+	WhenSpent   *string `json:"whenSpent"`
 	ExpectedRev int     `json:"expectedRev"`
 	UpdatedBy   string  `json:"updatedBy"`
 }
@@ -626,6 +638,7 @@ func (h *FormationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/runs/{runId}/resume", h.ResumeRun)
 	mux.HandleFunc("POST /api/runs/{runId}/abort", h.AbortRun)
 	mux.HandleFunc("POST /api/runs/{runId}/gates/{gateId}/verdict", h.RecordHumanGateVerdict)
+	mux.HandleFunc("POST /api/runs/{runId}/gates/{gateId}/pick", h.RecordHumanGatePick)
 	mux.HandleFunc("GET /api/runs/{runId}/escalations", h.GetRunEscalations)
 	mux.HandleFunc("GET /api/missions", h.ListBoards)
 	mux.HandleFunc("POST /api/missions", h.CreateBoard)
@@ -853,6 +866,7 @@ func (h *FormationsHandler) ResumeRun(w http.ResponseWriter, r *http.Request) {
 		Reason:   request.Reason,
 		Grant:    request.Grant,
 		TakeFail: request.TakeFail,
+		PickBest: request.PickBest,
 	})
 	if err != nil {
 		writeFormationsError(w, err)
@@ -881,6 +895,37 @@ func (h *FormationsHandler) RecordHumanGateVerdict(w http.ResponseWriter, r *htt
 		return
 	}
 	// Without a coordinator this request routes its own verdict.
+	status, err := engine.ContinueRun(r.PathValue("runId"))
+	if err != nil {
+		writeFormationsError(w, err)
+		return
+	}
+	core.WriteSuccess(w, map[string]interface{}{"status": status})
+}
+
+// RecordHumanGatePick records the operator's pick of a step's best attempt
+// on a gate's pending pick (archon-gihe).
+func (h *FormationsHandler) RecordHumanGatePick(w http.ResponseWriter, r *http.Request) {
+	if h.runtime != nil && h.runtime.Pick != nil {
+		h.runtime.Pick(w, r)
+		return
+	}
+	var request formationsHumanGatePickRequest
+	if !decodeJSONBody(w, r, &request) {
+		return
+	}
+	engine := h.newRunEngine("api")
+	if _, err := engine.RecordHumanGatePick(r.PathValue("runId"), formations.HumanGatePickRequest{
+		GateID:       r.PathValue("gateId"),
+		RequestedSeq: request.RequestedSeq,
+		Attempt:      request.Attempt,
+		Reason:       request.Reason,
+		Actor:        request.Actor,
+	}); err != nil {
+		writeFormationsError(w, err)
+		return
+	}
+	// Without a coordinator this request routes its own pick.
 	status, err := engine.ContinueRun(r.PathValue("runId"))
 	if err != nil {
 		writeFormationsError(w, err)
@@ -1633,6 +1678,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Seconds:     limit.Seconds,
 			WarnSeconds: limit.WarnSeconds,
 			Tokens:      limit.Tokens,
+			WhenSpent:   limit.WhenSpent,
 			X:           limit.X,
 			Y:           limit.Y,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, limit.UpdatedBy),
@@ -1658,6 +1704,7 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 			Seconds:     update.Seconds,
 			WarnSeconds: update.WarnSeconds,
 			Tokens:      update.Tokens,
+			WhenSpent:   update.WhenSpent,
 			UpdatedBy:   patchUpdatedBy(request.UpdatedBy, update.UpdatedBy),
 		}, formations.WriteOptions{
 			ExpectedETag: r.Header.Get("If-Match"),
@@ -1969,6 +2016,12 @@ func writeFormationsError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "Invalid mission slug")
 	case errors.Is(err, formations.ErrUnsupportedSchema):
 		core.WriteError(w, http.StatusUnprocessableEntity, "UNSUPPORTED_SCHEMA", err.Error())
+	case errors.Is(err, formations.ErrPickNotACandidate):
+		core.WriteError(w, http.StatusBadRequest, "NOT_A_CANDIDATE", err.Error())
+	case errors.Is(err, formations.ErrHumanRequestIsAPick), errors.Is(err, formations.ErrHumanRequestNotAPick),
+		errors.Is(err, formations.ErrHumanRequestNotPending), errors.Is(err, formations.ErrRunNothingToPick),
+		errors.Is(err, formations.ErrRunGrantOrPick), errors.Is(err, formations.ErrRunGrantOrPickRequired):
+		core.WriteError(w, http.StatusConflict, "CONFLICT", err.Error())
 	default:
 		core.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error())
 	}

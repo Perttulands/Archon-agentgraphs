@@ -315,6 +315,7 @@ func TestDescribeGateRouteSaysWhereEachVerdictLeads(t *testing.T) {
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}, {NodeID: "end_done", Title: "Done", Kind: "end", Outcome: "done"}}}, `goes to "Ship"; this path ends (done)`},
 		{formations.GateRoute{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_ship", Title: "Ship"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 3}}, `goes to "Ship", but the mission has used all 3 of its rounds, so the run blocks instead until you grant one more round`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}, `goes to "Build", but "Build" has used all 2 of its rounds, so the run blocks instead until you grant one more round`},
+		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}}}, Limit: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 2, Max: 2}, PicksBest: true}, `goes to "Build", but "Build" has used all 2 of its rounds, so its best judged attempt is picked instead and goes on as if it had passed`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_build", Title: "Build", Rounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_build", NodeID: "fmn_build", Used: 1, Max: 3}}}}, `goes to "Build" (round 2 of 3)`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_plan", Title: "Plan"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 3, Max: 4}, RoundsNeeded: 1}, `goes to "Plan"; the mission has 1 of 4 rounds left`},
 		{formations.GateRoute{Verdict: "fail", Targets: []formations.GateRouteTarget{{NodeID: "fmn_plan", Title: "Plan"}}, MissionRounds: &formations.RunLimitReached{Kind: "rounds", LimitID: "lim_mission", NodeID: "inp", Used: 1, Max: 4}, RoundsNeeded: 1}, `goes to "Plan"`},
@@ -372,6 +373,35 @@ func TestRunWaitOffersAGrantAtASpentLimit(t *testing.T) {
 	out = renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 9, Status: "blocked", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
 	if !strings.Contains(out, "Give it 30 min more if the work deserves it, or stop it:") {
 		t.Fatalf("time grant:\n%s", out)
+	}
+	// Where the step's gate judged attempts, the block can also pick the best (archon-gihe).
+	ask.ResumePolicy = formations.ResumePolicyGrantOrPick
+	out = renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 9, Status: "blocked", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
+	if !strings.Contains(out, "Give it 30 min more if the work deserves it, pick the best attempt its gate judged and go on, or stop it:\n  archon --server http://127.0.0.1:1 run resume run_x --grant --reason 'why more'\n  archon --server http://127.0.0.1:1 run resume run_x --pick-best --reason 'why go on'\n  archon --server http://127.0.0.1:1 run abort run_x --reason 'why'\n") {
+		t.Fatalf("grant or pick:\n%s", out)
+	}
+}
+
+// archon-gihe: a gate's pending pick asks for an attempt, not a verdict.
+func TestRunWaitAsksForAPickWithTheCandidates(t *testing.T) {
+	ask := coordinator.WaitAsk{Kind: formations.NeedsYouKindHumanGate, Seq: 14, New: true, GateID: "gate_review", Title: "Review", Criterion: "Is the draft ready to ship?",
+		Input:  &coordinator.WaitInput{FromNodeID: "fmn_work", FromTitle: "Draft", Text: "Pick the best attempt of Draft."},
+		Pick:   &formations.PendingPick{NodeID: "fmn_work", Candidates: []int{1, 2, 3}, Recommendation: &formations.PickRecommendation{Attempt: 2, Reason: "the tightest draft", DecidedBy: "fmn_judge"}},
+		Routes: []formations.GateRoute{{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_after", Title: "Ship", Kind: "formation"}}}}}
+	out := renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 14, Status: "waiting_human", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
+	for _, want := range []string{
+		`The gate "Review" (gate_review) waits for you to pick the best attempt of "Draft", asked at #14: its Limit card is spent, so it runs no more.`,
+		"Candidates: attempts 1, 2 or 3. Compare them: archon --server http://127.0.0.1:1 gate request run_x gate_review, or archon --server http://127.0.0.1:1 run attempts run_x --node fmn_work\n",
+		"The judge fmn_judge recommends attempt 2: the tightest draft\n",
+		`After the pick: goes to "Ship".`,
+		"  archon --server http://127.0.0.1:1 gate pick run_x gate_review --attempt 2 --requested-seq 14 --reason 'why this one'\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("out lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "gate approve") || strings.Contains(out, "waits for a verdict") {
+		t.Fatalf("a pick offers a verdict:\n%s", out)
 	}
 }
 

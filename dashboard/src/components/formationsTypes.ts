@@ -245,6 +245,8 @@ export interface LimitNode {
   seconds?: number
   warnSeconds?: number
   tokens?: number
+  /** best when the spent card picks the step's best judged attempt and goes on; absent is stop (archon-gihe). */
+  whenSpent?: 'best'
 }
 
 export interface CodeGateProfileDescriptor {
@@ -270,8 +272,11 @@ export interface RunStatusProjection {
   eventCount: number
   waitingGates?: WaitingGate[]
   resumeAllowed?: boolean
-  /** grant while the run is blocked at a spent Limit card: it resumes only with one more round granted. */
-  resumePolicy?: 'grant'
+  /**
+   * grant while the run is blocked at a spent Limit card: it resumes only with one more round granted;
+   * grant_or_pick where the step's gate judged attempts, which also resumes by picking the best (archon-gihe).
+   */
+  resumePolicy?: 'grant' | 'grant_or_pick'
   /** The code of the block a run rests at, such as invalid_judge_result. */
   blockCode?: string
   /** The channel frozen from the run's mission (ADR-0019); formation-only runs notify. */

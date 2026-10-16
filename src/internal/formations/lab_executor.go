@@ -156,7 +156,7 @@ func (e *LabFormationExecutor) executeFormation(ctx context.Context, req Formati
 		outputs = append(outputs, e.renderSlotOutput(req, slot, *card, variant))
 	}
 
-	text := collapseRepeatedLabVerdicts(strings.Join(outputs, "\n\n"))
+	text := collapseRepeatedLabBlocks(collapseRepeatedLabBlocks(strings.Join(outputs, "\n\n"), "archon-verdict"), "archon-pick")
 	if len(text) > e.config.OutputCapBytes {
 		text = text[:e.config.OutputCapBytes]
 	}
@@ -324,17 +324,18 @@ func (e *LabFormationExecutor) renderSlotOutput(req FormationExecution, slot For
 	return fmt.Sprintf("lab-fake output from %s using %s for %s\nslot: %s\ninput: %s", roleName(card), variant.ID, req.Title, slot.ID, inputText)
 }
 
-// collapseRepeatedLabVerdicts keeps one copy of a lab judge fixture. Lab seats
-// echo their input, so a multi-seat formation repeats a archon-verdict block
-// from the run brief once per seat, and a formation gate downstream would reject
-// the duplicates. Identical blocks collapse to the first; differing blocks stay,
+// collapseRepeatedLabBlocks keeps one copy of a lab judge fixture, an
+// archon-verdict or archon-pick block (lang). Lab seats echo their input, so a
+// multi-seat formation repeats a block from the run brief once per seat, and
+// a pick shows every attempt's copy side by side; a judge would reject the
+// duplicates. Identical blocks collapse to the first; differing blocks stay,
 // so a real conflict still fails at the judge.
-func collapseRepeatedLabVerdicts(text string) string {
+func collapseRepeatedLabBlocks(text, lang string) string {
 	lines := strings.Split(text, "\n")
 	type block struct{ start, end int }
 	var blocks []block
 	for i := 0; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) != "```archon-verdict" {
+		if strings.TrimSpace(lines[i]) != "```"+lang {
 			continue
 		}
 		for j := i + 1; j < len(lines); j++ {

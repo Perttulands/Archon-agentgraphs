@@ -36,7 +36,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port: from the step the port feeds, each step returns to the port, which completes the chain, or hands on to the first step it feeds. A chain that leaves the steps (through a Tool or gate), loops or never returns is no chain, so validation names the gate incomplete; the engine and the cockpit share this rule. The final judge result decides the formation kind. |
-| Limit card | Caps the rounds, time and tokens of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`, `tokens`). A run has no limits without one. |
+| Limit card | Caps the rounds, time and tokens of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`, `tokens`, `whenSpent`). A run has no limits without one. A spent card blocks the run for a grant, or on a step, with `whenSpent = "best"`, picks the best attempt its gate judged and goes on. |
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only by a Limit card. There is no `retry_control` port. |
 | Run | One admitted mission or isolated formation, with definition and persona snapshots and inputs. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
@@ -572,7 +572,8 @@ not start, and when time or tokens run out the running step stops. The run
 blocks with `code` `limit_reached`, the plain reason ("Review used 3 of 3
 rounds", "The mission used 20 of 20 rounds, 1 of them granted", "Review used
 30 min of 30 min", "Review used 51,230 of 50,000 tokens"), `resumePolicy`
-`grant` and the limit as `limit` (`kind` `rounds`, `time` or `tokens`,
+`grant`, or `grant_or_pick` where the step can also pick its best attempt (see
+[Picking the best attempt](#picking-the-best-attempt)), and the limit as `limit` (`kind` `rounds`, `time` or `tokens`,
 `limitId`, `nodeId` the card's target, `used`, `max` counting grants,
 `granted`; time in seconds). A peer conversation that reaches
 its message count without an agreed result is stopped: its seats are told the
@@ -587,9 +588,11 @@ round is room for a proposal and every peer's acknowledgement, one message
 more than the step has peers, so the peers can agree in it. The `run_resumed`
 records `grant` (`limitId`, `kind`, `amount`: 1 round or a peer step's round
 of messages, or the card's seconds or tokens) with the actor, and the run status's `resumePolicy` says
-`grant` while such a block waits. A resume without `--grant` at a spent limit,
-or with it at any other block, is refused with 409 and nothing is recorded.
-There is no automatic loop detection.
+`grant` or `grant_or_pick` while such a block waits. A resume without `--grant`
+at a spent limit (or without `--grant` or `--pick-best` under `grant_or_pick`),
+with `--grant` at any other block, with `--pick-best` anywhere but a
+`grant_or_pick` block, or with both, is refused with 409 and nothing is
+recorded. There is no automatic loop detection.
 
 A step has no time limit unless a Limit card's time covers it; the daemon
 imposes no default. A downstream human gate waits after the formation finishes
@@ -606,7 +609,8 @@ run's paths reached; a `run_failed` with code `path_rejected` names the
 rejected End node as its `nodeId` and the routing gate as its `gateId`.
 Typical sequences include `run_started`, `node_started`, `slot_dispatch`,
 `seat_created`, `seat_prompt_consumed`, `slot_result`, `seat_cleanup`,
-`gate_kind_result`, `gate_verdict`, and a run outcome. `node_output` carries
+`gate_kind_result`, `gate_verdict`, `pick_started` (see [Picking the best
+attempt](#picking-the-best-attempt)), and a run outcome. `node_output` carries
 the `attempt` whose output it is, and every routed input, in `node_started`'s
 `inputRefs` and `gate_evaluating`'s `inputRef`, carries `origin` (`nodeId`, `portId`,
 `attempt`): the step attempt whose output it is, kept through gate pass and
@@ -632,6 +636,111 @@ human gates and closes only at finality. Interrupting that client stops viewing,
 not execution. Abort cancels only the selected run and waits for owned-seat
 cleanup, including seats kept on call, before returning `canceled`.
 
+### Picking the best attempt
+
+A step's Limit card says with `whenSpent` what happens when it is spent
+(archon-gihe): `stop`, the default, which TOML and JSON leave out, blocks the
+run for a grant as above; `best` picks the best attempt the step's gate has
+already judged and sends it on as if the gate had passed it. Best of N is a
+step, its gate's fail route back to it, and a best card with N rounds.
+
+Only a step's card can pick, and only where the step has a selecting gate:
+exactly one gate whose `in` port that step alone feeds and whose `fail` route
+returns to the step, decided by a judge (`formation`) or a `human`, since a
+code check cannot compare attempts. Validation reports, as `invalid_limit`, a
+best card on the mission ("Limit Cap picks the best attempt when spent, but it
+covers the whole mission: only a step's card can pick; set it to stop"), on a
+step without a selecting gate ("Limit Cap picks the best attempt of Draft when
+spent, but no gate judges it and sends it back: wire a judge or human gate that
+only it feeds and whose fail returns to it, or set it to stop"), two such gates
+or a code-only gate, and any value other than `stop` or `best`; admission
+refuses the run with the same words. `limit create|update --when-spent
+stop|best` and the patch operations' `whenSpent` set it; another value is
+refused with `INVALID_LIMIT` (HTTP 400). In the cockpit the card's window sets
+it (When spent: Stop for a grant, or Pick the best attempt), the card reads
+"then picks the best", and Flow and the step's window say ", then the best
+attempt goes on".
+
+When any knob of a best card is spent, the step runs no more and picks among
+its candidates: the attempts whose output the selecting gate judged with a
+verdict of its own, found by the `origin` of the input each evaluation judged.
+An attempt the limit cut short, or a crash ended, has no output and is never a
+candidate. With no candidate the run blocks as a stop card's does; with one,
+Archon takes it without asking anyone (`decidedBy` `archon`). A card picks by
+itself only when the gate judged a candidate since the step's last pick, so a
+pass route that leads back to the step cannot pick the same attempts forever;
+such a step blocks instead.
+
+The pick is recorded as `pick_started` (`nodeId` the step, `gateId`, `trigger`
+`whenSpent` or `resume`, the spent `limit`, `candidates` with each
+`attempt`, `outputSeq` and `verdictSeq`, and for a judge gate its
+`judgeChain`); it settles the step's pending send-back as its output would.
+Then the gate decides:
+
+- A judge gate runs its judge chain once more, anchored at `pick_started`,
+  on one input that shows every candidate side by side: the criterion, and for
+  each attempt its verdict, reason and output (text, or the kept file or
+  folder path). Judges number their attempts on, as for any judging. The final
+  judge decides with exactly one fenced block, instead of a verdict:
+
+  ```archon-pick
+  {"attempt":2,"reason":"Why this attempt is the best","evidence":["what decided it"]}
+  ```
+
+  `attempt` must be a candidate, `reason` a string and `evidence` an array of
+  strings, and no other key is allowed. A malformed pick is asked for once
+  more, as a malformed verdict is; a second blocks the run resumably with
+  `code` `invalid_judge_pick` (`judge_attempt_failed` records the same code),
+  and a plain resume asks the final judge again.
+- A human gate asks the operator: `human_input_requested` carries `pick`
+  (`nodeId`, `pickSeq`, `candidates`) with the side-by-side input. A gate with
+  a judge and a human asks the judge chain first and offers its pick as
+  `recommendation` (`attempt`, `reason`, `evidence`, `decidedBy`); the operator
+  decides. The pending request appears in `waitingGates` with `pick`
+  (`nodeId`, `candidates`, `recommendation` with `attempt`, `reason` and
+  `decidedBy`), in `gate request` and its route, and in `run wait`, which
+  prints the `gate pick` command. `archon gate pick <run> <gate> --attempt <n>
+  [--reason <text>] [--requested-seq <seq>] [--relayed-by <slot-id>]`, or `POST
+  /api/runs/{runId}/gates/{gateId}/pick` with `requestedSeq`, `attempt`,
+  `reason` and optional `relayedBy`, records it as a `human_verdict_recorded`
+  pass with `pick.attempt`, `decidedBy` `human:operator`. A pick of an attempt
+  that is not a candidate answers 400 ("not a candidate attempt: attempt 4;
+  pick one of 1, 2 or 3"), a verdict on a pending pick or a pick on a pending
+  verdict 409, and a stale request 409 as for verdicts. Like a verdict, the pick
+  is recorded at once and routed between steps.
+
+The pick ends in a `gate_verdict` pass whose `pick` names the step
+(`nodeId`), the picked `attempt`, `pickSeq`, `candidates`, `decidedBy` (the
+final judge's ID, the operator's actor or `archon`), `trigger`, and any
+`recommendation`, with the picker's `reason` and `evidence`. It carries the
+picked attempt's gate input, its `origin` included, down the gate's pass
+routes exactly as the gate's own pass of that attempt would have, without the
+picker's reason, so downstream steps and the run's mission
+[outputs](#mission-outputs) receive that attempt's output. Replay finishes a
+pick the ledger started and did not end, from the judge outputs it holds.
+
+A run stopped at a spent limit whose step can pick (a selecting gate that
+judged at least one attempt) carries `resumePolicy` `grant_or_pick`, whatever
+the card's `whenSpent`: `archon run resume <run> --pick-best` (API `pickBest:
+true`) picks instead of granting, and the `run_resumed` records `pickBest`.
+`--pick-best` elsewhere is refused with 409 ("this block is not a spent limit
+of a step whose gate judged its attempts, so there is nothing to pick"), and
+so are `--grant` and `--pick-best` together. The cockpit's run bar offers Pick
+the best attempt beside the grant at such a block.
+
+Run status lists the run's picks in `picks` (`seq`, `gateId`, `nodeId`,
+`attempt`, `candidates`, `decidedBy`, `trigger`; the reason stays in the
+evidence), and `run status` prints one line for each ("pick fmn_draft attempt
+2, picked from 1, 2 or 3 by fmn_judge, went on through gate_review"). The
+gate's node evidence lists `picks` (`seq`, `nodeId`, `trigger`, `candidates`,
+`limit`, `judgeChain`, `judgeFailures`, `humanRequests`, `recommendation`, and
+once decided `picked` with `seq`, `attempt`, `reason`, `evidence` and
+`decidedBy`). The attempts route marks the picked attempt with `picked`
+(`gateId`, `gateTitle`, `seq`, `reason`, `decidedBy`, `candidates`,
+`trigger`), and `run attempts` prints "picked as the best by ... through ...".
+A lab judge picks when its input holds one `archon-pick` block, as it judges
+with an `archon-verdict` block.
+
 ### Waiting on a run
 
 The agent that launched a run drives it by pulling; Archon pushes nothing into
@@ -645,12 +754,14 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 
 `--until` takes `needs-you` (the default), `final` or `any-change`:
 
-- `needs-you` returns when a human gate asks for a verdict, a blocking
+- `needs-you` returns when a human gate asks for a verdict or a pick, a blocking
   escalation is raised, or the run blocks with no blocking escalation to
   explain it. A waiting gate explains no block: it holds up only its own path. The paragraph names the gate or step, the gate's criterion, the start of
   its input (the whole input is `gate request`), where each verdict leads, and
-  the exact `gate approve`/`gate reject` commands with `--requested-seq`, or
-  the `run resume` or `run abort` command a block needs.
+  the exact `gate approve`/`gate reject` commands with `--requested-seq`; for a
+  pick, the candidates, any judge's recommendation and the `gate pick` command;
+  or the `run resume` or `run abort` command a block needs, with both `--grant`
+  and `--pick-best` at a `grant_or_pick` block.
 - `final` returns when the run succeeds, fails or is canceled.
 - `any-change` returns at the next ledger event and lists the new events. When
   that event opens a new ask it answers as `needs-you` (exit 3) instead.
@@ -1353,16 +1464,16 @@ canvas dock or right-click the canvas (End node · done or rejected); an End car
 takes any number of wires into its one port, its window and right-click menu
 change its outcome, and a finished run lights the End nodes its paths reached.
 `archon limit create <mission> --target <step|input> [--rounds <n>] [--time
-<duration>] [--warn <duration>] [--tokens <n>] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
+<duration>] [--warn <duration>] [--tokens <n>] [--when-spent stop|best] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
 card (`input`, or its ID) for the whole mission; it prints `created <id>`, or
 with `--json` `{mission, layout, limit}`. `archon limit update <mission>
-<limit> [--target] [--rounds] [--time] [--warn] [--tokens] [--title]` changes only what
+<limit> [--target] [--rounds] [--time] [--warn] [--tokens] [--when-spent] [--title]` changes only what
 it names (an empty `--rounds`, `--time`, `--warn` or `--tokens` clears that knob, `--target
 ''` unwires the card) and `archon limit delete <mission> <limit>` removes it. The patch
 operations are `createLimit` (`title`, `target`, `rounds`, `seconds`,
-`warnSeconds`, `tokens`, `x`, `y`), `updateLimit` (`id`, and any of `title`, `target`,
-`rounds`, `seconds`, `warnSeconds`, `tokens`; an empty target unwires the card and a knob
-of 0 clears it) and `deleteLimit` (`id`). `--time` and `--warn` take whole
+`warnSeconds`, `tokens`, `whenSpent`, `x`, `y`), `updateLimit` (`id`, and any of `title`, `target`,
+`rounds`, `seconds`, `warnSeconds`, `tokens`, `whenSpent`; an empty target unwires the card, a knob
+of 0 clears it and `whenSpent` `stop` or empty stores the default) and `deleteLimit` (`id`). `--time` and `--warn` take whole
 seconds as a duration such as `45s`, `30m` or `1h30m`. A write naming a target
 that is not a step or the Input card, or a negative knob, is refused with
 `INVALID_LIMIT` (HTTP 400); an unwired card saves as a draft.
@@ -1390,7 +1501,9 @@ edit has its own undo entry. Flow and the covered node's window state the
 limit in words ("the whole mission may work at most 2 h"), and a step's window
 lists the time warnings its seats were given. A run stopped at a spent card
 offers a grant in place of Resume that says what it gives: Grant one more
-round, or the card's time or tokens again, Grant 30 min more. `mission list` lists missions; `formation list <mission>`
+round, or the card's time or tokens again, Grant 30 min more; where the step's
+gate judged attempts, it also offers Pick the best attempt (see [Picking the
+best attempt](#picking-the-best-attempt)). `mission list` lists missions; `formation list <mission>`
 lists its formations with their slots and staffing. `mission inspect <mission>`
 prints the whole mission, `mission inspect <mission> <input>` prints the Input
 card with its reachable chain, and `formation inspect <mission> <formation>`
@@ -1733,7 +1846,7 @@ already has saves nothing in the same way (archon-62h). Runtime routes start/lis
 slug or ID, and none for a mission that does not exist; `needs=you` keeps the
 open runs waiting at a human gate or blocked), read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
-exact human verdicts. They all use the coordinator; no request-local executor
+exact human verdicts and picks. They all use the coordinator; no request-local executor
 exists.
 There is no generic file reader, transcript endpoint, mission import endpoint or
 authentication layer. Run evidence reads only one run's ledger, its artifact
@@ -1769,7 +1882,7 @@ retried up to three times. Differences from offline use:
   error codes, boundaries and selectors match.
 - Agent cards are the daemon's `--agents-dir`, with the liveness the daemon
   reports. `mission note --file` reads locally.
-- Runtime commands (`mission run`, `formation run`, `run`, `gate approve|reject`) print the
+- Runtime commands (`mission run`, `formation run`, `run`, `gate approve|reject|pick`) print the
   daemon's `{success,timestamp,data}` envelope, except `run status`, `run
   gates`, `run seats`, `run attempts` and `gate request`, which require
   `--json` for that format and otherwise print the offline text, and `run wait`,
@@ -1884,7 +1997,9 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   status, reason and sorted `ports`).
   Gates list `evaluations` with the criterion, input, `kindResults` with judge
   `evidence`, `judgeFailures`, `humanRequests` with each decision's `response`,
-  and the final `verdict` with `perKind` and `routePort`. `problems` lists the
+  and the final `verdict` with `perKind` and `routePort`, and `picks`, each pick
+  of a step's best attempt (see [Picking the best
+  attempt](#picking-the-best-attempt)). `problems` lists the
   blocks and errors recorded against the node, including a block whose open
   dispatches name it. Each text is capped at 64 KiB;
   a kind result or verdict lists at most 100 evidence items and counts the rest
@@ -1929,7 +2044,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `evaluationSeq`, and once decided `seq`, `verdict`, `reason`, `evidence`,
   `evidenceOmitted` and `decidedBy`; `pending` while it waits; `superseded`
   when the gate was evaluated again before its human request was answered, so
-  that request no longer waits), and `files`,
+  that request no longer waits), `picked` when a spent Limit card picked it as
+  the step's best attempt (see [Picking the best
+  attempt](#picking-the-best-attempt); the pick's own verdict is not one of its
+  `verdicts`), and `files`,
   the regular files in its directory (`name`, `path`, `size`, `modifiedAt`,
   `kind`), with `filesTruncated` past the artifact list's limits. Bytes come
   from `/api/runs/{runId}/artifacts/{name...}` by a file's `name` or an
@@ -1972,7 +2090,12 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `roundsNeeded` (the step runs the route starts, judges included) when a
   Limit card covers the mission's rounds, `missionTime` when it sets time, and
   `limit` when a card the route needs is already spent, so taking it blocks
-  the run until a grant. When the frozen mission cannot be read, `routes` is omitted. An
+  the run until a grant, or, with `picksBest`, the card's `whenSpent` is
+  `best` and the step's best judged attempt is picked instead and goes on as
+  its gate's pass. When the frozen mission cannot be read, `routes` is omitted. A
+  pending pick adds `pick` (`nodeId`, `candidates`, `recommendation`), its
+  input shows the candidates side by side, and `routes` holds only `pass`,
+  which the picked attempt takes. An
   unknown run or gate returns 404; a decided request
   returns 409. After the verdict, the gate's node evidence holds the same input
   with the response.
@@ -1983,8 +2106,9 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   describes, with `outcome` `final`, `needs-you`, `changed`, or `pending` when
   the hold ended first; a pending answer keeps `seq` at `since`. Asks carry
   their gate or step `title`, a human gate's `criterion`, `input` (the start of
-  the text, capped at 4 KiB, with `bytes` and `truncated`) and `routes`, and a
-  block's `reason`, `code` and `resumeAllowed`. A driver agent consumes this
+  the text, capped at 4 KiB, with `bytes` and `truncated`), `routes` and, for a
+  pick, `pick`, and a block's `reason`, `code`, `resumeAllowed`, and at a spent
+  limit `limit` and `resumePolicy`. A driver agent consumes this
   text, so it is served verbatim, as `gate request` serves it. `end` carries `status`, `seq`, `code`, `reason`, `endedBy`, the
   `stopped` steps and a succeeded run's mission `outputs`. A bad `until`, `since` or `hold`, or a `since` past the
   run's last event, returns 400, an unknown run 404, and a stopping daemon 503.
