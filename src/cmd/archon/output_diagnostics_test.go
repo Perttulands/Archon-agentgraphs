@@ -32,4 +32,12 @@ func TestBlockedOutputDiagnostics(t *testing.T) {
 	if !strings.Contains(out.String(), "blocked\tinvalid_output_ref\tport_out image is not text") {
 		t.Fatal(out.String())
 	}
+	out.Reset()
+	if code := runRemote(server.URL, []string{"run", "logs", "run_test"}, &out, &stderr); code != 0 {
+		t.Fatalf("%d: %s", code, &stderr)
+	}
+	if !strings.Contains(out.String(), "1\terror\tinvalid_output_ref\tport_out image is not text") {
+		t.Fatal(out.String())
+	}
+
 }

@@ -1250,8 +1250,8 @@ missing, unreadable, non-text or oversized reference rejects the output. To
 route only a file or folder path on a text port, put its absolute path in
 `text` and omit `ref`. A file or folder port is the way to keep the artifact.
 
-A missing or invalid output block, unknown or omitted port, invalid text ref,
-or oversized response gets one correction turn on the same live seat before
+A missing or invalid output block, unknown or omitted port, invalid or oversized text ref
+gets one correction turn on the same live seat before
 blocking routing. The prompt names the rejected contract and declared ports,
 the text-ref byte cap, and how to return a path as text. The fresh complete
 response replaces the rejected one; a judge preserves its verdict or pick.

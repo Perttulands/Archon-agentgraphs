@@ -317,7 +317,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if args[0]+" "+args[1] == "run list" && !*jsonOut {
 		return writeRemoteRunList(raw, stdout, stderr)
 	}
-	if args[0]+" "+args[1] == "run status" && !*jsonOut {
+	if (args[0]+" "+args[1] == "run status" || args[0]+" "+args[1] == "run logs") && !*jsonOut {
 		var envelope struct {
 			Data formations.RunStatusProjection `json:"data"`
 		}
@@ -325,7 +325,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		writeRunStatusLines(stdout, &envelope.Data)
-		if envelope.Data.Status == formations.RunStatusBlocked {
+		if envelope.Data.Status == formations.RunStatusBlocked || args[1] == "logs" {
 			raw, err := request("GET", "/api/runs/"+url.PathEscape(envelope.Data.RunID)+"/evidence/problems", nil)
 			if err != nil {
 				return fail(stderr, err)
@@ -338,7 +338,13 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			if err := json.Unmarshal(raw, &problems); err != nil {
 				return fail(stderr, err)
 			}
-			writeCurrentRunBlock(stdout, problems.Data.Problems)
+			if args[1] == "logs" {
+				for _, problem := range problems.Data.Problems {
+					fmt.Fprintf(stdout, "%d\t%s\t%s\t%s\n", problem.Seq, problem.Type, problem.Code, problem.Reason.Text)
+				}
+			} else {
+				writeCurrentRunBlock(stdout, problems.Data.Problems)
+			}
 		}
 		return 0
 	}

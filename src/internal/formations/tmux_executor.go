@@ -423,7 +423,7 @@ func (e *TmuxFormationExecutor) resultWithOutputCorrection(req FormationExecutio
 		return result, err
 	}
 	switch rejected.Code {
-	case "missing_output_payload", "invalid_output_payloads", "invalid_output_ref", "unavailable_output_ref", "oversized_output_ref", "oversized_output":
+	case "missing_output_payload", "invalid_output_payloads", "invalid_output_ref", "unavailable_output_ref", "oversized_output_ref":
 	default:
 		return result, err
 	}

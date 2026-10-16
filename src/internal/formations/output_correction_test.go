@@ -105,3 +105,40 @@ func TestOutputContractCorrection(t *testing.T) {
 		}
 	}
 }
+
+// The original forgotten-fence report was a final judge with a valid verdict.
+// Its repair must preserve that verdict so the gate routes without another run.
+func TestJudgeCorrectsMissingOutputsWithoutLosingVerdict(t *testing.T) {
+	store, personas := s4RunFixture(t)
+	createS4Persona(t, personas, "scout")
+	fixture := strings.Replace(s4JudgeChainRunBoardFixture(), `kinds = ["code", "formation"]`, `kinds = ["formation"]`, 1)
+	writeFixture(t, store.BoardPath("session-search"), fixture)
+	board, err := store.ReadBoard("session-search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := "\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=none>>>"
+	output := func(port string) string {
+		return fmt.Sprintf("\n```archon-outputs\n{%q:{\"text\":\"done\"}}\n```", port)
+	}
+	verdict := judgeBlock("pass", "covered")
+	cfg := tmuxTestConfig(t)
+	client := &fakeTmuxHarnessClient{rawOutputs: true, pane: tmuxPaneState{CurrentPath: cfg.Cwd}, captures: []string{
+		"draft" + output("port_work_out") + sentinel,
+		"review" + output("port_j1_out") + sentinel,
+		verdict + sentinel,
+		verdict + output("port_j2_out") + sentinel,
+		"shipped" + output("port_ship_out") + sentinel,
+	}}
+	engine := NewRunEngine(store, personas, newTmuxFormationExecutorWithClient(store, personas, cfg, client))
+	status, err := engine.RunMission("session-search", RunStartRequest{Cwd: cfg.Cwd, MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
+	if err != nil || status.Status != RunStatusSucceeded {
+		t.Fatalf("status=%+v err=%v", status, err)
+	}
+	if len(client.sentPrompts) != 5 || client.sendTargets[2] != client.sendTargets[3] {
+		t.Fatal("judge repair did not reuse seat")
+	}
+	if !strings.Contains(client.sentPrompts[3], judgeContract) || !strings.Contains(client.sentPrompts[3], "port_j2_out") {
+		t.Fatal("repair omitted judge or output contract")
+	}
+}
