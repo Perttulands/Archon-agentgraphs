@@ -127,10 +127,18 @@ agentId = "builder"
 harness = "openai-codex"
 effort = "medium"
 controller = true
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
 [[connection]]
 id = "edge_start"
 from = "inp_hello:out"
 to = "fmn_work:port_in"
+[[connection]]
+id = "edge_done"
+from = "fmn_work:port_out"
+to = "end_done:in"
 ''')
         cli = str(prefix / 'bin/archon')
         run(cli, '--workspace', str(state), 'mission', 'validate', 'hello', '--json')
