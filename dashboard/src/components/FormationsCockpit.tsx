@@ -41,6 +41,7 @@ import {
   patchBoardNote,
   patchBoardDocument,
   patchBoardLayout,
+  recordGatePick,
   recordGateVerdict,
   renameMission,
   resumeRunRequest,
@@ -88,6 +89,8 @@ import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
 import { buildFlow } from '../flow/flowModel'
 import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
+import { AttemptsButton, AttemptsWindowsLayer, AttemptsWindowsProvider, type AttemptsRun, type StepPick } from '../attempts/AttemptsWindows'
+import { attemptsWindowId } from '../attempts/attemptsModel'
 import { ProducedFiles, RunProduced, RunProducedProvider } from '../files/ProducedFiles'
 import RunOutputs from '../files/RunOutputs'
 import { ReferencedFiles, type HiddenReferencedFile } from '../files/ReferencedFiles'
@@ -155,6 +158,7 @@ import type {
   PortKind,
   RunEvent,
   RunStatusProjection,
+  RunStatusResult,
   ViewTransform,
 } from './formationsTypes'
 
@@ -1910,21 +1914,16 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
   }, [activeRun, refreshRunEvents, selectedSlug])
 
-  // The response is the verdict reason: approve routes it with the gate input,
-  // send back returns it as feedback.
-  const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => {
-    if (!activeRun?.runId || activeRun.final) return false
+  // Records the operator's answer to a waiting human gate, a verdict or a pick,
+  // and resolves to the failure's words, or nothing once it is recorded.
+  const settleHumanGate = useCallback(async (requestedSeq: number, record: (runId: string) => Promise<RunStatusProjection | RunStatusResult>, failure: string) => {
+    if (!activeRun?.runId || activeRun.final) return 'This run is no longer waiting.'
     const submittedKey = `${activeRun.runId}:${requestedSeq}`
     let recorded = false
     setRecordingAnswer(true)
     setSubmittedHere(current => new Set([...current, submittedKey]))
     try {
-      const status = runStatusFromResponse(await recordGateVerdict(activeRun.runId, gateId, {
-        actor: 'human:ui',
-        verdict,
-        requestedSeq,
-        reason: response,
-      }))
+      const status = runStatusFromResponse(await record(activeRun.runId))
       recorded = true
       setActiveRun(status)
       await refreshRunEvents(activeRun.runId)
@@ -1933,17 +1932,29 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         else window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
       }
       setError('')
-      return true
+      return ''
     } catch (err) {
       if (!recorded) setSubmittedHere(current => {
         const remaining = new Set(current)
         remaining.delete(submittedKey)
         return remaining
       })
-      setError(err instanceof Error ? err.message : 'Failed to record human verdict')
-      return false
+      const message = err instanceof Error ? err.message : failure
+      setError(message)
+      return message
     } finally { setRecordingAnswer(false) }
   }, [activeRun, refreshRunEvents, selectedSlug])
+
+  // The response is the verdict reason: approve routes it with the gate input,
+  // send back returns it as feedback.
+  const recordHumanGateVerdict = useCallback(async (gateId: string, requestedSeq: number, verdict: GateDecision, response: string) => (
+    !await settleHumanGate(requestedSeq, runId => recordGateVerdict(runId, gateId, { actor: 'human:ui', verdict, requestedSeq, reason: response }), 'Failed to record human verdict')
+  ), [settleHumanGate])
+
+  // A pending best-of-N pick (archon-gihe): the chosen attempt goes on as the gate's pass.
+  const recordHumanGatePick = useCallback((gateId: string, requestedSeq: number, attempt: number, reason: string) => (
+    settleHumanGate(requestedSeq, runId => recordGatePick(runId, gateId, { actor: 'human:ui', requestedSeq, attempt, reason }), 'Failed to record the pick')
+  ), [settleHumanGate])
 
   const createSolo = useCallback(() => {
     // Land only the new card near the viewport center on free grid space.
@@ -3116,6 +3127,10 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const node = [...(board?.formations || []), ...(board?.gates || []), ...(board?.inputCards || [])].find(candidate => candidate.id === pendingGateInput.from)
     return { ...pendingGateInput, from: node?.title || pendingGateInput.from }
   }, [board?.formations, board?.gates, board?.inputCards, pendingGateInput])
+  // A pending best-of-N pick is answered in its step's attempts window, not the answer window.
+  const pendingPick = activeRun && !activeRun.final && pendingHumanGate
+    ? activeRun.waitingGates?.find(gate => gate.gateId === pendingHumanGate.gateId && gate.requestedSeq === pendingHumanGate.requestedSeq)?.pick || null
+    : null
   const openEscalations = useMemo(
     () => (activeRun && !activeRun.final ? escalations : []),
     [activeRun, escalations],
@@ -3162,6 +3177,12 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // Brings a waiting gate's answer up: its window on the canvas, its row in Flow.
   const showAnswer = useCallback((gateId: string) => {
     setAnswerGateId(gateId)
+    if (pendingPick && pendingHumanGate?.gateId === gateId) {
+      const key = activeRun ? `${activeRun.runId}:${requestedSeqOf(gateId)}` : ''
+      setAnswerWindow(current => ({ key, closed: false, focus: current.focus + 1 }))
+      focusWindow(attemptsWindowId(pendingPick.nodeId))
+      return
+    }
     if (boardView === 'flow') {
       document.querySelector<HTMLElement>(`[data-flow-node="${gateId.replace(/["\\]/g, '\\$&')}"]`)?.scrollIntoView?.({ block: 'center' })
       return
@@ -3170,8 +3191,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const key = activeRun ? `${activeRun.runId}:${requestedSeqOf(gateId)}` : ''
     setAnswerWindow(current => ({ key, closed: false, focus: current.focus + 1 }))
     focusWindow(GATE_ANSWER_WINDOW_ID)
-  }, [activeRun, boardView, focusWindow, locateNode, requestedSeqOf])
-  const answerPanelFor = (framed: boolean) => activeRun && !activeRun.final && pendingHumanGate ? (
+  }, [activeRun, boardView, focusWindow, locateNode, pendingHumanGate?.gateId, pendingPick, requestedSeqOf])
+  const answerPanelFor = (framed: boolean) => activeRun && !activeRun.final && pendingHumanGate ? pendingPick ? (
+    <p className="flow-line flow-pick">
+      <span className="flow-label">Pick</span>
+      <button type="button" className="flow-link" data-testid="flow-pick-open" onClick={() => showAnswer(pendingHumanGate.gateId)}>
+        Compare the {pendingPick.candidates.length} candidate attempts of {board ? nodeTitle(board, pendingPick.nodeId) : pendingPick.nodeId} and pick one
+      </button>
+    </p>
+  ) : (
     <HumanGateAnswerPanel
       key={`${activeRun.runId}:${pendingHumanGate.requestedSeq}`}
       framed={framed}
@@ -3200,6 +3228,25 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       || ''
   }
   const nodeAttempts = useMemo(() => projectNodeAttempts(runEvents), [runEvents])
+  const runVersion = `${runEvents.length}:${runEvents[runEvents.length - 1]?.seq ?? 0}`
+  const attemptsRun = useMemo<AttemptsRun | null>(() => (activeRun ? {
+    runId: activeRun.runId,
+    counts: nodeAttempts,
+    version: runVersion,
+    live: !activeRun.final,
+    waitingGates: waitingGateIds,
+    titleOf: nodeId => (board ? nodeTitle(board, nodeId) : nodeId),
+  } : null), [activeRun, board, nodeAttempts, runVersion, waitingGateIds])
+  const stepPick = useMemo<StepPick | null>(() => (pendingPick && pendingHumanGate && answerWindowOpen ? {
+    nodeId: pendingPick.nodeId,
+    gateId: pendingHumanGate.gateId,
+    gateTitle: pendingHumanGate.title,
+    candidates: pendingPick.candidates,
+    recommended: pendingPick.recommendation,
+    focusRequest: answerWindow.key === answerKey ? answerWindow.focus : 0,
+    onPick: (attempt, reason) => recordHumanGatePick(pendingHumanGate.gateId, pendingHumanGate.requestedSeq, attempt, reason),
+    onClose: () => setAnswerWindow(current => ({ key: answerKey, closed: true, focus: current.focus })),
+  } : null), [answerKey, answerWindow, answerWindowOpen, pendingHumanGate, pendingPick, recordHumanGatePick])
   const flowRun = useMemo<FlowRun | null>(() => (activeRun
     ? { runId: activeRun.runId, states: nodeStates, attempts: nodeAttempts, points: runPoints, onAnswer: setAnswerGateId }
     : null), [activeRun, nodeAttempts, nodeStates, runPoints])
@@ -3496,6 +3543,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                               onClick={event => { event.stopPropagation(); setInspectedNodeId(formation.id) }}
                             >evidence</button>
                           ) : null}
+                          <AttemptsButton nodeId={formation.id} />
                         </div>
                       ) : null}
                     </div>
@@ -3946,7 +3994,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
           </Suspense>
         )) : null}
         {gateTalk.windows}
-        {!showFlow && pendingHumanGate && answerWindowOpen ? (
+        {!showFlow && pendingHumanGate && answerWindowOpen && !pendingPick ? (
           <GateAnswerWindow key={answerKey} gateId={pendingHumanGate.gateId} gateTitle={pendingHumanGate.title}
             focusRequest={answerWindow.key === answerKey ? answerWindow.focus : 0}
             anchor={() => cardRects([pendingHumanGate.gateId], worldRef.current || document)[0] || null}
@@ -3958,6 +4006,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
             {answerPanelFor(true)}
           </GateAnswerWindow>
         ) : null}
+        <AttemptsWindowsLayer pick={stepPick} />
         <FileWindowsLayer />
       </WindowManagerProvider>
 
@@ -4198,7 +4247,9 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   return (
     <FileWindowsProvider key={selectedSlug} stack={windows}>
       <FileProblemsContext.Provider value={referencedFileProblems}>
-        <RunProducedProvider value={producedValue}>{cockpit}</RunProducedProvider>
+        <RunProducedProvider value={producedValue}>
+          <AttemptsWindowsProvider run={attemptsRun} stack={windows}>{cockpit}</AttemptsWindowsProvider>
+        </RunProducedProvider>
       </FileProblemsContext.Provider>
     </FileWindowsProvider>
   )

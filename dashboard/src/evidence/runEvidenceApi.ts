@@ -263,6 +263,21 @@ export interface StepAttempt {
   verdicts: AttemptVerdict[]
   files: AttemptFile[]
   filesTruncated?: boolean
+  /** Set when a spent Limit card's best-of-N pick chose this attempt (archon-gihe); it routes on as the gate's pass. */
+  picked?: AttemptPick
+}
+
+/** A best-of-N pick that chose an attempt, and why. */
+export interface AttemptPick {
+  gateId: string
+  gateTitle?: string
+  seq: number
+  reason: EvidenceText
+  /** The operator (`human:…`), the judge's node ID, or `archon` when there was one candidate. */
+  decidedBy: string
+  candidates: number[]
+  /** `whenSpent` as the Limit card ran out, or `resume` on a resumed run. */
+  trigger: string
 }
 
 /** One step and its attempts, oldest first. Its ports carry their kind, text included. */

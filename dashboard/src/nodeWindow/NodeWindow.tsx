@@ -26,6 +26,7 @@ import type {
 } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
+import { AttemptsButton } from '../attempts/AttemptsWindows'
 import { referencedFileRequest } from '../files/fileWindowModel'
 import { nodeFileRefs, relativeFileProblem, useFileProblems } from '../files/referencedFiles'
 import FloatingWindow from '../windows/FloatingWindow'
@@ -185,7 +186,12 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
       defaultSize={seated ? { width: 860, height: 680 } : { width: 540, height: 620 }}
       overCanvas={seated}
       className={withTerminal ? 'nwin-terminal-window' : undefined}
-      actions={runState !== undefined ? <ProducedFiles nodeId={nodeId} className="nwin-head-produced" /> : undefined}
+      actions={runState !== undefined ? (
+        <>
+          {located.kind === 'formation' ? <AttemptsButton nodeId={nodeId} always className="attempts-action" /> : null}
+          <ProducedFiles nodeId={nodeId} className="nwin-head-produced" />
+        </>
+      ) : undefined}
       anchor={() => anchor || nodeAnchor(nodeId)}
       keepClear={() => nodeWindowKeepClear(nodeId, board.connections)}
       onClose={onClose}

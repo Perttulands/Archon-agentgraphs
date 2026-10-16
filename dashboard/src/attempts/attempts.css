@@ -1,0 +1,181 @@
+/* A step's attempts (archon-7963): a strip of columns read left to right, or
+   two side by side. Gate words keep the run's colours: green passed or was
+   picked, red failed, orange waits for the operator, the accent is what the
+   keys are on. */
+
+.attempts-window .fwin-body { display: flex; overflow: hidden; }
+.attempts { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
+.attempts-kicker { margin-right: 4px; color: var(--window-orange); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.attempts-count { color: var(--text-secondary); font-weight: 400; }
+.attempts-window kbd {
+  display: inline-block; min-width: 15px; margin-left: 6px; padding: 0 3px; border: 1px solid var(--divider); border-bottom-width: 2px;
+  border-radius: 3px; background: var(--surface-primary); color: var(--text-secondary); font: 10px/13px var(--font-mono); text-align: center;
+}
+.attempts-window .attempts-action[aria-pressed='true'] kbd { color: var(--accent); }
+
+/* The loop at a glance: one pip per attempt. */
+.attempts-bar { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 8px 12px; overflow-x: auto; border-bottom: 1px solid var(--divider); }
+.attempts-pip {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 40px; padding: 3px 8px;
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary); color: var(--text-primary);
+  font: 700 12px var(--font-mono); cursor: pointer;
+}
+.attempts-pip:hover { border-color: var(--accent); }
+.attempts-pip-glyph { font-weight: 700; }
+.attempts-pip.outcome-fail .attempts-pip-glyph { color: var(--color-error); }
+.attempts-pip.outcome-pass .attempts-pip-glyph,
+.attempts-pip.outcome-picked .attempts-pip-glyph { color: var(--window-green); }
+.attempts-pip.outcome-waiting .attempts-pip-glyph { color: var(--window-orange); }
+.attempts-pip.outcome-running .attempts-pip-glyph,
+.attempts-pip.outcome-judging .attempts-pip-glyph { color: var(--accent); }
+.attempts-pip.settled { border-color: var(--window-green); background: var(--window-green); color: var(--background); }
+.attempts-pip.settled .attempts-pip-glyph { color: var(--background); }
+.attempts-pip.shown { border-color: color-mix(in srgb, var(--accent) 55%, var(--divider)); }
+.attempts-pip.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.attempts-pip.excluded { opacity: .45; }
+.attempts-keys { margin-left: 4px; color: var(--text-secondary); white-space: nowrap; }
+
+.attempts-scroll { flex: 1; min-height: 0; padding: 12px; overflow: auto; container-type: size; }
+.attempts-message { margin: 0; color: var(--text-secondary); font-size: 12px; }
+
+/* Each attempt is a column of four rows shared across the strip, so every
+   verdict starts at the same height and the loop reads straight across. */
+.attempts-grid { display: grid; grid-template-rows: auto auto auto auto; column-gap: 12px; align-items: start; }
+.attempts-grid.strip { grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); }
+.attempts-grid.compare { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.attempt-col {
+  grid-row: span 4; display: grid; grid-template-rows: subgrid; align-self: stretch; min-width: 0;
+  border: 1px solid var(--divider); border-radius: 5px; background: var(--surface-primary);
+}
+.attempt-col.settled { border-color: var(--window-green); }
+.attempt-col.settled .attempt-head { background: color-mix(in srgb, var(--window-green) 10%, var(--surface-secondary)); }
+.attempt-col.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.attempt-col.excluded { opacity: .5; }
+
+.attempt-head {
+  display: flex; flex-direction: column; gap: 4px; padding: 9px 12px;
+  border-bottom: 1px solid var(--divider); border-radius: 5px 5px 0 0; background: var(--surface-secondary);
+}
+.attempt-head-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.attempt-number { color: var(--text-primary); font-size: 13px; font-weight: 700; }
+.attempt-outcome { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.attempt-outcome.outcome-pass,
+.attempt-outcome.outcome-picked { color: var(--window-green); background: color-mix(in srgb, var(--window-green) 16%, transparent); }
+.attempt-outcome.settled { color: var(--background); background: var(--window-green); }
+.attempt-outcome.outcome-fail { color: var(--color-error); background: var(--color-error-light); }
+.attempt-outcome.outcome-waiting { color: var(--background); background: var(--window-orange); }
+.attempt-outcome.outcome-running,
+.attempt-outcome.outcome-judging { color: var(--accent); background: rgba(var(--accent-rgb), .14); }
+.attempt-outcome.outcome-stopped,
+.attempt-outcome.outcome-done { color: var(--text-secondary); background: var(--surface-primary); }
+.attempt-outcome.outcome-recommended { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.attempt-time { color: var(--text-secondary); font-size: 11px; }
+
+.attempt-outputs,
+.attempt-verdicts,
+.attempt-files { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 12px; }
+.attempt-verdicts:empty,
+.attempt-files:empty { padding: 0; }
+.attempt-outputs { padding-top: 0; }
+.attempt-files { padding-top: 0; }
+.attempt-output { min-width: 0; }
+.attempt-label { margin: 0 0 6px; color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.attempt-quiet { margin: 0; color: var(--text-secondary); font-size: 11px; }
+.attempt-note { margin: 6px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* Images: whole in their frame until clicked; side by side, both frames are one size. */
+.attempt-figure { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0; }
+.attempt-figure figcaption { max-width: 100%; }
+.attempt-image {
+  --attempt-image-height: 56cqh;
+  position: relative; display: block; width: 100%; max-height: var(--attempt-image-height); aspect-ratio: 1; margin-inline: auto; padding: 0; overflow: hidden;
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--background); cursor: zoom-in; touch-action: none;
+}
+.attempt-image:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.attempt-image.zoomed { cursor: grab; }
+.attempt-image.zoomed:active { cursor: grabbing; }
+.attempt-image img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none; }
+/* Side by side, every frame is the same size and an image sits whole and
+   centred in it; the frame shows only once the images are zoomed to fill it. */
+.attempts-grid.compare .attempt-image { width: 100%; height: 60cqh; max-height: none; aspect-ratio: auto; border-color: transparent; background: none; }
+.attempts-grid.compare .attempt-image.zoomed { border-color: var(--divider); background: var(--background); }
+
+/* Text, cut to a readable height; the file window has the rest. */
+.attempt-text {
+  max-height: 44cqh; overflow: auto; padding: 8px 10px; margin-bottom: 6px;
+  border: 1px solid var(--divider); border-radius: 4px; background: var(--surface-secondary);
+}
+.attempts-grid.compare .attempt-text { max-height: 70cqh; }
+.attempt-text-pre { margin: 0; color: var(--text-primary); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.attempt-cut { margin: 6px 0 0; color: var(--text-secondary); font-size: 11px; }
+
+/* Chips open a file in its window. */
+.attempt-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.attempt-chip { max-width: 100%; }
+.attempt-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.attempt-chip-detail { flex-shrink: 0; color: var(--text-secondary); }
+
+/* A folder: what it holds, its images to look at, the rest to open. */
+.attempt-folder { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.attempt-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; width: 100%; }
+.attempt-thumbs.evidence { grid-template-columns: repeat(auto-fill, 56px); }
+.attempts-grid.compare .attempt-thumbs.evidence { grid-template-columns: repeat(auto-fill, 96px); }
+.attempt-thumb {
+  aspect-ratio: 1; padding: 0; overflow: hidden; border: 1px solid var(--divider); border-radius: 3px;
+  background: var(--background); cursor: pointer;
+}
+.attempt-thumb:hover,
+.attempt-thumb:focus-visible { border-color: var(--accent); outline: none; }
+.attempt-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.attempt-listing { display: flex; flex-direction: column; width: 100%; margin: 0; padding: 0; list-style: none; }
+.attempt-listing-file {
+  display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 3px 4px; border: 0; border-radius: 3px;
+  background: transparent; color: var(--text-primary); font: 12px var(--font-mono); text-align: left; cursor: pointer;
+}
+.attempt-listing-file:hover,
+.attempt-listing-file:focus-visible { background: var(--surface-secondary); color: var(--accent); outline: none; }
+.attempt-listing-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attempt-listing-size { flex-shrink: 0; color: var(--text-secondary); }
+
+/* What the gates said, and why. */
+.attempt-verdict {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  border-left: 3px solid var(--divider); border-radius: 0 4px 4px 0; background: var(--surface-secondary);
+}
+.attempt-verdict-head { margin: 0; color: var(--text-primary); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.attempt-verdict.tone-pass,
+.attempt-verdict.tone-picked { border-left-color: var(--window-green); }
+.attempt-verdict.tone-pass .attempt-verdict-head,
+.attempt-verdict.tone-picked .attempt-verdict-head { color: var(--window-green); }
+.attempt-verdict.tone-fail { border-left-color: var(--color-error); }
+.attempt-verdict.tone-fail .attempt-verdict-head { color: var(--color-error); }
+.attempt-verdict.tone-waiting { border-left-color: var(--window-orange); }
+.attempt-verdict.tone-waiting .attempt-verdict-head { color: var(--window-orange); }
+.attempt-verdict.tone-judging,
+.attempt-verdict.tone-recommended { border-left-color: var(--accent); }
+.attempt-verdict.tone-judging .attempt-verdict-head,
+.attempt-verdict.tone-recommended .attempt-verdict-head { color: var(--accent); }
+.attempt-reason { margin: 0; color: var(--text-primary); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Across the strip a long reason scrolls in its own box, so every image still starts in view. */
+.attempts-grid.strip .attempt-reason { max-height: calc(1.55em * 7); overflow-y: auto; }
+.attempt-evidence { display: flex; flex-direction: column; gap: 6px; }
+.attempt-evidence-notes { margin: 0; padding-left: 16px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+
+/* A pending pick: one choice, one button. */
+.attempts-pick {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 10px 12px;
+  border-top: 1px solid var(--divider); background: var(--surface-secondary);
+}
+.attempts-pick-gate { color: var(--text-primary); font-weight: 700; white-space: nowrap; }
+.attempts-pick-reason {
+  flex: 1; min-width: 120px; padding: 7px 10px; border: 1px solid var(--divider); border-radius: 4px;
+  background: var(--surface-primary); color: var(--text-primary); font: 12px var(--font-mono);
+}
+.attempts-pick-reason:focus { border-color: var(--accent); outline: none; }
+.attempts-pick-error { color: var(--color-error); font-size: 12px; }
+.attempts-pick-go {
+  padding: 7px 16px; border: 1px solid var(--window-green); border-radius: 5px; background: var(--window-green); color: var(--background);
+  font: 700 11px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; cursor: pointer;
+}
+.attempts-pick-go:hover:not(:disabled) { background: color-mix(in srgb, var(--window-green) 80%, #fff); }
+.attempts-pick-go:disabled { border-color: var(--divider); background: transparent; color: var(--text-secondary); cursor: not-allowed; }

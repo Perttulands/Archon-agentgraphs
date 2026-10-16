@@ -8,6 +8,7 @@ import type { NodeRunState, RunPoint as RunPointModel } from '../components/form
 import type { AgentProjection, BoardDocument, FormationNode, MissionNode, NoteEntry } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
+import { AttemptsButton } from '../attempts/AttemptsWindows'
 import { referencedFileRequest } from '../files/fileWindowModel'
 import { useFileProblems } from '../files/referencedFiles'
 import { humanChannelLabel, humanChannelOf } from '../humanChannel/humanChannel'
@@ -206,7 +207,8 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
       {run ? (
         <div className="flow-status" aria-label={`Run state of ${title}`}>
           <span className={`flow-state state-${state || 'idle'}`}>{STATE_WORDS[state || '']}</span>
-          {(run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
+          {step.kind === 'formation' ? <AttemptsButton nodeId={step.id} className="flow-attempt" />
+            : (run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
           {run.points.filter(point => (point.nodeId === step.id || judgeIds.includes(point.nodeId)) && point.kind !== 'running').map(point => (
             <RunPoint key={`${point.nodeId}:${point.kind}`} runId={run.runId} point={point} title={step.kind === 'gate' ? step.judges.find(judge => judge.id === point.nodeId)?.title || title : title}
               action={point.kind === 'waiting' && run.onAnswer ? 'Answer it here' : 'Open the step'}

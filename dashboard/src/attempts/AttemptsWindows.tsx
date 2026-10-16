@@ -1,0 +1,112 @@
+import { Suspense, createContext, lazy, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import type { WindowStack } from '../windows/WindowManager'
+import { attemptsWindowId, type AttemptsPick } from './attemptsModel'
+import './attemptsButton.css'
+
+const AttemptsWindow = lazy(() => import('./AttemptsWindow'))
+
+// The cockpit's attempts windows (archon-7963). A step that ran more than once
+// shows <AttemptsButton nodeId={…} /> where it lives, on its card, its Flow row
+// and its window; a click opens its attempts. The layer draws the windows
+// inside the view's window stack, and a pending best-of-N pick opens its
+// step's window to be answered there.
+
+/** What the attempts windows read from the shown run. */
+export interface AttemptsRun {
+  runId: string
+  /** Each step's latest attempt number. */
+  counts: ReadonlyMap<string, number>
+  /** Changes whenever the run records something. */
+  version: string
+  /** Whether the run can still add attempts. */
+  live: boolean
+  /** The gates waiting for the operator now. */
+  waitingGates: readonly string[]
+  titleOf: (nodeId: string) => string
+}
+
+/** A pending pick, for the step whose attempts are its candidates. */
+export interface StepPick extends AttemptsPick {
+  nodeId: string
+  onClose: () => void
+}
+
+interface AttemptsState {
+  run: AttemptsRun | null
+  opened: readonly string[]
+  open: (nodeId: string) => void
+  close: (nodeId: string) => void
+}
+
+const AttemptsContext = createContext<AttemptsState | null>(null)
+
+export function AttemptsWindowsProvider({ run, stack, children }: { run: AttemptsRun | null; stack: WindowStack; children: ReactNode }) {
+  const runId = run?.runId || ''
+  // The windows belong to the run they were opened on.
+  const [opened, setOpened] = useState<{ runId: string; nodes: readonly string[] }>({ runId: '', nodes: [] })
+  const stackRef = useRef(stack)
+  stackRef.current = stack
+  const open = useCallback((nodeId: string) => {
+    setOpened(current => current.runId !== runId ? { runId, nodes: [nodeId] }
+      : current.nodes.includes(nodeId) ? current : { runId, nodes: [...current.nodes, nodeId] })
+    stackRef.current.focus(attemptsWindowId(nodeId))
+  }, [runId])
+  const close = useCallback((nodeId: string) => setOpened(current => ({ ...current, nodes: current.nodes.filter(node => node !== nodeId) })), [])
+  const nodes = opened.runId === runId ? opened.nodes : []
+  const value = useMemo(() => ({ run, opened: nodes, open, close }), [close, nodes, open, run])
+  return <AttemptsContext.Provider value={value}>{children}</AttemptsContext.Provider>
+}
+
+/** "3 attempts" where a step lives; nothing until the step ran more than once, or ran at all with `always`. */
+export function AttemptsButton({ nodeId, className = 'finspect', always = false }: { nodeId: string; className?: string; always?: boolean }) {
+  const state = useContext(AttemptsContext)
+  const count = state?.run?.counts.get(nodeId) || 0
+  if (!state?.run || count < (always ? 1 : 2)) return null
+  const title = state.run.titleOf(nodeId)
+  return (
+    <button
+      type="button"
+      className={`attempts-open ${className}`}
+      aria-label={`${count} attempt${count === 1 ? '' : 's'} of ${title}`}
+      data-testid={`attempts-open-${nodeId}`}
+      onPointerDown={event => event.stopPropagation()}
+      onClick={event => {
+        event.stopPropagation()
+        state.open(nodeId)
+      }}
+    >{count} attempt{count === 1 ? '' : 's'}</button>
+  )
+}
+
+export function AttemptsWindowsLayer({ pick }: { pick: StepPick | null }) {
+  const state = useContext(AttemptsContext)
+  const run = state?.run
+  const waiting = useMemo(() => new Set(run?.waitingGates || []), [run?.waitingGates])
+  if (!state || !run) return null
+  const nodes = pick && !state.opened.includes(pick.nodeId) ? [...state.opened, pick.nodeId] : state.opened
+  return (
+    <>
+      {nodes.map(nodeId => {
+        const picking = pick?.nodeId === nodeId ? pick : null
+        return (
+          <Suspense key={`${run.runId}:${nodeId}`} fallback={null}>
+            <AttemptsWindow
+              runId={run.runId}
+              nodeId={nodeId}
+              stepTitle={run.titleOf(nodeId)}
+              count={run.counts.get(nodeId) || 0}
+              version={run.version}
+              live={run.live}
+              waitingGates={waiting}
+              pick={picking}
+              onClose={() => {
+                picking?.onClose()
+                state.close(nodeId)
+              }}
+            />
+          </Suspense>
+        )
+      })}
+    </>
+  )
+}

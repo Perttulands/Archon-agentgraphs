@@ -298,6 +298,21 @@ export interface AskedSeat {
   deliveredSeq?: number
 }
 
+/**
+ * A pending best-of-N pick (archon-gihe): a spent Limit card asks the gate to
+ * choose the best of a step's earlier attempts, and this human gate waits for
+ * the operator's choice. A judge on the same gate has already chosen; its
+ * choice is the recommendation.
+ */
+export interface GatePick {
+  /** The step whose attempts are the candidates. */
+  nodeId: string
+  /** The candidate attempts, by number. */
+  candidates: number[]
+  /** The judge's choice, which the operator may take. */
+  recommendation?: { attempt: number; reason: string; decidedBy?: string }
+}
+
 export interface WaitingGate {
   gateId: string
   requestedSeq: number
@@ -307,6 +322,8 @@ export interface WaitingGate {
   askedSeats?: AskedSeat[]
   /** Why the ask went to the notify command instead of the agents. */
   fallbackReason?: string
+  /** Set when the gate asks for the best of a step's attempts rather than a verdict. */
+  pick?: GatePick
 }
 
 export interface OnCallSeat {

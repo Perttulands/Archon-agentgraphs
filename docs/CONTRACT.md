@@ -836,6 +836,23 @@ its neighbours, its next links and the title bars of open windows visible and
 clickable, and cascades when no free space is left. Menus opened from the run
 bar render above every window.
 
+A step that ran more than once shows "N attempts" among its card's run tools and
+in its Flow row, and its node window always shows the count. One click opens the
+step's attempts window (archon-7963), read from the attempts route below. It
+lays every attempt out oldest first, one column each, so the loop reads left to
+right: the attempt's outcome and time, each gate's verdict with its reason and
+evidence (image evidence such as a judge's crops as thumbnails), then what each
+output produced: images large enough to judge, text and Markdown rendered, and
+other files as chips that open the file window. A folder previews its first
+twelve images, lists eight more files and counts the rest. The attempt the loop
+settled on, the picked one or else the latest that passed, is marked green.
+The arrow keys, Home, End or an attempt's number step between attempts; C puts
+two of them side by side in frames of one size; a click on an image zooms every
+attempt's image of that output to the same spot at the image's own pixels, a
+drag pans them together, and Z or another click fits them again. While the run
+is live the window reads the attempts again as the run records them and follows
+a new attempt, unless the operator stepped back to an older one.
+
 A mission opens at a scale its card text can be read at: the whole graph when
 that fits at 80% or more, else 80% from the graph's leading edge, and a run
 opens centred on the card it has reached. Fit always shows the whole graph.
@@ -1026,7 +1043,12 @@ also accepted on a blocked run, which routes it when it resumes, and a blocked
 run resumes while its gates keep waiting.
 
 The cockpit shows a pending human gate's input with a response box, Approve and
-Send back. The run bar names every gate that waits and every step that runs
+Send back. A pending best-of-N pick (archon-gihe) is answered in the
+step's attempts window instead: it opens by itself on the judge's
+recommendation with its reason, sets apart the attempts that are not
+candidates, and its one button, Pick attempt N, records the focused candidate
+with an optional reason. A recorded pick closes the window and shows on the
+attempt as picked, by you or the judge, with the reason. The run bar names every gate that waits and every step that runs
 ("waiting for you at Review · running Draft"); choosing a waiting gate there
 opens its answer.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the
