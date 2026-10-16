@@ -30,10 +30,18 @@
 .attempts-pip.outcome-judging .attempts-pip-glyph { color: var(--accent); }
 .attempts-pip.settled { border-color: var(--window-green); background: var(--window-green); color: var(--background); }
 .attempts-pip.settled .attempts-pip-glyph { color: var(--background); }
-.attempts-pip.shown { border-color: color-mix(in srgb, var(--accent) 55%, var(--divider)); }
-.attempts-pip.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.attempts-pip.shown {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--divider)); background: color-mix(in srgb, var(--accent) 12%, var(--surface-secondary));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.attempts-pip.current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface-secondary)); box-shadow: 0 0 0 1px var(--accent); }
+.attempts-pip.settled.shown,
+.attempts-pip.settled.current { background: var(--window-green); }
 .attempts-pip.excluded { opacity: .45; }
 .attempts-keys { margin-left: 4px; color: var(--text-secondary); white-space: nowrap; }
+/* Side by side, each side's row of attempts sits above its column. */
+.attempts-bar.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; overflow: visible; }
+.attempts-side { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px; overflow-x: auto; }
 
 .attempts-scroll { flex: 1; min-height: 0; padding: 12px; overflow: auto; container-type: size; }
 .attempts-message { margin: 0; color: var(--text-secondary); font-size: 12px; }

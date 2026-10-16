@@ -403,7 +403,11 @@ func writeWaitPick(b *strings.Builder, server, runID string, ask coordinator.Wai
 	fmt.Fprintf(b, "Candidates: attempts %s. Compare them: archon --server %s gate request %s %s, or archon --server %s run attempts %s --node %s\n",
 		formations.AttemptListWords(pick.Candidates), server, runID, ask.GateID, server, runID, pick.NodeID)
 	if rec := pick.Recommendation; rec != nil {
-		fmt.Fprintf(b, "The judge %s recommends attempt %d: %s\n", firstWaitNonEmpty(rec.DecidedBy, "of the gate"), rec.Attempt, rec.Reason)
+		judge := "of the gate"
+		if name := firstWaitNonEmpty(rec.JudgeTitle, rec.DecidedBy); name != "" {
+			judge = strconv.Quote(name)
+		}
+		fmt.Fprintf(b, "The judge %s recommends attempt %d: %s\n", judge, rec.Attempt, rec.Reason)
 	}
 	for _, route := range ask.Routes {
 		if where := describeGateRoute(route); where != "" {

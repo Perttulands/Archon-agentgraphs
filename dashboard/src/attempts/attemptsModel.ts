@@ -58,11 +58,17 @@ export function deciderWords(decidedBy: string | undefined): string {
   return decidedBy.startsWith('human:') ? 'you' : ''
 }
 
-/** Who picked an attempt: you, the judge, or Archon when only one attempt was a candidate. */
-export function pickerWords(decidedBy: string): string {
+/** Who picked an attempt: you, the judge by its title, or Archon when only one attempt was a candidate. */
+export function pickerWords(decidedBy: string, titleOf?: (nodeId: string) => string): string {
   if (decidedBy.startsWith('human:')) return 'you'
   if (decidedBy === 'archon') return 'the only candidate'
-  return decidedBy ? 'the judge' : ''
+  return decidedBy ? judgeWords(decidedBy, titleOf) : ''
+}
+
+/** A judge by its step's title; one the board does not name is just the judge. */
+export function judgeWords(decidedBy: string | undefined, titleOf?: (nodeId: string) => string): string {
+  const title = decidedBy && titleOf ? titleOf(decidedBy) : ''
+  return title && title !== decidedBy ? title : 'the judge'
 }
 
 /** A verdict as one line: "Review gate · ✕ fail · you". */
@@ -154,6 +160,19 @@ export function comparePair(numbers: readonly number[], focus: number): [number,
   return at > 0 ? [numbers[at - 1], numbers[at]] : [numbers[0], numbers[1]]
 }
 
+/** Two chosen attempts side by side in the loop's order, the earlier on the left. */
+export function inLoopOrder(numbers: readonly number[], a: number, b: number): [number, number] {
+  return numbers.indexOf(a) <= numbers.indexOf(b) ? [a, b] : [b, a]
+}
+
+/** A step of the arrow keys that passes over the attempt on the other side; held at the ends. */
+export function stepPast(numbers: readonly number[], current: number, delta: number, other?: number): number {
+  const next = stepAttempt(numbers, current, delta)
+  if (next !== other) return next
+  const beyond = stepAttempt(numbers, next, delta)
+  return beyond === next ? current : beyond
+}
+
 /** The floating window of a step's attempts; one per step. */
 export const attemptsWindowId = (nodeId: string) => `attempts:${nodeId}`
 
@@ -163,7 +182,8 @@ export interface AttemptsPick {
   gateTitle: string
   /** The attempts the pick may choose. */
   candidates: number[]
-  recommended?: { attempt: number; reason: string }
+  /** The judge's choice; `decidedBy` is the judge's node ID. */
+  recommended?: { attempt: number; reason: string; decidedBy?: string }
   /** Counts the operator's requests to bring the pick up; each takes the keyboard. A run reaching the pick does not. */
   focusRequest: number
   /** Records the choice; resolves to the failure's words, or nothing once recorded. */

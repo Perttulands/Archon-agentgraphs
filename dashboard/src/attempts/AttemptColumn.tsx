@@ -25,6 +25,7 @@ import {
   baseName,
   folderSummary,
   isImagePath,
+  judgeWords,
   nameWithin,
   pickerWords,
   textBytes,
@@ -47,6 +48,8 @@ export interface AttemptView {
   /** Two attempts side by side: images in frames of one size, so they compare at the same framing. */
   compare: boolean
   now: Date
+  /** A step's title on the board, for naming the judge that picked. */
+  titleOf?: (nodeId: string) => string
 }
 
 const FOLDER_THUMBS = 12
@@ -83,6 +86,8 @@ function FileChip({ request, label, detail, glyph = '▤', testId }: { request: 
     </button>
   )
 }
+
+const upperFirst = (words: string) => words.charAt(0).toUpperCase() + words.slice(1)
 
 /** What a cut text shows of the whole, as run evidence says it. */
 const cutWords = (text: EvidenceText) => `… first ${formatBytes(textBytes(text.text))} of ${formatBytes(text.bytes)}`
@@ -283,22 +288,27 @@ export interface AttemptMarks {
   settled: boolean
   /** In a pending pick, whether it may be chosen. */
   candidate?: boolean
-  /** The judge's choice in a pending pick, and why. */
-  recommended?: string
+  /** The judge's choice in a pending pick: why, and the judge's node ID. */
+  recommended?: { reason: string; decidedBy?: string }
 }
+
+// A shift-click on these does their own thing, not choose the attempt beside the focused one.
+const OWN_CLICKS = 'button, a, input, textarea, select'
 
 export default function AttemptColumn({ attempt, view, marks, onFocus }: {
   attempt: StepAttempt
   view: AttemptView
   marks: AttemptMarks
-  onFocus: () => void
+  /** The column was pressed; `beside` when shift-pressed to set it beside the focused attempt. */
+  onFocus: (beside: boolean) => void
 }) {
   const outcome: AttemptOutcome = attemptOutcome(attempt, view.waitingGates)
   const { outputs, others } = attemptFileGroups(attempt)
   const open = useOpen()
   const excluded = marks.candidate === false
   const context = `${view.stepTitle} · attempt ${attempt.attempt}`
-  const pickedBy = attempt.picked ? pickerWords(attempt.picked.decidedBy) : ''
+  const pickedBy = attempt.picked ? pickerWords(attempt.picked.decidedBy, view.titleOf) : ''
+  const beside = (event: { shiftKey: boolean; target: EventTarget }) => event.shiftKey && !view.compare && !(event.target as Element).closest?.(OWN_CLICKS)
   return (
     <article
       className={`attempt-col${marks.focused ? ' focused' : ''}${marks.settled ? ' settled' : ''}${excluded ? ' excluded' : ''}`}
@@ -306,13 +316,15 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
       data-testid={`attempt-${attempt.attempt}`}
       aria-label={`Attempt ${attempt.attempt}, ${OUTCOME_WORDS[outcome].replace(/^[✓✕] /, '')}`}
       aria-current={marks.focused ? 'true' : undefined}
-      onPointerDown={onFocus}
+      onPointerDown={event => onFocus(beside(event))}
+      // A shift-click chooses an attempt, so it selects no text.
+      onMouseDown={event => { if (beside(event)) event.preventDefault() }}
     >
       <header className="attempt-head">
         <div className="attempt-head-line">
           <span className="attempt-number">Attempt {attempt.attempt}</span>
           <span className={`attempt-outcome outcome-${outcome}${marks.settled ? ' settled' : ''}`} data-testid={`attempt-${attempt.attempt}-outcome`}>{OUTCOME_WORDS[outcome]}</span>
-          {marks.recommended !== undefined ? <span className="attempt-outcome outcome-recommended">judge&apos;s pick</span> : null}
+          {marks.recommended ? <span className="attempt-outcome outcome-recommended">judge&apos;s pick</span> : null}
         </div>
         <span className="attempt-time">{[attemptTiming(attempt, view.now), excluded ? 'not a candidate' : ''].filter(Boolean).join(' · ')}</span>
       </header>
@@ -323,10 +335,10 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
             {attempt.picked.reason.text.trim() ? <p className="attempt-reason"><LinkedText text={attempt.picked.reason.text} /></p> : null}
           </div>
         ) : null}
-        {marks.recommended !== undefined ? (
+        {marks.recommended ? (
           <div className="attempt-verdict tone-recommended" data-testid={`attempt-${attempt.attempt}-recommended`}>
-            <p className="attempt-verdict-head">The judge picks this one</p>
-            {marks.recommended ? <p className="attempt-reason"><LinkedText text={marks.recommended} /></p> : null}
+            <p className="attempt-verdict-head">{upperFirst(judgeWords(marks.recommended.decidedBy, view.titleOf))} picks this one</p>
+            {marks.recommended.reason ? <p className="attempt-reason"><LinkedText text={marks.recommended.reason} /></p> : null}
           </div>
         ) : null}
         {attempt.verdicts.map(verdict => <VerdictView key={`${verdict.gateId}:${verdict.evaluationSeq}`} verdict={verdict} view={view} attempt={attempt.attempt} />)}

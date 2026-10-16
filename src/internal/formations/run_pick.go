@@ -657,6 +657,9 @@ type PickRecommendation struct {
 	Attempt   int    `json:"attempt"`
 	Reason    string `json:"reason"`
 	DecidedBy string `json:"decidedBy"`
+	// JudgeTitle is the judge's title on the run's frozen board, where the
+	// reader has the board: run wait and gate request (archon-7963).
+	JudgeTitle string `json:"judgeTitle,omitempty"`
 }
 
 // PendingPickOf reads the pick a human request asks for, or nil when the

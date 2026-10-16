@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { fetchRunAttempts, type StepAttempt, type StepAttempts } from '../evidence/runEvidenceApi'
 import FloatingWindow from '../windows/FloatingWindow'
 import type { FrameSize } from '../windows/floatingWindowSize'
@@ -9,10 +9,11 @@ import {
   attemptOutcome,
   attemptsWindowId,
   comparePair,
+  inLoopOrder,
   isImagePath,
   openingAttempt,
   settledAttempt,
-  stepAttempt,
+  stepPast,
   type AttemptOutcome,
   type AttemptsPick,
 } from './attemptsModel'
@@ -20,9 +21,12 @@ import './attempts.css'
 
 // A step's attempts in one floating window (archon-7963). The strip shows
 // every attempt in order, each with what it produced and what its gates said,
-// so the loop reads left to right; side by side puts two of them in frames of
-// one size. The arrow keys step between attempts, C switches the view, and an
-// image click zooms every attempt's image of that output to the same spot.
+// so the loop reads left to right; side by side puts any two of them in frames
+// of one size. The arrow keys step between attempts, C switches the view, and
+// an image click zooms every attempt's image of that output to the same spot.
+// Side by side, each side has its own row of attempts above it; the keys move
+// one side and, with shift, the other. From the strip, a shift-click or
+// shift-arrow puts a second attempt beside the focused one.
 // A pending best-of-N pick (archon-gihe) is answered here too: the candidates
 // stand out, the judge's choice is marked, and one button picks.
 
@@ -50,7 +54,7 @@ function imageGroup(attempt: StepAttempt | undefined): string {
 // Keys typed into a field, or that move or size the window, are not the attempts'.
 const OWN_KEYS = 'input, textarea, select, [contenteditable="true"], .fwin-title, [role="separator"]'
 
-export default function AttemptsWindow({ runId, nodeId, stepTitle, count, version, live, waitingGates, pick, onClose }: {
+export default function AttemptsWindow({ runId, nodeId, stepTitle, count, version, live, waitingGates, pick, titleOf, onClose }: {
   runId: string
   nodeId: string
   stepTitle: string
@@ -62,6 +66,8 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
   live: boolean
   waitingGates: ReadonlySet<string>
   pick?: AttemptsPick | null
+  /** A step's title on the board, for naming the judge that picked. */
+  titleOf?: (nodeId: string) => string
   onClose: () => void
 }) {
   const [step, setStep] = useState<StepAttempts | null>(null)
@@ -125,22 +131,42 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
   }, [attempts, candidates, choices, numbers, recommended?.attempt])
 
   const compare = mode === 'compare' && numbers.length > 1
+  // Side by side, the keys move one side (`side`) and, with shift, the other.
   const chosen = compare ? pair[side] : focus
+  const other: 0 | 1 = side === 0 ? 1 : 0
   const settled = settledAttempt(attempts)
 
+  // Side by side opens on the pair it was left on while the focus stayed there;
+  // otherwise on the focused attempt and the one before it, among the candidates
+  // of a pick.
   const showCompare = useCallback((on: boolean) => {
     if (on && focus !== null) {
-      const among = candidates && candidates.has(focus) && choices.length > 1 ? choices : numbers
-      setPair(comparePair(among, focus))
-      setSide(among.indexOf(focus) === 0 ? 0 : 1)
+      const kept = pair[side] === focus && pair[0] !== pair[1] && numbers.includes(pair[0]) && numbers.includes(pair[1])
+      if (!kept) {
+        const among = candidates && candidates.has(focus) && choices.length > 1 ? choices : numbers
+        const next = comparePair(among, focus)
+        setPair(next)
+        setSide(next[0] === focus ? 0 : 1)
+      }
     }
     if (!on && pair[side]) setFocus(pair[side])
     setMode(on ? 'compare' : 'strip')
   }, [candidates, choices, focus, numbers, pair, side])
 
-  const choose = useCallback((attempt: number) => {
+  /** From the strip: `beside` next to the focused attempt, in the loop's order, with the keys still on the focused one. */
+  const compareWith = useCallback((beside: number) => {
+    if (focus === null || beside === focus) { showCompare(true); return }
+    const next = inLoopOrder(numbers, focus, beside)
+    setPair(next)
+    setSide(next[0] === focus ? 0 : 1)
+    setMode('compare')
+  }, [focus, numbers, showCompare])
+
+  /** The strip's focus, or one side's attempt: the keys' side unless another is named. */
+  const choose = useCallback((attempt: number, which?: 0 | 1) => {
     if (!compare) { setFocus(attempt); return }
-    setPair(current => (side === 0 ? [attempt, current[1]] : [current[0], attempt]))
+    const at = which ?? side
+    setPair(current => (at === 0 ? [attempt, current[1]] : [current[0], attempt]))
   }, [compare, side])
 
   // The focused column comes into view as the keys step to it.
@@ -155,6 +181,15 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     if (left) strip.scrollBy?.({ left, behavior: 'smooth' })
   }, [compare, focus])
 
+  // Switching views redraws the pips; a pip that had the keys takes them along
+  // as it goes, so the window keeps them.
+  const wasCompare = useRef(compare)
+  useEffect(() => {
+    if (wasCompare.current === compare) return
+    wasCompare.current = compare
+    if (!document.activeElement || document.activeElement === document.body) rootRef.current?.focus({ preventScroll: true })
+  }, [compare])
+
   // Asking for the pick again brings the window's keys back to it.
   const focusRequest = pick?.focusRequest || 0
   useEffect(() => {
@@ -164,14 +199,23 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if ((event.target as HTMLElement).closest(OWN_KEYS) || event.altKey || event.ctrlKey || event.metaKey) return
     const at = chosen ?? numbers[numbers.length - 1]
+    // Shift moves the attempt beside: the other side, or from the strip, a second attempt.
+    const beside = event.shiftKey
     const go = (attempt: number | undefined) => {
       if (attempt === undefined) return
       event.preventDefault()
-      choose(attempt)
+      if (!beside) choose(attempt)
+      else if (compare) choose(attempt, other)
+      else if (attempt !== at) compareWith(attempt)
     }
     switch (event.key) {
-      case 'ArrowLeft': go(stepAttempt(numbers, at, -1)); return
-      case 'ArrowRight': go(stepAttempt(numbers, at, 1)); return
+      case 'ArrowLeft':
+      case 'ArrowRight': {
+        const delta = event.key === 'ArrowLeft' ? -1 : 1
+        // A step passes over the attempt on the other side, so the two never show the same.
+        go(beside ? stepPast(numbers, compare ? pair[other] : at, delta, at) : stepPast(numbers, at, delta, compare ? pair[other] : undefined))
+        return
+      }
       case 'Home': go(numbers[0]); return
       case 'End': go(numbers[numbers.length - 1]); return
       case 'c': case 'C':
@@ -192,7 +236,11 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
         setZoom(null)
         return
       default:
-        if (/^[1-9]$/.test(event.key) && numbers.includes(Number(event.key))) go(Number(event.key))
+        // Some layouts type digits with shift; a digit always moves the keys' own side.
+        if (/^[1-9]$/.test(event.key) && numbers.includes(Number(event.key))) {
+          event.preventDefault()
+          choose(Number(event.key))
+        }
     }
   }
 
@@ -209,16 +257,31 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     }
   }
 
-  const view: AttemptView = { runId, stepTitle, waitingGates, zoom, onZoom: setZoom, compare, now }
-  const column = (attempt: StepAttempt, focused: boolean, onFocus: () => void) => (
+  const view: AttemptView = { runId, stepTitle, waitingGates, zoom, onZoom: setZoom, compare, now, titleOf }
+  const column = (attempt: StepAttempt, focused: boolean, onFocus: (beside: boolean) => void) => (
     <AttemptColumn key={attempt.attempt} attempt={attempt} view={view} onFocus={onFocus}
       marks={{
         focused,
         settled: attempt.attempt === settled,
         candidate: candidates ? candidates.has(attempt.attempt) : undefined,
-        recommended: recommended?.attempt === attempt.attempt && !attempt.picked ? recommended.reason : undefined,
+        recommended: recommended?.attempt === attempt.attempt && !attempt.picked ? { reason: recommended.reason, decidedBy: recommended.decidedBy } : undefined,
       }} />
   )
+  // One pip per attempt: chosen with the keys on it, chosen for the other side, or neither.
+  const pip = (attempt: StepAttempt, state: 'keys' | 'beside' | '', onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void) => {
+    const outcome = attemptOutcome(attempt, waitingGates)
+    return (
+      <button key={attempt.attempt} type="button"
+        className={`attempts-pip outcome-${outcome}${attempt.attempt === settled ? ' settled' : ''}${state === 'keys' ? ' current' : state === 'beside' ? ' shown' : ''}${candidates && !candidates.has(attempt.attempt) ? ' excluded' : ''}`}
+        aria-pressed={Boolean(state)}
+        aria-label={`Attempt ${attempt.attempt}, ${outcomeWord(outcome)}`}
+        title={`Attempt ${attempt.attempt} · ${outcomeWord(outcome)}`}
+        data-testid={`attempts-pip-${attempt.attempt}`}
+        onClick={onClick}>
+        {attempt.attempt}{PIP_GLYPH[outcome] ? <span className="attempts-pip-glyph" aria-hidden="true">{PIP_GLYPH[outcome]}</span> : null}
+      </button>
+    )
+  }
   const shown = compare ? pair.map(number => attempts.find(attempt => attempt.attempt === number)) : []
   const label = pick ? `Pick the best attempt of ${stepTitle}` : `Attempts of ${stepTitle}`
   const pickable = Boolean(pick && chosen !== null && candidates?.has(chosen))
@@ -250,24 +313,25 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     >
       <div className="attempts" ref={rootRef} tabIndex={-1} data-testid="attempts-window">
         {numbers.length > 1 ? (
-          <nav className="attempts-bar" aria-label={`Attempts of ${stepTitle}`}>
-            {attempts.map(attempt => {
-              const outcome = attemptOutcome(attempt, waitingGates)
-              const onSide = compare ? pair.indexOf(attempt.attempt) : -1
-              const current = attempt.attempt === chosen
-              return (
-                <button key={attempt.attempt} type="button"
-                  className={`attempts-pip outcome-${outcome}${attempt.attempt === settled ? ' settled' : ''}${current ? ' current' : ''}${onSide >= 0 ? ' shown' : ''}${candidates && !candidates.has(attempt.attempt) ? ' excluded' : ''}`}
-                  aria-pressed={current}
-                  aria-label={`Attempt ${attempt.attempt}, ${outcomeWord(outcome)}`}
-                  title={`Attempt ${attempt.attempt} · ${outcomeWord(outcome)}`}
-                  data-testid={`attempts-pip-${attempt.attempt}`}
-                  onClick={() => choose(attempt.attempt)}>
-                  {attempt.attempt}{PIP_GLYPH[outcome] ? <span className="attempts-pip-glyph" aria-hidden="true">{PIP_GLYPH[outcome]}</span> : null}
-                </button>
-              )
-            })}
-            <span className="attempts-keys" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd></span>
+          <nav className={`attempts-bar${compare ? ' compare' : ''}`} aria-label={`Attempts of ${stepTitle}`}>
+            {compare ? ([0, 1] as const).map(which => (
+              // Each side's own row of attempts, above its column.
+              <div key={which} role="group" className={`attempts-side${which === side ? ' keys' : ''}`} data-testid={`attempts-side-${which}`}
+                aria-label={`${which === 0 ? 'Left' : 'Right'}: attempt ${pair[which]}`}>
+                {attempts.map(attempt => pip(attempt, attempt.attempt !== pair[which] ? '' : which === side ? 'keys' : 'beside', () => {
+                  choose(attempt.attempt, which)
+                  setSide(which)
+                }))}
+                <span className="attempts-keys" aria-hidden="true">{which === side ? null : <kbd>⇧</kbd>}<kbd>←</kbd><kbd>→</kbd></span>
+              </div>
+            )) : (
+              <>
+                {attempts.map(attempt => pip(attempt, attempt.attempt === focus ? 'keys' : '', event => (
+                  event.shiftKey ? compareWith(attempt.attempt) : choose(attempt.attempt)
+                )))}
+                <span className="attempts-keys" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd></span>
+              </>
+            )}
           </nav>
         ) : null}
         <div className={`attempts-scroll${compare ? ' compare' : ''}`} ref={scrollRef}>
@@ -280,7 +344,9 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
                   </div>
                 ) : (
                   <div className="attempts-grid strip">
-                    {attempts.map(attempt => column(attempt, attempt.attempt === focus && numbers.length > 1, () => setFocus(attempt.attempt)))}
+                    {attempts.map(attempt => column(attempt, attempt.attempt === focus && numbers.length > 1, beside => (
+                      beside ? compareWith(attempt.attempt) : setFocus(attempt.attempt)
+                    )))}
                   </div>
                 )}
         </div>

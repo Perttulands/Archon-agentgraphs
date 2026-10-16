@@ -372,6 +372,26 @@ func TestRunWaitNamesTheMissionByItsTitle(t *testing.T) {
 	}
 }
 
+// archon-7963: a pending pick names its recommending judge by the judge's
+// title on the frozen board, not by its ID.
+func TestRunWaitNamesAPicksJudgeByItsTitle(t *testing.T) {
+	recommend := func(by string) []formations.RunEvent {
+		return []formations.RunEvent{{Seq: 1, Type: formations.RunEventHumanInputRequested, GateID: "gate_review", Data: map[string]any{
+			"pick": map[string]any{"nodeId": "fmn_work", "pickSeq": 1, "candidates": []any{1, 2}, "recommendation": map[string]any{"attempt": 2, "reason": "closest", "decidedBy": by}},
+		}}}
+	}
+	board := &formations.BoardDocument{Formations: []formations.FormationNode{{ID: "fmn_judge", Title: "Likeness judge"}}}
+	ask := formations.NeedsYouAsk{Kind: formations.NeedsYouKindHumanGate, Seq: 1, GateID: "gate_review"}
+	got := waitAsk(ask, recommend("fmn_judge"), board, 0, time.Time{})
+	if got.Pick == nil || got.Pick.Recommendation == nil || got.Pick.Recommendation.JudgeTitle != "Likeness judge" || got.Pick.Recommendation.DecidedBy != "fmn_judge" {
+		t.Fatalf("pick = %+v", got.Pick)
+	}
+	// A judge the board does not name keeps only its ID.
+	if got := waitAsk(ask, recommend("fmn_gone"), board, 0, time.Time{}); got.Pick.Recommendation.JudgeTitle != "" {
+		t.Fatalf("unnamed judge = %+v", got.Pick.Recommendation)
+	}
+}
+
 // failingStep fails one step's dispatch, as a lost seat does, and runs the
 // others through a holding executor.
 type failingStep struct {

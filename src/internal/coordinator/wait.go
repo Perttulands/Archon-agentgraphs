@@ -325,6 +325,7 @@ func waitAsk(ask formations.NeedsYouAsk, events []formations.RunEvent, board *fo
 			if out.Pick != nil {
 				// A pick has only the pass route, which the picked attempt takes.
 				out.Routes = slices.DeleteFunc(out.Routes, func(route formations.GateRoute) bool { return route.Verdict != "pass" })
+				nameJudge(out.Pick, board)
 			}
 		}
 	default:
@@ -358,6 +359,15 @@ func waitMissionTitle(board *formations.BoardDocument, status *formations.RunSta
 		return board.Title
 	}
 	return status.BoardSlug
+}
+
+// nameJudge titles a pending pick's recommending judge from the run's frozen board.
+func nameJudge(pick *formations.PendingPick, board *formations.BoardDocument) {
+	if rec := pick.Recommendation; rec != nil && rec.DecidedBy != "" {
+		if title := nodeTitle(board, rec.DecidedBy); title != rec.DecidedBy {
+			rec.JudgeTitle = title
+		}
+	}
 }
 
 // waitTitle is a node's title on the run's frozen board, or its ID.

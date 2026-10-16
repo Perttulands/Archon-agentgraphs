@@ -699,7 +699,9 @@ Then the gate decides:
   decides. The pending request appears in `waitingGates` with `pick`
   (`nodeId`, `candidates`, `recommendation` with `attempt`, `reason` and
   `decidedBy`), in `gate request` and its route, and in `run wait`, which
-  prints the `gate pick` command. `archon gate pick <run> <gate> --attempt <n>
+  prints the `gate pick` command. `gate request` and `run wait` add the
+  judge's title on the frozen board as `recommendation.judgeTitle`, and `run
+  wait` names the judge by it. `archon gate pick <run> <gate> --attempt <n>
   [--reason <text>] [--requested-seq <seq>] [--relayed-by <slot-id>]`, or `POST
   /api/runs/{runId}/gates/{gateId}/pick` with `requestedSeq`, `attempt`,
   `reason` and optional `relayedBy`, records it as a `human_verdict_recorded`
@@ -958,7 +960,13 @@ other files as chips that open the file window. A folder previews its first
 twelve images, lists eight more files and counts the rest. The attempt the loop
 settled on, the picked one or else the latest that passed, is marked green.
 The arrow keys, Home, End or an attempt's number step between attempts; C puts
-two of them side by side in frames of one size; a click on an image zooms every
+two of them side by side in frames of one size: the focused attempt and the one
+before it, or the pair C left while the focus stayed on it. Any two can be
+compared: from the strip, a shift-click on an attempt (its number or its
+column) or shift with an arrow, Home or End puts that attempt beside the
+focused one. Side by side, each side has its own row of attempt numbers above
+its column; a click there chooses that side's attempt, the keys move the side
+last chosen, and with shift they move the other. A click on an image zooms every
 attempt's image of that output to the same spot at the image's own pixels, a
 drag pans them together, and Z or another click fits them again. While the run
 is live the window reads the attempts again as the run records them and follows
@@ -1159,7 +1167,8 @@ step's attempts window instead: it opens by itself on the judge's
 recommendation with its reason, sets apart the attempts that are not
 candidates, and its one button, Pick attempt N, records the focused candidate
 with an optional reason. A recorded pick closes the window and shows on the
-attempt as picked, by you or the judge, with the reason. The run bar names every gate that waits and every step that runs
+attempt as picked, by you or the judge, with the reason. The cockpit names a
+judge by its step's title, never its node ID. The run bar names every gate that waits and every step that runs
 ("waiting for you at Review · running Draft"); choosing a waiting gate there
 opens its answer.
 A verdict may carry `relayedBy`, the slot ID of the seat that typed the

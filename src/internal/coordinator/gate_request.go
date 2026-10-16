@@ -84,6 +84,7 @@ func (c *Coordinator) pendingGateRequest(w http.ResponseWriter, r *http.Request)
 		body.Routes = formations.HumanGateRoutes(board, events, gateID, c.store.CurrentTime())
 		if body.Pick != nil {
 			body.Routes = slices.DeleteFunc(body.Routes, func(route formations.GateRoute) bool { return route.Verdict != "pass" })
+			nameJudge(body.Pick, board)
 		}
 	} else {
 		log.Printf("run %s: gate %s routes unavailable: %v", runID, gateID, err)

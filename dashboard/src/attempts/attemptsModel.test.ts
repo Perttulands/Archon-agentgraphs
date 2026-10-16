@@ -6,10 +6,13 @@ import {
   attemptTiming,
   comparePair,
   folderSummary,
+  inLoopOrder,
+  judgeWords,
   openingAttempt,
   pickerWords,
   settledAttempt,
   stepAttempt,
+  stepPast,
   verdictHeadline,
 } from './attemptsModel'
 
@@ -80,6 +83,16 @@ describe('stepping and pairing', () => {
     expect(comparePair(numbers, 1)).toEqual([1, 2])
     expect(comparePair([5], 5)).toEqual([5, 5])
   })
+
+  it('pairs any two in the loop\'s order and steps one side past the other', () => {
+    expect(inLoopOrder(numbers, 4, 1)).toEqual([1, 4])
+    expect(inLoopOrder(numbers, 2, 3)).toEqual([2, 3])
+    expect(stepPast(numbers, 3, -1, 2)).toBe(1)
+    expect(stepPast(numbers, 3, -1, 1)).toBe(2)
+    // Nothing past the other side at the end: the step holds.
+    expect(stepPast(numbers, 3, 1, 4)).toBe(3)
+    expect(stepPast(numbers, 4, 1)).toBe(4)
+  })
 })
 
 describe('attemptFileGroups and folderSummary', () => {
@@ -125,10 +138,16 @@ describe('words', () => {
     expect(attemptOutcome(attempt(1, { verdicts: [verdict('review', undefined, { superseded: true }), verdict('review', 'pass')] }))).toBe('pass')
   })
 
-  it('says who picked an attempt', () => {
-    expect(pickerWords('human:ui')).toBe('you')
-    expect(pickerWords('judge')).toBe('the judge')
-    expect(pickerWords('archon')).toBe('the only candidate')
+  it('says who picked an attempt, naming a judge by its step\'s title', () => {
+    const titleOf = (id: string) => (id === 'fmn_judge' ? 'Likeness judge' : id)
+    expect(pickerWords('human:ui', titleOf)).toBe('you')
+    expect(pickerWords('fmn_judge', titleOf)).toBe('Likeness judge')
+    expect(pickerWords('archon', titleOf)).toBe('the only candidate')
+    // A judge the board does not name never shows its ID.
+    expect(pickerWords('fmn_gone', titleOf)).toBe('the judge')
+    expect(pickerWords('fmn_judge')).toBe('the judge')
+    expect(judgeWords('fmn_judge', titleOf)).toBe('Likeness judge')
+    expect(judgeWords(undefined, titleOf)).toBe('the judge')
   })
 
   it('times a finished attempt by its span and a running one so far', () => {

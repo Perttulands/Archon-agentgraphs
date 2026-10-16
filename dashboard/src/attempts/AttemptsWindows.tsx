@@ -99,6 +99,7 @@ export function AttemptsWindowsLayer({ pick }: { pick: StepPick | null }) {
               live={run.live}
               waitingGates={waiting}
               pick={picking}
+              titleOf={run.titleOf}
               onClose={() => {
                 picking?.onClose()
                 state.close(nodeId)

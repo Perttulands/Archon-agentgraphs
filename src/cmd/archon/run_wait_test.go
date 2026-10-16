@@ -386,13 +386,13 @@ func TestRunWaitOffersAGrantAtASpentLimit(t *testing.T) {
 func TestRunWaitAsksForAPickWithTheCandidates(t *testing.T) {
 	ask := coordinator.WaitAsk{Kind: formations.NeedsYouKindHumanGate, Seq: 14, New: true, GateID: "gate_review", Title: "Review", Criterion: "Is the draft ready to ship?",
 		Input:  &coordinator.WaitInput{FromNodeID: "fmn_work", FromTitle: "Draft", Text: "Pick the best attempt of Draft."},
-		Pick:   &formations.PendingPick{NodeID: "fmn_work", Candidates: []int{1, 2, 3}, Recommendation: &formations.PickRecommendation{Attempt: 2, Reason: "the tightest draft", DecidedBy: "fmn_judge"}},
+		Pick:   &formations.PendingPick{NodeID: "fmn_work", Candidates: []int{1, 2, 3}, Recommendation: &formations.PickRecommendation{Attempt: 2, Reason: "the tightest draft", DecidedBy: "fmn_judge", JudgeTitle: "Likeness judge"}},
 		Routes: []formations.GateRoute{{Verdict: "pass", Targets: []formations.GateRouteTarget{{NodeID: "fmn_after", Title: "Ship", Kind: "formation"}}}}}
 	out := renderWait("http://127.0.0.1:1", &waitOutput{RunWait: coordinator.RunWait{RunID: "run_x", Mission: "Proof", Since: 3, Seq: 14, Status: "waiting_human", Asks: []coordinator.WaitAsk{ask}}, Next: "archon next"}, waitExitNeedsYou)
 	for _, want := range []string{
 		`The gate "Review" (gate_review) waits for you to pick the best attempt of "Draft", asked at #14: its Limit card is spent, so it runs no more.`,
 		"Candidates: attempts 1, 2 or 3. Compare them: archon --server http://127.0.0.1:1 gate request run_x gate_review, or archon --server http://127.0.0.1:1 run attempts run_x --node fmn_work\n",
-		"The judge fmn_judge recommends attempt 2: the tightest draft\n",
+		"The judge \"Likeness judge\" recommends attempt 2: the tightest draft\n",
 		`After the pick: goes to "Ship".`,
 		"  archon --server http://127.0.0.1:1 gate pick run_x gate_review --attempt 2 --requested-seq 14 --reason 'why this one'\n",
 	} {

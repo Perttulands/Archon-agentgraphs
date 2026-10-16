@@ -1376,6 +1376,10 @@ components:
               type: string
             decidedBy:
               type: string
+              description: The judge's node ID.
+            judgeTitle:
+              type: string
+              description: The judge's title in the run's frozen mission, in gate request and run wait when the mission titles it.
     EvidenceText:
       type: object
       properties:

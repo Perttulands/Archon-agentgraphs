@@ -63,7 +63,8 @@ export const failReasons = [
   'Stubble is gone but the jaw is heavier than the reference and the ears are cropped; identity fails.',
 ]
 export const passReason = 'All eight checks pass: clean shaven, neutral expression, lean long face, full figure in frame.'
-export const pickReason = 'Attempt 3 is closest: the build and face match; only light stubble remains, which retouching removes.'
+export const judgeTitle = 'Likeness judge'
+export const pickReason ='Attempt 3 is closest: the build and face match; only light stubble remains, which retouching removes.'
 
 /** What one attempt left behind. */
 interface AttemptSpec {
@@ -124,6 +125,9 @@ export async function iterationsFixture(page: Page, scenario: IterationsScenario
   mission.formations[0].outputs = scenario === 'folder' ? [{ id: 'out', label: 'Meshes', kind: 'folder' }]
     : [{ id: 'out', label: 'Portrait', kind: 'file' }, { id: 'notes', label: 'Notes', kind: 'text' }]
   mission.formations[0].title = scenario === 'folder' ? 'Build meshes' : 'Draw Ahti'
+  // A pick names its judge by node ID; the cockpit shows this title instead.
+  const judge = mission.formations.find(node => node.id === 'judge')
+  if (judge) judge.title = judgeTitle
   mission.gates[0] = { ...mission.gates[0], kinds: scenario === 'pick' ? ['formation', 'human'] : ['formation'] }
   mission.connections = [...mission.connections, { id: 'gate-fail', from: 'gate:fail', to: 'execution:in' }]
 
@@ -230,7 +234,7 @@ export async function iterationsFixture(page: Page, scenario: IterationsScenario
       const node = url.searchParams.get('node')
       const steps = [
         { nodeId: 'execution', title: mission.formations[0].title, outputs: mission.formations[0].outputs, attempts: attempts() },
-        { nodeId: 'judge', title: 'Judge', judgeOf: ['gate'], outputs: [{ id: 'out', label: 'Result', kind: 'text' }], attempts: judgeAttempts() },
+        { nodeId: 'judge', title: judgeTitle, judgeOf: ['gate'], outputs: [{ id: 'out', label: 'Result', kind: 'text' }], attempts: judgeAttempts() },
       ]
       return route.fulfill(respond({ attempts: { runId: 'run_browser', steps: steps.filter(step => !node || node === step.nodeId) } }))
     }

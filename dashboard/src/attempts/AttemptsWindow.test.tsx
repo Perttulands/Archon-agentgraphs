@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import type { ComponentProps } from 'react'
 import type { StepAttempt } from '../evidence/runEvidenceApi'
@@ -36,7 +36,8 @@ function Window(props: Partial<ComponentProps<typeof AttemptsWindow>>) {
 }
 
 const focused = () => document.querySelector('[data-attempt][aria-current="true"]')?.getAttribute('data-attempt')
-const press = (key: string) => fireEvent.keyDown(screen.getByTestId('attempts-window'), { key })
+const shown = () => [...document.querySelectorAll('[data-attempt]')].map(column => column.getAttribute('data-attempt'))
+const press = (key: string, init: KeyboardEventInit = {}) => fireEvent.keyDown(screen.getByTestId('attempts-window'), { key, ...init })
 
 describe('AttemptsWindow', () => {
   beforeEach(() => {
@@ -71,17 +72,83 @@ describe('AttemptsWindow', () => {
     render(<Window />)
     await screen.findByTestId('attempt-4')
     press('c')
-    expect([...document.querySelectorAll('[data-attempt]')].map(column => column.getAttribute('data-attempt'))).toEqual(['2', '3'])
+    expect(shown()).toEqual(['2', '3'])
     expect(screen.getByTestId('attempts-compare')).toHaveAttribute('aria-pressed', 'true')
     press('ArrowRight')
-    expect([...document.querySelectorAll('[data-attempt]')].map(column => column.getAttribute('data-attempt'))).toEqual(['2', '4'])
+    expect(shown()).toEqual(['2', '4'])
     fireEvent.pointerDown(screen.getByTestId('attempt-2'))
     press('ArrowLeft')
-    expect([...document.querySelectorAll('[data-attempt]')].map(column => column.getAttribute('data-attempt'))).toEqual(['1', '4'])
+    expect(shown()).toEqual(['1', '4'])
     // Back to the strip, on the attempt last chosen.
     press('C')
     expect(document.querySelectorAll('[data-attempt]')).toHaveLength(4)
     expect(focused()).toBe('1')
+    // Side by side again: the pair it was left on.
+    press('c')
+    expect(shown()).toEqual(['1', '4'])
+    press('c')
+    // Once the focus moves on, the attempt before it.
+    press('ArrowRight')
+    press('c')
+    expect(shown()).toEqual(['1', '2'])
+  })
+
+  it('compares any two: each side chooses its own, shift sets the one beside', async () => {
+    render(<Window />)
+    await screen.findByTestId('attempt-4')
+    // From the strip, a shift-click puts an attempt beside the focused one, in the loop's order.
+    fireEvent.click(screen.getByTestId('attempts-pip-1'), { shiftKey: true })
+    expect(shown()).toEqual(['1', '3'])
+    expect(focused()).toBe('3')
+    // Each side has its own row: a click there chooses that side and moves the keys to it.
+    fireEvent.click(within(screen.getByTestId('attempts-side-1')).getByTestId('attempts-pip-4'))
+    expect(shown()).toEqual(['1', '4'])
+    fireEvent.click(within(screen.getByTestId('attempts-side-0')).getByTestId('attempts-pip-2'))
+    expect(shown()).toEqual(['2', '4'])
+    expect(focused()).toBe('2')
+    expect(within(screen.getByTestId('attempts-side-0')).getByTestId('attempts-pip-2')).toHaveClass('current')
+    expect(within(screen.getByTestId('attempts-side-1')).getByTestId('attempts-pip-4')).toHaveClass('shown')
+    // Shift and an arrow move the other side, past the attempt on this one.
+    press('ArrowLeft', { shiftKey: true })
+    expect(shown()).toEqual(['2', '3'])
+    press('ArrowLeft', { shiftKey: true })
+    expect(shown()).toEqual(['2', '1'])
+    expect(focused()).toBe('2')
+    // A plain arrow steps the keys' side past the other one.
+    press('ArrowLeft')
+    expect(shown()).toEqual(['2', '1'])
+    press('ArrowRight')
+    expect(shown()).toEqual(['3', '1'])
+
+    // From the strip, shift and an arrow start a pair with the neighbour; shift and Home with the first.
+    press('c')
+    expect(focused()).toBe('3')
+    press('Home', { shiftKey: true })
+    expect(shown()).toEqual(['1', '3'])
+    press('c')
+    press('ArrowRight', { shiftKey: true })
+    expect(shown()).toEqual(['3', '4'])
+    expect(focused()).toBe('3')
+    // A shift-click on a column does the same.
+    press('c')
+    fireEvent.pointerDown(screen.getByTestId('attempt-1'), { shiftKey: true })
+    expect(shown()).toEqual(['1', '3'])
+  })
+
+  it('names the judge by its step\'s title in a recommendation and a pick', async () => {
+    attempts = attempts.map(entry => ({ ...entry, verdicts: entry.verdicts.map(verdict => ({ ...verdict, verdict: 'fail' })) }))
+    attempts[1] = { ...attempts[1], picked: { gateId: 'review', seq: 50, reason: text('the cleanest'), decidedBy: 'fmn_judge', candidates: [1, 2], trigger: 'whenSpent' } }
+    const titleOf = (id: string) => (id === 'fmn_judge' ? 'Likeness judge' : id)
+    const view = render(<Window titleOf={titleOf} />)
+    await screen.findByTestId('attempt-4')
+    expect(screen.getByTestId('attempt-2-pick')).toHaveTextContent('Picked as the best · Likeness judge')
+    view.unmount()
+
+    attempts[1] = { ...attempts[1], picked: undefined }
+    render(<Window titleOf={titleOf} pick={{ gateId: 'review', gateTitle: 'Review gate', candidates: [1, 2, 3], recommended: { attempt: 3, reason: 'closest', decidedBy: 'fmn_judge' }, focusRequest: 1, onPick: async () => '' }} />)
+    await screen.findByTestId('attempt-4')
+    expect(screen.getByTestId('attempt-3-recommended')).toHaveTextContent('Likeness judge picks this one')
+    expect(screen.getByTestId('attempt-3-recommended')).not.toHaveTextContent('fmn_judge')
   })
 
   it('follows a new attempt as it starts, unless the operator stepped back', async () => {

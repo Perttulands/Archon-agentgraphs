@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { failReasons, iterationsFixture, passReason, pickReason, type IterationsScenario } from './iterations-fixture'
+import { failReasons, iterationsFixture, judgeTitle, passReason, pickReason, type IterationsScenario } from './iterations-fixture'
 import { settledBox } from './settled'
 
 // A step's attempts open in one click where the step lives (archon-7963): a
@@ -82,13 +82,57 @@ test('a step that looped opens its attempts as one strip that tells the loop, st
   await expect(win).toHaveCount(0)
 })
 
+test('any two attempts go side by side: a shift-click from the strip, then each side\'s own row', async ({ page }) => {
+  await open(page, 'loop')
+  await page.getByTestId('formation-node-execution').getByTestId('attempts-open-execution').click()
+  const win = page.getByRole('dialog', { name: 'Attempts of Draw Ahti' })
+  await expect(focused(page)).toHaveAttribute('data-attempt', '5')
+
+  // The first attempt beside the one that passed, in the loop's order; the keys stay on the pass.
+  await win.getByTestId('attempts-pip-1').click({ modifiers: ['Shift'] })
+  await expect.poll(() => shown(page)).toEqual(['1', '5'])
+  await expect(focused(page)).toHaveAttribute('data-attempt', '5')
+  const left = win.getByTestId('attempts-side-0')
+  const right = win.getByTestId('attempts-side-1')
+  await expect(left.getByTestId('attempts-pip-1')).toHaveAttribute('aria-pressed', 'true')
+  await expect(right.getByTestId('attempts-pip-5')).toHaveAttribute('aria-pressed', 'true')
+  const frames = win.locator('[data-attempt] .attempt-image')
+  const [a, b] = [await settledBox(page, frames.nth(0)), await settledBox(page, frames.nth(1))]
+  expect(Math.round(a.width)).toBe(Math.round(b.width))
+  expect(Math.round(a.height)).toBe(Math.round(b.height))
+  // Each side's row sits above its own column.
+  const [row, column] = [await settledBox(page, right), await settledBox(page, win.getByTestId('attempt-5'))]
+  expect(row.x).toBeGreaterThanOrEqual(column.x - 4)
+  expect(row.x).toBeLessThan(column.x + column.width / 2)
+
+  // Shift and an arrow move the other side; a plain arrow moves the keys' side.
+  await page.keyboard.press('Shift+ArrowRight')
+  await expect.poll(() => shown(page)).toEqual(['2', '5'])
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(() => shown(page)).toEqual(['2', '4'])
+  // A click on either side's row chooses that side's attempt.
+  await left.getByTestId('attempts-pip-3').click()
+  await expect.poll(() => shown(page)).toEqual(['3', '4'])
+  await expect(focused(page)).toHaveAttribute('data-attempt', '3')
+  await right.getByTestId('attempts-pip-1').click()
+  await expect.poll(() => shown(page)).toEqual(['3', '1'])
+  await expect(focused(page)).toHaveAttribute('data-attempt', '1')
+
+  // C leaves and returns to the same pair.
+  await page.keyboard.press('c')
+  await expect(columns(page)).toHaveCount(5)
+  await page.keyboard.press('c')
+  await expect.poll(() => shown(page)).toEqual(['3', '1'])
+})
+
 test('the picked attempt is the one the strip settles on, with who picked it and why', async ({ page }) => {
   await open(page, 'picked')
   await page.getByTestId('formation-node-execution').getByTestId('attempts-open-execution').click()
   const win = page.getByRole('dialog', { name: 'Attempts of Draw Ahti' })
   await expect(win.getByTestId('attempt-3-outcome')).toHaveText('picked')
   await expect(win.getByTestId('attempt-3')).toHaveClass(/settled/)
-  await expect(win.getByTestId('attempt-3-pick')).toContainText('Picked as the best · the judge')
+  // The judge is named by its step's title, not its node ID.
+  await expect(win.getByTestId('attempt-3-pick')).toContainText(`Picked as the best · ${judgeTitle}`)
   await expect(win.getByTestId('attempt-3-pick')).toContainText(pickReason)
   await expect(focused(page)).toHaveAttribute('data-attempt', '3')
 })
@@ -99,6 +143,7 @@ test('a pending pick opens its candidates by itself, recommends the judge\'s cho
   await expect(win).toBeVisible()
   await expect(page.getByRole('dialog', { name: /^Answer gate/ })).toHaveCount(0)
   await expect(focused(page)).toHaveAttribute('data-attempt', '3')
+  await expect(win.getByTestId('attempt-3-recommended')).toContainText(`${judgeTitle} picks this one`)
   await expect(win.getByTestId('attempt-3-recommended')).toContainText(pickReason)
   await expect(win.getByTestId('attempts-pick-go')).toHaveText('Pick attempt 3')
 
