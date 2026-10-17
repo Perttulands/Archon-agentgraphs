@@ -1,3 +1,4 @@
+import { arrangedLayoutNodes } from './formationsArrange'
 import type { BoardDocument, FormationNode, LayoutNode, ViewTransform } from './formationsTypes'
 
 // The world background paints a 28px dot grid (formations-d7.css); placement
@@ -95,9 +96,12 @@ export function fallbackNodePosition(index: number): { x: number; y: number } {
 /** Resolve display positions without mutating authored geometry. */
 export function displayLayoutFor(board: BoardDocument, layoutByNode: Map<string, LayoutNode>): Map<string, LayoutNode> {
   const items = boardLayoutItems(board)
+  const arranged = items.some(item => !layoutByNode.has(item.id))
+    ? new Map(arrangedLayoutNodes(board).map(node => [node.id, node]))
+    : new Map<string, LayoutNode>()
   const out = new Map<string, LayoutNode>()
   for (const item of items) {
-    const base = layoutByNode.get(item.id) || { id: item.id, ...fallbackNodePosition(item.index) }
+    const base = layoutByNode.get(item.id) || arranged.get(item.id)!
     out.set(item.id, { id: item.id, x: base.x, y: base.y })
   }
   return out

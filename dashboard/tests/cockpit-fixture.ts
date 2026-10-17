@@ -198,7 +198,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { noLayout?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
@@ -206,6 +206,21 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   }
   if (options.emptyWorker) currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', controller: false }
   if (options.workers) currentBoard.formations[0].slots = [currentBoard.formations[0].slots[0], ...options.workers]
+  if (options.noLayout) {
+    // CLI/TOML authoring supplies inputs and graph edges, but no canvas positions.
+    currentBoard.inputCards[0].inputs = [
+      { name: 'subject', kind: 'text', required: true, description: 'Character to build' },
+      { name: 'facts', kind: 'file', required: true, description: 'Authored identity facts' },
+      { name: 'reference', kind: 'file', required: true, description: 'Approved plate' },
+      { name: 'body', kind: 'folder', required: true, description: 'Cleaned body' },
+      { name: 'lane', kind: 'text', required: true, description: 'Owning work' },
+    ]
+    currentBoard.gates[0].title = 'MetaHuman is the character and moves'
+    currentBoard.limits = [{ id: 'lim_cap', title: 'Execution rounds', target: 'execution', rounds: 3 }]
+    currentBoard.ends = [{ id: 'end_done', title: 'Done', outcome: 'done' }]
+    currentBoard.connections.push({ id: 'retry', from: 'gate:fail', to: 'execution:in' },
+      { id: 'finish', from: 'peer:out', to: 'end_done:in' })
+  }
   const patches: Array<Record<string, unknown>> = []
   let characters = structuredClone(options.characters || [])
   const characterWrites: Array<{ method: string; id: string; body: Record<string, unknown> }> = []
@@ -248,6 +263,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
   }
   const boardState = () => currentBoard
   let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
+  if (options.noLayout) nodes = []
   if (options.newRow) nodes = [...nodes, ...newRow.map((id, index) => ({ id, x: 448 + index * 336, y: 896 }))]
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]

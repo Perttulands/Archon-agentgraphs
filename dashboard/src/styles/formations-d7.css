@@ -563,7 +563,7 @@
 
 .fmx :is(button,select,input,textarea,a,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .fmx .zoomctl button{width:auto;min-width:76px;padding-inline:9px;}
-.fmx .gmeta .gt{font-size:12px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;max-width:none;}
+.fmx .gmeta .gt{display:block;font-size:12px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;max-width:none;}
 .fmx .gmeta{min-width:110px;}
 .fmx .ragent .r{white-space:normal;overflow-wrap:anywhere;}
 .fmx .draft-marker{font-weight:400;}

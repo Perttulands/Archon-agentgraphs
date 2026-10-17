@@ -1513,7 +1513,9 @@ lays columns along the run from the Input card (its out port, formation and
 Tool outputs, gate pass), ignores fail edges back to earlier steps and judge
 wiring, places judge formations below their gate, and puts nodes the Input card
 does not reach after the main path. The same mission always arranges the same
-way.
+way. The canvas computes this same arrangement for nodes without saved
+positions, preserving saved positions verbatim. Opening or fitting a mission
+does not save that arrangement or change its revision.
 `mission new <slug>` creates an empty mission and `mission create <mission>`
 adds its Input card. `mission create`, `formation create`, `gate create` and
 `end create` print `created <id>`, or with `--json` `{mission, layout,

@@ -90,7 +90,7 @@ describe('formations canvas helpers', () => {
     ])
   })
 
-  it('appends Tools after legacy fallback nodes and ignores layout-only authority', () => {
+  it('arranges missing positions and ignores layout-only authority', () => {
     const board: BoardDocument = {
       id: 'brd_tool_layout',
       slug: 'tool-layout',
@@ -111,11 +111,11 @@ describe('formations canvas helpers', () => {
     const resolved = displayLayoutFor(board, layoutByNode)
 
     expect([...resolved.keys()]).toEqual(['mis_a', 'fmn_a', 'gate_a', 'tool_persisted', 'tool_fallback'])
-    expect(resolved.get('mis_a')).toEqual({ id: 'mis_a', x: 140, y: 168 })
-    expect(resolved.get('fmn_a')).toEqual({ id: 'fmn_a', x: 448, y: 364 })
-    expect(resolved.get('gate_a')).toEqual({ id: 'gate_a', x: 756, y: 168 })
+    expect(resolved.get('mis_a')).toEqual({ id: 'mis_a', x: 112, y: 112 })
+    expect(resolved.get('fmn_a')).toEqual({ id: 'fmn_a', x: 476, y: 112 })
+    expect(resolved.get('gate_a')).toEqual({ id: 'gate_a', x: 476, y: 672 })
     expect(resolved.get('tool_persisted')).toEqual({ id: 'tool_persisted', x: 980, y: 420 })
-    expect(resolved.get('tool_fallback')).toEqual({ id: 'tool_fallback', x: 1372, y: 168 })
+    expect(resolved.get('tool_fallback')).toEqual({ id: 'tool_fallback', x: 476, y: 1036 })
     expect(resolved.has('layout_only')).toBe(false)
   })
 
