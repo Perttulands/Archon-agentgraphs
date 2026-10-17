@@ -204,7 +204,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean; beforeAssignmentReply?: () => Promise<void> } = {}) {
+export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; failedGate?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean; beforeAssignmentReply?: () => Promise<void> } = {}) {
   const currentBoard = structuredClone(board)
   // A CLI-authored mission has declarations but no saved canvas layout.
   if (options.declaredInputs) {
@@ -562,6 +562,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [], etag: 'codex-card' })
     if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: options.secondGate ? 4 : 3, cwd: runCwd,
       waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
+    if (path === '/api/runs/run_browser' && options.failedGate) return respond({ runId: 'run_browser', status: 'failed', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 5 })
     if (path === '/api/runs/run_browser' && options.succeeded) {
       // A picked run (succeeded with picked) carried Execution's failed first
       // attempt on through its gate, so every output came through that pick.
@@ -578,7 +579,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
           portId: output.portId, label: output.name, kind: output.kind,
           text: evidenceText(output.kind === 'text' ? output.value : ''),
           ...(output.kind === 'text' ? {} : { path: output.value, artifact: output.value.slice(runArtifacts.length + 1), fileKind: output.kind === 'folder' ? 'folder' : 'markdown' }),
-        })), verdicts: [], files: [] }],
+        })), verdicts: nodeId === 'execution' ? [{ gateId: 'gate', gateTitle: 'Review gate', evaluationSeq: 4, verdict: options.failedGate ? 'fail' : 'pass', reason: evidenceText(options.failedGate ? 'Review needs another attempt.' : 'The reviewed implementation passes all checks.'), evidence: [] }] : [], files: [] }],
       }] } })
     }
     if (options.succeeded && path.startsWith('/api/runs/run_browser/evidence/artifacts/') && path.endsWith('/review.md')) {
@@ -596,6 +597,9 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       if (text === undefined) return route.fulfill({ status: 404, json: { success: false, error: { message: 'file not found' } } })
       return respond({ file: { path: file, name: file.split('/').pop(), size: text.length, modifiedAt: '', kind: file.endsWith('.md') ? 'markdown' : 'text', text: evidenceText(text) } })
     }
+    if (options.failedGate && path === '/api/runs/run_browser/evidence/nodes/gate') return respond({ evidence: { runId: 'run_browser', nodeId: 'gate', kind: 'gate',
+      definition: { title: 'Review gate', outgoing: [] }, evaluations: [{ seq: 3, kinds: ['formation'], criterion: evidenceText('Review'), kindResults: [],
+        verdict: { seq: 4, verdict: 'fail', reason: evidenceText('Review needs another attempt.'), evidence: [] } }] } })
     if (options.succeeded && path in succeededEvidence) return respond(succeededEvidence[path])
     if (options.blockedAtLimit && path === '/api/runs/run_browser/resume' && method === 'POST') {
       // Mirrors the coordinator: a spent limit whose step the gate judged
@@ -635,6 +639,9 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }] },
         { verdict: 'fail', targets: [{ nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' }] }] } })
     if (path.endsWith('/events') && options.blockedAtJudge) return respond({ events: blockedAtJudgeEvents })
+    if (path.endsWith('/events') && options.failedGate) return respond({ events: [...succeededEvents.slice(0, 3),
+      { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail', reason: 'Review needs another attempt.' },
+      { seq: 5, type: 'run_failed', nodeId: 'gate', gateId: 'gate' }] })
     if (path.endsWith('/events') && options.succeeded) return respond({ events: options.picked ? pickedEvents : succeededEvents })
     if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
     if (path === '/api/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,

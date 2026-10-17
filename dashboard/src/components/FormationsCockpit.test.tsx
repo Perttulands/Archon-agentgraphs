@@ -3231,13 +3231,13 @@ describe('FormationsCockpit reference parity', () => {
     expect(window.location.search).toBe('?mission=test-board')
   })
 
-  it('switches a board to Flow, remembers it for that board, and opens windows from rows', async () => {
+  it('switches a board to Flow, remembers it across missions, and opens windows from rows', async () => {
     patches = installFetchMock({ boardNotes: { elements: [{ nodeId: 'fmn_frame', entries: [noteEntry('nte_1', 'human:operator', 'Keep the frame narrow')] }] } })
     const { unmount } = await renderCockpit()
     fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
     const flow = await screen.findByTestId('flow-view')
     expect(screen.getByRole('radio', { name: 'Flow' })).toBeChecked()
-    expect(JSON.parse(localStorage.getItem('archon.missionView.v1') || '{}')).toEqual({ 'test-board': 'flow' })
+    expect(localStorage.getItem('archon.missionView.v2')).toBe('flow')
 
     const mission = within(flow).getByRole('region', { name: 'Input card Showcase' })
     expect(mission).toHaveTextContent('Build the page')
@@ -3267,7 +3267,23 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('flow-view')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: 'Canvas' }))
     await waitFor(() => expect(screen.queryByTestId('flow-view')).toBeNull())
-    expect(localStorage.getItem('archon.missionView.v1')).toBe('{}')
+    expect(localStorage.getItem('archon.missionView.v2')).toBe('canvas')
+  })
+
+  it('keeps the chosen view across missions instead of restoring their old preferences', async () => {
+    const second = { ...makeBoard(), id: 'board-2', slug: 'second-board', title: 'Second board', etag: 'board-2-etag' }
+    installFetchMock({ boards: [makeBoard(), second] })
+    localStorage.setItem('archon.missionView.v1', JSON.stringify({ 'second-board': 'flow' }))
+    await renderCockpit()
+    expect(localStorage.getItem('archon.missionView.v1')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'Flow' }))
+    pickMission('second-board')
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'second-board'))
+    expect(screen.getByRole('radio', { name: 'Flow' })).toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: 'Canvas' }))
+    pickMission('test-board')
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'test-board'))
+    expect(screen.getByRole('radio', { name: 'Canvas' })).toBeChecked()
   })
 
   it('shows each step state, attempt and block reason in Flow with a run selected', async () => {

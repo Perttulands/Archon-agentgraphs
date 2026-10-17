@@ -163,3 +163,53 @@ test('Flow reads declared values without a saved layout and keeps rows still whe
   await expect(page.getByRole('dialog', { name: /Review gate/ })).toBeVisible()
   expect(fixture.writes).toEqual([])
 })
+
+for (const width of [1920, 2560]) {
+  test(`failed gate uses FAIL on Canvas, Flow and attempts at ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
+    await cockpitFixture(page, { succeeded: true, failedGate: true })
+    await page.goto('/?mission=browser&run=run_browser')
+    await expect(page.getByTestId('run-chip-gate')).toHaveText('fail')
+    await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('Failed')
+    await page.getByRole('radio', { name: 'Flow', exact: true }).click()
+    await expect(page.getByTestId('flow-step-gate').locator('.flow-state')).toHaveText('fail')
+    await page.getByTestId('flow-step-execution').getByTestId('attempts-open-execution').click()
+    const attempts = page.getByRole('dialog', { name: 'Attempts of Execution' })
+    await expect(attempts.locator('.attempt-verdict-head')).toContainText('fail')
+    await expect(attempts).not.toContainText('failed')
+  })
+}
+
+test('choosing another mission run keeps Flow and Canvas across reloads', async ({ page }) => {
+  const fixture = await cockpitFixture(page, { succeeded: true })
+  const other = { ...fixture.board(), id: 'other-mission', slug: 'other', title: 'Other mission' }
+  const run = { runId: 'run_other', missionId: other.id, missionSlug: 'other', inputCardId: 'mission', status: 'succeeded', final: true, eventCount: 0 }
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url())
+    const respond = (data: unknown) => route.fulfill({ json: { success: true, data }, headers: { ETag: 'other-etag' } })
+    if (url.pathname === '/api/missions') return respond({ missions: [fixture.board(), other] })
+    if (url.pathname === '/api/missions/other') return respond({ mission: other })
+    if (url.pathname === '/api/runs') return respond([run])
+    if (url.pathname === '/api/runs/run_other') return respond(run)
+    if (url.pathname === '/api/runs/run_other/events') return respond({ events: [] })
+    return route.fallback()
+  })
+  await page.goto('/?mission=browser&run=run_browser')
+  await page.getByRole('radio', { name: 'Flow', exact: true }).click()
+  await page.getByTestId('nav-group-other').getByRole('button', { name: /Other mission/ }).click()
+  await page.getByTestId('nav-run-run_other').click()
+  await expect(page).toHaveURL(/mission=other&run=run_other/)
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'other')
+  await expect(page.getByRole('radio', { name: 'Flow', exact: true })).toBeChecked()
+  await expect(page.getByTestId('flow-view')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('flow-view')).toBeVisible()
+  await page.getByRole('radio', { name: 'Canvas', exact: true }).click()
+  await page.getByTestId('nav-group-browser').locator('.nav-group-toggle').click()
+  await page.getByTestId('nav-mission-browser').click()
+  await expect(page.getByTestId('mission-title')).toHaveAttribute('data-mission', 'browser')
+  await expect(page.getByRole('radio', { name: 'Canvas', exact: true })).toBeChecked()
+  await page.reload()
+  await expect(page.getByRole('radio', { name: 'Canvas', exact: true })).toBeChecked()
+  expect(fixture.writes).toEqual([])
+})

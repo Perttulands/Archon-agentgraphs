@@ -1,32 +1,32 @@
-/**
- * Which way each board is shown in Boards, Canvas or Flow, remembered on this
- * device per board.
- */
-
+/** Canvas or Flow is one preference for this browser, across missions and runs. */
 export type BoardView = 'canvas' | 'flow'
 
-const STORAGE_KEY = 'archon.missionView.v1'
+const STORAGE_KEY = 'archon.missionView.v2'
+const OLD_STORAGE_KEY = 'archon.missionView.v1'
 
-function readViews(): Record<string, unknown> {
+/** Migrate once using the first opened mission's old preference. */
+export function readBoardView(initialSlug: string): BoardView {
   try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}')
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+    const saved = window.localStorage.getItem(STORAGE_KEY)
+    if (saved === 'canvas' || saved === 'flow') {
+      window.localStorage.removeItem(OLD_STORAGE_KEY)
+      return saved
+    }
+    let old: unknown
+    try { old = JSON.parse(window.localStorage.getItem(OLD_STORAGE_KEY) || '{}') } catch { old = null }
+    const view = old && typeof old === 'object' && !Array.isArray(old)
+      && (old as Record<string, unknown>)[initialSlug] === 'flow' ? 'flow' : 'canvas'
+    window.localStorage.setItem(STORAGE_KEY, view)
+    window.localStorage.removeItem(OLD_STORAGE_KEY)
+    return view
   } catch {
-    return {}
+    return 'canvas'
   }
 }
 
-export function readBoardView(slug: string): BoardView {
-  return slug && readViews()[slug] === 'flow' ? 'flow' : 'canvas'
-}
-
-export function writeBoardView(slug: string, view: BoardView): void {
-  if (!slug) return
-  const views = readViews()
-  if (view === 'flow') views[slug] = 'flow'
-  else delete views[slug]
+export function writeBoardView(view: BoardView): void {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(views))
+    window.localStorage.setItem(STORAGE_KEY, view)
   } catch {
     // Private mode and quota failures only lose the preference.
   }

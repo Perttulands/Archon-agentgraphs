@@ -1007,7 +1007,10 @@ it; a mission's Edit mission row puts the shown run
 away and returns to the current revision for authoring. The run bar has a
 reserved, fixed-height row even before selection and during loading, so
 Canvas and Flow never shift when it appears or changes. The canvas creation
-palette is absent from Flow, where a passed gate reads PASS. The run bar says when
+palette is absent from Flow. Gate verdicts read PASS and FAIL on Canvas, in Flow
+and in attempts; run and formation statuses keep their own words. Canvas or Flow
+is remembered once per browser across missions and runs. The old per-mission
+preference migrates once from the first opened mission, then is removed. The run bar says when
 the shown run started, how long it took and who drives it; a run waiting at a
 gate says since when; and a run that ran an
 earlier revision draws its frozen graph and run states on Canvas and Flow,

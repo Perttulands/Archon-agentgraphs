@@ -262,13 +262,18 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // False until the mission list has answered, so a fresh mount never reads as "no missions".
   const [missionsLoaded, setMissionsLoaded] = useState(false)
   const [selectedSlug, setSelectedSlug] = useState('')
-  // Canvas or Flow, remembered per board.
+  // Canvas or Flow stays with the operator across missions and runs.
   const [boardView, setBoardView] = useState<BoardView>('canvas')
-  useEffect(() => setBoardView(readBoardView(selectedSlug)), [selectedSlug])
+  const viewRestored = useRef(false)
+  useEffect(() => {
+    if (!selectedSlug || viewRestored.current) return
+    viewRestored.current = true
+    setBoardView(readBoardView(selectedSlug))
+  }, [selectedSlug])
   const changeBoardView = useCallback((view: BoardView) => {
     setBoardView(view)
-    writeBoardView(selectedSlug, view)
-  }, [selectedSlug])
+    writeBoardView(view)
+  }, [])
   const [currentBoard, setBoard] = useState<BoardDocument | null>(null)
   const [currentLayout, setLayout] = useState<LayoutDocument | null>(null)
   const [agents, setAgents] = useState<AgentProjection[]>([])
@@ -3159,7 +3164,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const state = nodeStates.get(nodeId)
     // Waiting for the operator is the most visible state on the canvas (archon-n7u.29).
     if (waitingGateIds.includes(nodeId) && activeRun && !activeRun.final) return <span className="run-chip waiting" data-testid={`run-chip-${nodeId}`}>waiting for you</span>
-    return state === 'blocked' || state === 'failed' || state === 'canceled' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state === 'canceled' ? 'Canceled' : state}</span> : null
+    return state === 'blocked' || state === 'failed' || state === 'canceled' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state === 'canceled' ? 'Canceled' : state === 'failed' && board?.gates?.some(gate => gate.id === nodeId) ? 'fail' : state}</span> : null
   }
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''

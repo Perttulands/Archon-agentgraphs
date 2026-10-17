@@ -100,6 +100,7 @@ The operator steers a mission through its managing agent
 - Nothing the operator is reading moves when something is added; motion only
   confirms. Reserve the run bar's row before a run is selected, including while
   its data loads. Keep that row's height fixed as the run changes.
-- A passed gate reads **PASS** in Flow and attempts. The canvas creation
+- Gate verdicts read **PASS** and **FAIL** on Canvas, in Flow and in attempts.
+  Canvas or Flow is one browser preference across missions and runs. The canvas creation
   palette appears only on Canvas.
 - Drafts save with blanks; only validation and admission reject gaps.
