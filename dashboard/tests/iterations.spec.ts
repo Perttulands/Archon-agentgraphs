@@ -165,16 +165,17 @@ test('a pending pick opens its candidates by itself, recommends the judge\'s cho
   await expect(after.getByTestId('attempt-3-pick')).toContainText('Cleanest face of the four')
 })
 
-test('a folder output previews images and models before its remaining files', async ({ page }) => {
+test('a folder output previews images and leaves its many models unloaded', async ({ page }) => {
   await open(page, 'folder')
   await page.getByTestId('formation-node-execution').getByTestId('attempts-open-execution').click()
   const output = page.getByRole('dialog', { name: 'Attempts of Build meshes' }).getByTestId('attempt-1-output-out')
   await expect(output.locator('.attempt-chip').first()).toContainText('60 files')
   await expect(output.locator('.attempt-thumb')).toHaveCount(12)
-  await expect(output.locator('.model-viewer')).toHaveCount(46)
+  await expect(output.getByRole('button', { name: /^Preview 3D model/ })).toHaveCount(46)
+  await expect(output.locator('.model-viewer')).toHaveCount(0)
   await expect(output.locator('.attempt-listing-file')).toHaveCount(2)
   await expect(output).not.toContainText('more listed files')
-  await output.getByRole('button', { name: /piece_01\.glb/ }).click()
+  await output.getByTitle('Open piece_01.glb', { exact: true }).click()
   await expect(page.getByRole('dialog', { name: /piece_01\.glb/ })).toBeVisible()
 })
 

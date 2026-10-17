@@ -16,6 +16,7 @@ import {
 export type FileKind = ArtifactKind
 
 export interface FilePreview {
+  size?: number
   kind: FileKind
   /** The text of a textual file, capped by the daemon and marked when cut. */
   text?: EvidenceText
@@ -51,7 +52,7 @@ export function artifactFileRequest(runId: string, name: string, context?: strin
     context: context ? `${context} · ${name}` : name,
     load: async () => {
       const preview = await fetchArtifactPreview(runId, name)
-      return { kind: mediaKind(name) || preview.kind, text: preview.text, path: preview.path }
+      return { kind: mediaKind(name) || preview.kind, text: preview.text, path: preview.path, size: preview.size }
     },
     rawUrl: artifactRawUrl(runId, name),
     // Artifacts live under the daemon's state directory; the preview names the absolute path.
@@ -149,7 +150,7 @@ export function referencedFileRequest(ref: string, context?: string): FileReques
     load: async () => {
       const { data } = await fetchApi<{ file?: FilePreview }>(`/api/files/preview${filePath(ref)}`)
       if (!data.file) throw new Error('the daemon returned no file')
-      return { kind: mediaKind(ref) || data.file.kind, text: data.file.text }
+      return { kind: mediaKind(ref) || data.file.kind, text: data.file.text, size: data.file.size }
     },
     rawUrl: `/api/files/raw${filePath(ref)}`,
     path: ref,

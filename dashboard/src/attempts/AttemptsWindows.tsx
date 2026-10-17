@@ -60,10 +60,10 @@ export function AttemptsWindowsProvider({ run, stack, children }: { run: Attempt
 }
 
 /** "3 attempts" where a step lives; available after the first attempt. */
-export function AttemptsButton({ nodeId, className = 'finspect', always = true }: { nodeId: string; className?: string; always?: boolean }) {
+export function AttemptsButton({ nodeId, className = 'finspect' }: { nodeId: string; className?: string }) {
   const state = useContext(AttemptsContext)
   const count = state?.run?.counts.get(nodeId) || 0
-  if (!state?.run || count < (always ? 1 : 2)) return null
+  if (!state?.run || count < 1) return null
   const title = state.run.titleOf(nodeId)
   return (
     <button

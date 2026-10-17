@@ -176,7 +176,7 @@ function FolderOutput({ runId, output, files, truncated, context, evidence }: {
       ) : null}
       {[...summary.videos, ...summary.models].map(file => (
         <div key={file.name}>
-          <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} />
+          <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} size={file.size} />
           <FileChip request={artifactFileRequest(runId, file.name, context)} label={nameWithin(folder, file.name)} detail={formatBytes(file.size)} />
         </div>
       ))}
@@ -218,7 +218,7 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
     const detail = output.size ? formatBytes(output.size) : ''
     const media = mediaKind(path)
     if (media && request.rawUrl) {
-      body = <><MediaPreview kind={media} src={request.rawUrl} name={name} /><FileChip request={request} label={name} detail={detail} /></>
+      body = <><MediaPreview kind={media} src={request.rawUrl} name={name} size={output.size} /><FileChip request={request} label={name} detail={detail} /></>
     } else if (output.fileKind === 'image' || (!output.fileKind && isImagePath(path))) {
       const src = output.artifact ? artifactRawUrl(view.runId, output.artifact) : `/api/files/raw?path=${encodeURIComponent(output.path || '')}`
       body = <ImageOutput src={src} name={name} group={output.portId} view={view} request={request} detail={detail} testId={`${testId}-image`} />

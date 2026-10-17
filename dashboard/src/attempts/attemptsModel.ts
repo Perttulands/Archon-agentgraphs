@@ -133,13 +133,16 @@ export interface FolderSummary {
 
 /** A folder's files: how many and how big, its images to preview and the rest to list. */
 export function folderSummary(files: readonly AttemptFile[], evidence: readonly string[] = []): FolderSummary {
-  const priority = (name: string) => {
-    const base = baseName(name).toLowerCase()
-    if (evidence.some(text => text.toLowerCase().includes(base))) return 0
-    if (/(contact[ _-]?sheet|contact|final|sheet)/i.test(base)) return 1
-    return 2
-  }
-  const images = files.filter(file => file.kind === 'image').sort((a, b) => priority(a.name) - priority(b.name))
+  const images = files.filter(file => file.kind === 'image')
+  const cited = (name: string) => evidence.some(text => {
+    const suffix = '/' + baseName(name)
+    // A path suffix, not a substring such as crop.png inside other-crop.png.
+    return text.split(/[\s`"'<>()[\]]+/).some(word => word.replace(/[.,;:!?]+$/, '').endsWith(suffix))
+  })
+  const sheets = (name: string) => /(contact[ _-]?sheet|contact|sheet)/i.test(baseName(name))
+  const promotedFinals = new Set(images.filter(file => !cited(file.name) && !sheets(file.name) && /(?:^|[ _-])final(?:[_. -]|$)/i.test(baseName(file.name))).slice(0, 3).map(file => file.name))
+  const priority = (name: string) => cited(name) ? 0 : sheets(name) ? 1 : promotedFinals.has(name) ? 2 : 3
+  images.sort((a, b) => priority(a.name) - priority(b.name))
   return {
     count: files.length,
     bytes: files.reduce((sum, file) => sum + file.size, 0),

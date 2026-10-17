@@ -172,3 +172,17 @@ func TestEvidenceArtifactsKeepReviewMediaBeforeFolderCap(t *testing.T) {
 		t.Fatalf("count %d omitted %d", len(selected), omitted)
 	}
 }
+
+func TestEvidenceArtifactsRankCitationsAndSheetsBeforeCappedFinals(t *testing.T) {
+	entries := []RunArtifactEntry{{Name: "a-frame.png"}, {Name: "crop.png"}, {Name: "other-crop.png"}, {Name: "z-contact-sheet.png"}}
+	for i := 0; i < 20; i++ {
+		entries = append(entries, RunArtifactEntry{Name: fmt.Sprintf("final_%02d.png", i)})
+	}
+	selected, _ := selectEvidenceArtifacts(entries, nil, "See /work/other-crop.png.")
+	want := []string{"other-crop.png", "z-contact-sheet.png", "final_00.png", "final_01.png", "final_02.png", "a-frame.png", "crop.png"}
+	for i, name := range want {
+		if selected[i].Name != name {
+			t.Fatalf("rank %d = %s, want %s", i, selected[i].Name, name)
+		}
+	}
+}

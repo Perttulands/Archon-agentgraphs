@@ -189,7 +189,7 @@ export default function NodeWindow({ readOnly = false, runId, nodeId, board, age
       className={withTerminal ? 'nwin-terminal-window' : undefined}
       actions={runState !== undefined ? (
         <>
-          {located.kind === 'formation' ? <AttemptsButton nodeId={nodeId} always className="attempts-action" /> : null}
+          {located.kind === 'formation' ? <AttemptsButton nodeId={nodeId} className="attempts-action" /> : null}
           <ProducedFiles nodeId={nodeId} className="nwin-head-produced" />
         </>
       ) : undefined}

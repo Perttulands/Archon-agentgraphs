@@ -208,7 +208,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
       if (isTextEditingTarget(event.target)) return
-      // Dialogs such as run evidence can leave focus on the document body.
+      // Modal dialogs and menus can leave focus on the document body.
       // They sit above floating windows and own Escape regardless of focus.
       const surfaces = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="menu"]')
       if (Array.from(surfaces).some(surface => !surface.closest('[data-window-id]'))) return

@@ -43,10 +43,21 @@ test('an attempt shows its movie and judge video inline, and opens a lazy 3D mod
   const cited = attempts.getByLabel('review.webm', { exact: true })
   await expect(cited).toHaveAttribute('src', `/api/files/raw?path=${encodeURIComponent(`${runArtifacts}/execution/1/judge videos/review.webm`)}`)
   await expect(cited).toHaveAttribute('controls', '')
-  await expect(attempts.getByLabel('3D model triangle.gltf')).toBeVisible()
-  await expect(attempts.getByLabel('3D model triangle.fbx')).toBeVisible()
-  await expect(attempts.getByRole('button', { name: 'Reset view' })).toHaveCount(2)
+  await expect(attempts.locator('.model-viewer')).toHaveCount(0)
+  expect(loaded).not.toContain('triangle.gltf')
+  expect(loaded).not.toContain('triangle.fbx')
+  await attempts.getByRole('button', { name: 'Preview 3D model triangle.gltf', exact: true }).click()
+  await expect(attempts.getByLabel('3D model triangle.gltf', { exact: true })).toBeVisible()
+  await expect(attempts.getByRole('button', { name: 'Reset view' })).toHaveCount(1)
   expect(loaded).toContain('triangle.bin')
+  await attempts.getByLabel('3D model triangle.gltf', { exact: true }).evaluate((canvas: HTMLCanvasElement) => {
+    (window as unknown as { previousModelContext: WebGL2RenderingContext | null }).previousModelContext = canvas.getContext('webgl2')
+  })
+  await attempts.getByRole('button', { name: 'Preview 3D model triangle.fbx', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => (window as unknown as { previousModelContext: WebGL2RenderingContext }).previousModelContext.isContextLost())).toBe(true)
+  await expect(attempts.getByLabel('3D model triangle.gltf', { exact: true })).toHaveCount(0)
+  await expect(attempts.getByLabel('3D model triangle.fbx', { exact: true })).toBeVisible()
+  await expect(attempts.getByRole('button', { name: 'Reset view' })).toHaveCount(1)
 
   // A single press on the output opens the same native player in its file window.
   await attempts.getByTitle('Open turntable.mp4', { exact: true }).click()
@@ -82,9 +93,37 @@ test('a TOML mission output plays video in one window, and evidence floats and c
   const evidence = page.getByRole('dialog', { name: 'Run evidence · Execution' })
   await expect(evidence).toHaveAttribute('data-window-kind', 'evidence')
   const before = await evidence.boundingBox()
+  expect(before!.width).toBeGreaterThanOrEqual(640)
+  expect(before!.height).toBeGreaterThanOrEqual(600)
+  const zoom = await page.locator('.zoomctl').boundingBox()
+  expect(before!.x + before!.width <= zoom!.x || before!.x >= zoom!.x + zoom!.width ||
+    before!.y + before!.height <= zoom!.y || before!.y >= zoom!.y + zoom!.height).toBe(true)
   await evidence.getByLabel('Move Run evidence · Execution with arrow keys').focus()
   await page.keyboard.press(before!.x > 960 ? 'ArrowLeft' : 'ArrowRight')
   await expect.poll(async () => (await evidence.boundingBox())!.x).not.toBe(before!.x)
   await page.keyboard.press('Escape')
   await expect(evidence).toHaveCount(0)
 })
+
+for (const scenario of [
+  { name: 'animation-only.fbx', body: '; FBX 7.4.0 project file\nObjects: { AnimationCurve: 1 {} }', message: 'No mesh in this file' },
+  { name: 'oversized.fbx', body: '', message: 'This file is too large to preview', size: 100 * 1024 * 1024 },
+]) {
+  test(`a ${scenario.name} preview reports a plain explanation`, async ({ page }) => {
+    await iterationsFixture(page, 'single')
+    await page.route('**/api/runs/run_browser/evidence/attempts?**', route => route.fulfill({ json: { success: true, data: { attempts: {
+      runId: 'run_browser', steps: [{ nodeId: 'execution', title: 'Draw Ahti', outputs: [], attempts: [{
+        ...mediaAttemptFixture, files: [], verdicts: [],
+        outputs: [{ portId: 'model', kind: 'file', fileKind: 'model', artifact: `execution/1/${scenario.name}`, size: scenario.size || scenario.body.length, text: { text: '', bytes: 0 } }],
+      }] }],
+    } } } }))
+    await page.route(`**/api/runs/run_browser/artifacts/execution/1/${scenario.name}`, route => route.fulfill({
+      body: scenario.body, headers: scenario.size ? { 'content-length': String(scenario.size) } : {},
+    }))
+    await page.goto('/?mission=browser&run=run_browser')
+    await page.getByTestId('attempts-open-execution').click()
+    await page.getByRole('button', { name: `Preview 3D model ${scenario.name}` }).click()
+    await expect(page.getByRole('alert')).toContainText(scenario.message)
+    await expect(page.getByRole('alert').getByRole('link', { name: 'Download' })).toBeVisible()
+  })
+}

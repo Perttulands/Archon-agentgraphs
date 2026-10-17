@@ -1013,7 +1013,7 @@ of ports that name no file, and the seat's report when it adds something. The
 run bar's Produced list leads with a finished run's final steps (those whose
 outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, grouped by step and output with counts, outputs before other files.
-Declared output chips open the producing step’s attempts; other files open in a
+Declared output chips open the producing step's attempts; other files open in a
 floating file window, rendered by kind, with Open raw and Copy path (the
 artifact's absolute path on the daemon host); several can be open side by side.
 Node, note and file windows float in the free space nearest what opened them,
@@ -1030,13 +1030,16 @@ lays every attempt out oldest first, one column each, so the loop reads left to
 right: the attempt's outcome and time, each gate's verdict with its reason and
 evidence (image evidence such as a judge's crops as thumbnails), then what each
 output produced: images large enough to judge, text and Markdown rendered, and
-other files as chips that open the file window. Node and run-bar outputs open
-this window directly, including single attempts. Run evidence uses the shared
+other files as chips that open the file window. Run evidence uses the shared
 floating window, with Escape closing an open document before the window.
 A folder previews twelve images, preferring verdict-cited images and names
-containing contact sheet, final or sheet. It previews videos and 3D models
-before eight other files, and counts the rest. Cited images, contact sheets and previewable media are preferred
-before filling a folder’s file-list cap. The attempt the loop
+containing contact sheet or sheet, then at most three final images. It previews
+videos and shows model tiles with names and sizes before eight other files,
+and counts the rest. Models load only when clicked; opening another model
+unmounts the previous viewer and releases its graphics resources. Missing
+textures use a neutral lit material. Files above 64 MiB offer a download
+instead of parsing in the browser; geometry-free FBX says "No mesh in this file".
+Cited images, contact sheets and previewable media are preferred before filling a folder's file-list cap. The attempt the loop
 settled on, the picked one or else the latest that passed, is marked green.
 The arrow keys, Home, End or an attempt's number step between attempts; C puts
 two of them side by side in frames of one size: the focused attempt and the one

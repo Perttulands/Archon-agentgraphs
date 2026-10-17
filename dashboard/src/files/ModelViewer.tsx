@@ -1,13 +1,14 @@
 // Adapted from CHROTE dashboard/src/components/ModelViewer.tsx.
 // Archon resolves glTF sidecars through its raw file routes and lazy-loads Three.js.
 import { useEffect, useRef, useState } from 'react'
-import { LoadingManager, Box3, HemisphereLight, DirectionalLight, Mesh, SkinnedMesh, PerspectiveCamera, Scene, Sphere, Texture, Vector3, WebGLRenderer } from 'three'
+import { LoadingManager, Box3, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, SkinnedMesh, PerspectiveCamera, Scene, Sphere, Texture, Vector3, WebGLRenderer } from 'three'
 import type { Object3D } from 'three'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { modelResourceUrl } from './mediaUrls'
+import { ModelPreviewError, readModelData, requireFbxMesh } from './modelPreviewData'
 import './ModelViewer.css'
 
 function disposeModel(model: Object3D) {
@@ -31,6 +32,7 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
   const stageRef = useRef<HTMLDivElement>(null)
   const resetRef = useRef<() => void>(() => {})
   const [status, setStatus] = useState('Loading 3D model…')
+  const [textureNote, setTextureNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -79,27 +81,58 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
       renderer.setSize(width, height)
       camera.aspect = width / height
       camera.updateProjectionMatrix()
-      render()
+      if (model) fit()
+      else render()
     }
     const observer = new ResizeObserver(resize)
     observer.observe(stage)
     resize()
     const manager = new LoadingManager()
-    // FBX returns its geometry before external textures finish loading.
-    manager.onLoad = () => { if (!disposed) render() }
+    // FBX returns geometry before its external textures finish loading.
+    let textureFailed = false
+    manager.onError = () => { textureFailed = true }
+    manager.onLoad = () => {
+      if (disposed) { if (model) disposeModel(model); return }
+      if (textureFailed && model) {
+        model.traverse(object => {
+          if (!(object instanceof Mesh)) return
+          const materials = Array.isArray(object.material) ? object.material : [object.material]
+          const replacements = materials.map(material => {
+            const textures = Object.values(material).filter((value): value is Texture => value instanceof Texture)
+            if (!textures.some(texture => !texture.image || (texture.image instanceof HTMLImageElement && !texture.image.naturalWidth))) return material
+            // Missing maps must not leave a black FBX silhouette. Dispose every
+            // map on the replaced material, including successfully loaded ones.
+            for (const texture of textures) {
+              texture.dispose()
+              if (typeof ImageBitmap !== 'undefined' && texture.image instanceof ImageBitmap) texture.image.close()
+            }
+            setTextureNote('Some textures could not be loaded. Showing affected surfaces with a neutral material.')
+            material.dispose()
+            return new MeshStandardMaterial({ color: 0xb8bec8, roughness: 0.8, side: material.side })
+          })
+          object.material = Array.isArray(object.material) ? replacements : replacements[0]
+        })
+      }
+      render()
+    }
     manager.setURLModifier(resource => modelResourceUrl(src, resource))
     void fetch(src, { signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error(`File request failed (${response.status})`)
-        const data = await response.arrayBuffer()
-        if (/\.fbx$/i.test(name)) return new FBXLoader(manager).parse(data, '')
+        const data = await readModelData(response)
+        if (disposed) return
+        if (/\.fbx$/i.test(name)) {
+          requireFbxMesh(data)
+          return new FBXLoader(manager).parse(data, '')
+        }
         return (await new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).parseAsync(data, '')).scene
       })
       .then(object => {
-        if (disposed) { disposeModel(object); return }
+        if (!object) return
         model = object
+        if (disposed) { disposeModel(model); return }
+        model.updateMatrixWorld(true)
         const bounds = new Box3().setFromObject(model).getBoundingSphere(new Sphere())
-        if (bounds.isEmpty()) throw new Error('The model contains no visible geometry')
+        if (bounds.isEmpty()) throw new ModelPreviewError('No mesh in this file')
         radius = Math.max(bounds.radius, 0.001)
         center.copy(bounds.center)
         scene.add(model)
@@ -107,7 +140,9 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
         setStatus('')
       })
       .catch(reason => {
-        if (!disposed) setError(`Could not open 3D model: ${reason instanceof Error ? reason.message : 'Unknown error'}`)
+        if (!disposed) setError(reason instanceof ModelPreviewError ? reason.message
+          : reason instanceof RangeError ? 'This file is too large or complex to preview. Download it to open in a 3D application.'
+            : 'This model could not be previewed. Download it to open in a 3D application.')
       })
     return () => {
       disposed = true
@@ -124,6 +159,7 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
   return (
     <div className="model-viewer">
       <div className="model-viewer-stage" ref={stageRef} />
+      {textureNote && !error ? <p>{textureNote}</p> : null}
       {error ? <p role="alert">{error} <a href={src} download>Download</a></p>
         : status ? <p role="status">{status}</p>
           : <div className="model-viewer-controls"><button type="button" onClick={() => resetRef.current()}>Reset view</button></div>}

@@ -4,6 +4,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // Keep a representative of every declared file or folder before filling the
@@ -37,16 +38,20 @@ func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput
 			groups[i] = groups[i][1:]
 		}
 	}
-	priority := func(name string) int {
+	priority := func(name string, finals map[string]bool) int {
 		base := strings.ToLower(path.Base(name))
 		ext := path.Ext(base)
 		if _, image := evidenceImageTypes[ext]; image {
 			for _, cited := range evidence {
-				if strings.Contains(strings.ToLower(cited), base) {
-					return 0
+				for _, word := range strings.FieldsFunc(cited, func(r rune) bool {
+					return unicode.IsSpace(r) || strings.ContainsRune("\"'<>()[\x60]", r)
+				}) {
+					if strings.HasSuffix(strings.TrimRight(word, ".,;:!?"), "/"+path.Base(name)) {
+						return 0
+					}
 				}
 			}
-			if strings.Contains(base, "contact") || strings.Contains(base, "sheet") || strings.Contains(base, "final") {
+			if strings.Contains(base, "contact") || strings.Contains(base, "sheet") {
 				return 1
 			}
 		}
@@ -54,12 +59,23 @@ func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput
 		case ".mp4", ".webm", ".glb", ".gltf", ".fbx":
 			return 1
 		}
-		return 2
+		if finals[name] {
+			return 2
+		}
+		return 3
 	}
 	for _, group := range groups {
+		finals := make(map[string]bool)
+		for _, entry := range group {
+			base := strings.ToLower(path.Base(entry.Name))
+			_, image := evidenceImageTypes[path.Ext(base)]
+			if len(finals) < 3 && image && strings.Contains(strings.NewReplacer("_", " ", "-", " ", ".", " ").Replace(" "+base+" "), " final ") && priority(entry.Name, nil) == 3 {
+				finals[entry.Name] = true
+			}
+		}
 		// Keep reviewable media in large output folders before filling the cap
 		// with frames, textures and scratch files. Preserve lexical ties.
-		sort.SliceStable(group, func(i, j int) bool { return priority(group[i].Name) < priority(group[j].Name) })
+		sort.SliceStable(group, func(i, j int) bool { return priority(group[i].Name, finals) < priority(group[j].Name, finals) })
 		remaining := max(0, EvidenceArtifactListMax-len(selected))
 		selected = append(selected, group[:min(len(group), remaining)]...)
 	}

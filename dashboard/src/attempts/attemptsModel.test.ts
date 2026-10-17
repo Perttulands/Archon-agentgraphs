@@ -124,7 +124,7 @@ describe('attemptFileGroups and folderSummary', () => {
     const frames = Array.from({ length: 20 }, (_, i) => file(`frames/frame-${i}.png`, 'image', 1))
     const images = [...frames, ...['contact-sheet.jpg', 'final.png', 'sheet.png', 'judge-crop.png'].map(name => file(`proof/${name}`, 'image', 1))]
     const summary = folderSummary(images, ['Compare the face in /work/proof/judge-crop.png.'])
-    expect(summary.images.slice(0, 4).map(image => image.name)).toEqual(['proof/judge-crop.png', 'proof/contact-sheet.jpg', 'proof/final.png', 'proof/sheet.png'])
+    expect(summary.images.slice(0, 4).map(image => image.name)).toEqual(['proof/judge-crop.png', 'proof/contact-sheet.jpg', 'proof/sheet.png', 'proof/final.png'])
     expect(summary.count).toBe(24)
     expect(summary.images.slice(4)).toEqual(frames)
   })
@@ -166,4 +166,14 @@ describe('words', () => {
     expect(attemptTiming(attempt(1, { status: 'running', startedAt: '2026-10-16T10:09:22Z' }), now)).toMatch(/ · 38s so far$/)
     expect(attemptTiming(attempt(1), now)).toBe('')
   })
+})
+
+it('does not confuse image suffixes and promotes only three final images behind contact sheets', () => {
+  const frames = [file('frame.png', 'image', 1), file('crop.png', 'image', 1)]
+  const finals = Array.from({ length: 20 }, (_, i) => file(`final_${i}.png`, 'image', 1))
+  const images = [...frames, ...finals, file('contact-sheet.png', 'image', 1), file('other-crop.png', 'image', 1)]
+  const summary = folderSummary(images, ['/work/other-crop.png'])
+  expect(summary.images.slice(0, 7).map(image => image.name)).toEqual([
+    'other-crop.png', 'contact-sheet.png', 'final_0.png', 'final_1.png', 'final_2.png', 'frame.png', 'crop.png',
+  ])
 })

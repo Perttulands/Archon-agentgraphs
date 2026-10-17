@@ -119,7 +119,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   }, [runId])
 
   return (
-    <FloatingWindow id={`evidence:${nodeId}`} kind="evidence" label={`Run evidence · ${title}`}
+    <FloatingWindow id={`evidence:${nodeId}`} kind="evidence" overCanvas label={`Run evidence · ${title}`}
       title={`Run evidence · ${title}`} className="run-evidence" defaultSize={{ width: 660, height: 640 }}
       anchor={() => anchor.current?.getBoundingClientRect() || null}
       onClose={onClose}>

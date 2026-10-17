@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import MediaPreview from './MediaPreview'
 import FileView from './FileView'
@@ -22,6 +22,8 @@ it('opens videos in file windows with native controls and loads the 3D viewer on
   expect(loaded).not.toHaveBeenCalled()
 
   rerender(<MediaPreview kind="model" src="/api/files/raw?path=%2Fchair.glb" name="chair.glb" />)
+  expect(screen.queryByLabelText('3D chair.glb')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Preview 3D model chair.glb' }))
   expect(await screen.findByLabelText('3D chair.glb')).toHaveAttribute('data-src', '/api/files/raw?path=%2Fchair.glb')
   expect(loaded).toHaveBeenCalledOnce()
 })
