@@ -2,13 +2,13 @@ import type { WindowRect, Workspace } from './windowGeometry'
 
 /**
  * Where the cockpit holds its floating windows: over the canvas, clear of the
- * zoom column and of the run bar should it ever sit on the canvas. Another
+ * zoom column, canvas dock, run bar and mission navigator. Another
  * control that windows must never cover can say so with data-window-avoid.
  */
 
 const INSET = 8
 const GAP = 8
-const AVOID = '.zoomctl, .zoomlevel, .run-banner, [data-window-avoid]'
+const AVOID = '.zoomctl, .zoomlevel, .dock, .run-banner, .mission-nav, [data-window-avoid]'
 
 function box(element: Element, grow: number): WindowRect {
   const rect = element.getBoundingClientRect()

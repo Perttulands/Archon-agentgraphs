@@ -139,3 +139,31 @@ test('the run bar\'s produced menu opens above a file window, and the next file 
   await expect(log).toContainText('worker finished')
   expect(overlap((await review.boundingBox())!, (await log.boundingBox())!)).toBe(false)
 })
+
+// archon-prs4: a child file must leave the cockpit controls reachable, even
+// when opening beside its attempts window puts it near the bottom of Canvas.
+test('a produced file opened from attempts leaves the dock and navigation clear', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.addInitScript(() => localStorage.clear())
+  const fixture = await cockpitFixture(page, { succeeded: true })
+  fixture.board().rev = 3
+  await page.route('**/api/runs/run_browser', route => route.fulfill({ json: { success: true, data: {
+    runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', missionId: 'brd_browser',
+    missionRev: 2, inputCardId: 'mission', eventCount: 7,
+  } } }))
+  await page.route('**/api/runs/run_browser/evidence/mission', route => route.fulfill({ json: { success: true, data: {
+    mission: { missionRev: 2, graph: { ...fixture.board(), rev: 2 } },
+  } } }))
+  await page.goto('/?mission=browser&run=run_browser')
+  const dock = page.getByTestId('canvas-dock')
+  await expect(dock).toContainText('Showing revision 2')
+  await page.getByTestId('run-banner').getByRole('button', { name: 'review.md' }).click()
+  await page.getByRole('dialog', { name: 'Attempts of Peer review' }).getByRole('button', { name: 'review.md', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: /file .*review\.md/ })).toContainText('Peer review')
+  for (const control of [dock, page.getByTestId('run-banner'), page.getByTestId('mission-nav'), page.locator('.zoomctl')]) {
+    const bounds = (await control.boundingBox())!
+    for (const window of await windowBoxes(page)) expect(overlap(window, bounds)).toBe(false)
+  }
+  await dock.getByRole('button', { name: /Edit current mission/ }).click()
+  await expect(page.getByTestId('new-formation')).toBeEnabled()
+})
