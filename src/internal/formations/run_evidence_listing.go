@@ -31,13 +31,6 @@ func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput
 		}
 		groups[group] = append(groups[group], entry)
 	}
-	selected := make([]RunArtifactEntry, 0, min(len(entries), EvidenceArtifactListMax))
-	for i := range outputs {
-		if len(groups[i]) > 0 {
-			selected = append(selected, groups[i][0])
-			groups[i] = groups[i][1:]
-		}
-	}
 	priority := func(name string, finals map[string]bool) int {
 		base := strings.ToLower(path.Base(name))
 		ext := path.Ext(base)
@@ -56,26 +49,39 @@ func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput
 			}
 		}
 		switch ext {
-		case ".mp4", ".webm", ".glb", ".gltf", ".fbx":
-			return 1
+		case ".mp4", ".webm":
+			return 0
+		case ".glb", ".gltf", ".fbx":
+			return 3
 		}
 		if finals[name] {
 			return 2
 		}
-		return 3
+		return 4
 	}
 	for _, group := range groups {
 		finals := make(map[string]bool)
 		for _, entry := range group {
 			base := strings.ToLower(path.Base(entry.Name))
 			_, image := evidenceImageTypes[path.Ext(base)]
-			if len(finals) < 3 && image && strings.Contains(strings.NewReplacer("_", " ", "-", " ", ".", " ").Replace(" "+base+" "), " final ") && priority(entry.Name, nil) == 3 {
+			if len(finals) < 3 && image && strings.Contains(strings.NewReplacer("_", " ", "-", " ", ".", " ").Replace(" "+base+" "), " final ") && priority(entry.Name, nil) == 4 {
 				finals[entry.Name] = true
 			}
 		}
 		// Keep reviewable media in large output folders before filling the cap
 		// with frames, textures and scratch files. Preserve lexical ties.
 		sort.SliceStable(group, func(i, j int) bool { return priority(group[i].Name, finals) < priority(group[j].Name, finals) })
+	}
+	selected := make([]RunArtifactEntry, 0, min(len(entries), EvidenceArtifactListMax))
+	// Choose each folder's representative after ranking, so its first file is
+	// reviewable media even when models and cache files sort before it.
+	for i := range outputs {
+		if len(groups[i]) > 0 {
+			selected = append(selected, groups[i][0])
+			groups[i] = groups[i][1:]
+		}
+	}
+	for _, group := range groups {
 		remaining := max(0, EvidenceArtifactListMax-len(selected))
 		selected = append(selected, group[:min(len(group), remaining)]...)
 	}

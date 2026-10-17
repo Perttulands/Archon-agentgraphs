@@ -186,3 +186,44 @@ func TestEvidenceArtifactsRankCitationsAndSheetsBeforeCappedFinals(t *testing.T)
 		}
 	}
 }
+
+func TestEvidenceArtifactsPromoteNestedVideosBeforeModelsAndFolderRepresentative(t *testing.T) {
+	entries := []RunArtifactEntry{{Name: "output/000-cache.txt"}}
+	for i := 0; i < EvidenceArtifactListMax+10; i++ {
+		entries = append(entries, RunArtifactEntry{Name: fmt.Sprintf("output/export/model-%04d.fbx", i)})
+	}
+	entries = append(entries,
+		RunArtifactEntry{Name: "output/review/contact-sheet.jpg"},
+		RunArtifactEntry{Name: "output/review/videos/face.mp4"},
+		RunArtifactEntry{Name: "output/review/videos/walk.webm"},
+	)
+	selected, omitted := selectEvidenceArtifacts(entries, []AttemptOutput{{Artifact: "output", Kind: "folder"}})
+	for i, want := range []string{"output/review/videos/face.mp4", "output/review/videos/walk.webm", "output/review/contact-sheet.jpg"} {
+		if selected[i].Name != want {
+			t.Fatalf("rank %d = %s, want %s", i, selected[i].Name, want)
+		}
+	}
+	if len(selected) != EvidenceArtifactListMax || omitted != len(entries)-len(selected) {
+		t.Fatalf("selected %d, omitted %d", len(selected), omitted)
+	}
+}
+
+func TestEvidenceRefRecognizesResolvedArtifactDirectory(t *testing.T) {
+	workspace, artifacts := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, ".archon"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(artifacts, filepath.Join(workspace, ".archon", "artifacts")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(artifacts, "run_test"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(workspace)
+	for _, root := range []string{filepath.Join(workspace, ".archon", "artifacts"), artifacts} {
+		ref := evidenceRef(filepath.Join(root, "run_test", "step", "1", "result"), store.runArtifactRoots("run_test"))
+		if ref == nil || ref.Artifact != "step/1/result" || ref.External != "" {
+			t.Fatalf("ref from %s = %+v", root, ref)
+		}
+	}
+}

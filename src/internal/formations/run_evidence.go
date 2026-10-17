@@ -365,11 +365,16 @@ func evidenceNodeKind(board *BoardDocument, nodeID string) string {
 }
 
 // runArtifactRoots are the textual forms a recorded ref can use for the run's
-// artifact directory: the configured workspace and its absolute form.
+// artifact directory: configured, absolute, and resolved through symlinks.
 func (s *Store) runArtifactRoots(runID string) []string {
 	roots := []string{filepath.Clean(filepath.Join(s.workspaceRoot(), ".archon", "artifacts", runID))}
 	if workspace, err := s.workspaceAbsolutePath(); err == nil {
 		roots = append(roots, filepath.Join(workspace, ".archon", "artifacts", runID))
+	}
+	for _, root := range append([]string(nil), roots...) {
+		if resolved, err := filepath.EvalSymlinks(root); err == nil && resolved != root {
+			roots = append(roots, resolved)
+		}
 	}
 	return roots
 }
