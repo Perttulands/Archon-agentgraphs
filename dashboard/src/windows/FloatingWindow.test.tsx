@@ -196,6 +196,20 @@ describe('floating windows', () => {
     expect(windowOf('w2')).toBeInTheDocument()
   })
 
+  it('leaves Escape to a menu nested inside a window, even with focus elsewhere', () => {
+    render(<Harness initial={['w1']} />)
+    const menu = document.createElement('div')
+    menu.setAttribute('role', 'menu')
+    windowOf('w1').append(menu)
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    expect(windowOf('w1')).toBeInTheDocument()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(windowOf('w1')).toBeInTheDocument()
+    menu.remove()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'window w1' })).toBeNull()
+  })
+
   it('never lets a move or a resize cover the zoom column', () => {
     render(<Harness initial={['w1']} />)
     const head = windowOf('w1').querySelector('.fwin-head') as HTMLElement

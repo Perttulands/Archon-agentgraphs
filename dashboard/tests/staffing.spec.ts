@@ -512,3 +512,22 @@ test('the rail states in words which roles are in use and opens a role in a wind
   await expect(roster).toBeVisible()
 })
 
+
+// Keep the assignment pending so this exercises the race on every run.
+test('N skips a staffed slot while its assignment reply is pending', async ({ page }) => {
+  let release!: () => void
+  const reply = new Promise<void>(resolve => { release = resolve })
+  const fixture = await cockpitFixture(page, { emptyWorker: true, beforeAssignmentReply: () => reply })
+  try {
+    await page.goto('/')
+    await page.getByTestId('slot-execution-worker').click()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => assignments(fixture.patches).length).toBe(1)
+    await page.getByTestId('formations-canvas').focus()
+    await page.keyboard.press('n')
+    await expect(page.getByTestId('staffing-stamp')).toHaveText('No empty slot in this mission.')
+    await expect(page.getByRole('dialog', { name: 'Staff Worker 1' })).toHaveCount(0)
+  } finally {
+    release()
+  }
+})

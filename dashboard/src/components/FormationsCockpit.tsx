@@ -2282,7 +2282,11 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         // A judge decides right after its gate; a formation no Input card reaches comes last.
         return gate !== undefined ? (flow.numbers.get(gate) ?? 1e6) + 0.5 : 1e6
       }
-      const empties = [...world.querySelectorAll<HTMLElement>('.slot.empty[data-slot-key]')]
+      const empties = [...world.querySelectorAll<HTMLElement>('.slot[data-slot-key]')]
+        .filter(element => {
+          const ref = refByKey(element.dataset.slotKey || '')
+          return ref && !staffingStore.current(ref.key, savedOf(ref))
+        })
         .map((element, index) => ({ element, index, rank: rankOf(element.dataset.fid || '') }))
         .sort((a, b) => (a.rank - b.rank) || (a.index - b.index))
         .map(entry => entry.element)
@@ -2319,7 +2323,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, boardView, refByKey, staffingStore])
+  }, [active, boardView, refByKey, savedOf, staffingStore])
 
   const grabSlot = useCallback((event: ReactPointerEvent<HTMLElement>, ref: SlotRef, part: Part | null) => {
     const staffed = staffingStore.current(ref.key, savedOf(ref))

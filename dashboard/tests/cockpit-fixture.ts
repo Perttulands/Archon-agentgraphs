@@ -204,7 +204,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean; beforeAssignmentReply?: () => Promise<void> } = {}) {
   const currentBoard = structuredClone(board)
   // A CLI-authored mission has declarations but no saved canvas layout.
   if (options.declaredInputs) {
@@ -347,6 +347,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
         const body = route.request().postDataJSON()
         patches.push(body)
         if (body.assignSlot) {
+          await options.beforeAssignmentReply?.()
           const { formationId, slotId } = body.assignSlot
           const formation = currentBoard.formations.find(item => item.id === formationId)
           const index = formation?.slots.findIndex(slot => slot.id === slotId) ?? -1

@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FocusEvent, KeyboardEvent, KeyboardEventHandler, PointerEvent, PointerEventHandler, RefObject } from 'react'
-import { isTextEditingTarget } from '../keyboard'
+import { hasWindowOverlay, isTextEditingTarget } from '../keyboard'
 import { RESIZE_KEYBOARD_STEP, capturePointerDrag } from './resizeGesture'
 import {
   FLOATING_WINDOW_MINIMUM,
@@ -210,8 +210,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
       if (isTextEditingTarget(event.target)) return
       // Modal dialogs and menus can leave focus on the document body.
       // They sit above floating windows and own Escape regardless of focus.
-      const surfaces = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="menu"]')
-      if (Array.from(surfaces).some(surface => !surface.closest('[data-window-id]'))) return
+      if (hasWindowOverlay()) return
       const order = stackRef.current.order
       if (order[order.length - 1] !== id) return
       event.preventDefault()
@@ -373,7 +372,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
         // still reaches the view, so an edit made in a window can be undone from it.
         if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'z') return
         event.stopPropagation()
-        if (event.key !== 'Escape' || event.defaultPrevented) return
+        if (event.key !== 'Escape' || event.defaultPrevented || hasWindowOverlay()) return
         event.preventDefault()
         onCloseRef.current()
       },

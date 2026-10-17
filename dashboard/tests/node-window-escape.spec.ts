@@ -46,3 +46,23 @@ test('Escape closes the top node window from the canvas and respects editing and
   await expect(window).toHaveCount(0)
   expect(fixture.writes).toEqual([])
 })
+
+for (const focus of ['menu', 'canvas'] as const) {
+  test(`Escape closes produced files before the node window with focus on the ${focus}`, async ({ page }) => {
+    await cockpitFixture(page, { succeeded: true })
+    await page.goto('/?mission=browser&run=run_browser')
+    await page.getByTestId('formation-node-execution').locator('.fhead .tt').click()
+    const nodeWindow = page.getByRole('dialog', { name: 'Formation · Execution' })
+    const more = page.getByTestId('run-produced').getByRole('button', { name: '3 more produced files' })
+    await more.click()
+    const menu = page.getByRole('menu', { name: 'Everything this run produced' })
+    await expect(menu).toBeVisible()
+    if (focus === 'canvas') await page.getByTestId('formations-canvas').focus()
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    await expect(nodeWindow).toBeVisible()
+    await expect(more).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(nodeWindow).toHaveCount(0)
+  })
+}

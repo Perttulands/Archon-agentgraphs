@@ -98,7 +98,8 @@ export function RunProduced() {
     if (!menu) return
     const close = (event: Event) => {
       if (event instanceof KeyboardEvent) {
-        if (event.key !== 'Escape') return
+        if (event.key !== 'Escape' || event.defaultPrevented) return
+        event.preventDefault()
         moreRef.current?.focus()
       } else if (menuRef.current?.contains(event.target as Node) || moreRef.current?.contains(event.target as Node)) {
         return
@@ -129,8 +130,9 @@ export function RunProduced() {
     } else if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault()
       items[event.key === 'Home' ? 0 : items.length - 1]?.focus()
-    } else if (event.key === 'Tab') {
+    } else if (event.key === 'Tab' || event.key === 'Escape') {
       event.preventDefault()
+      event.stopPropagation()
       moreRef.current?.focus()
       setMenu(null)
     }
