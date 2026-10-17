@@ -659,12 +659,16 @@ Run status and lists carry `startedBy`, the run's driver, recorded as the
 start event's actor. Every CLI command taking `--actor <name>` defaults it
 to `ARCHON_DRIVER`, then `agent:archon`. The CLI alone resolves that
 environment default and sends `actor` to the API. Historical runs keep their
-recorded actor. Status also carries `startedAt` and `updatedAt`, the
-times of its first and latest ledger events; a final run ended at
+recorded actor, displayed verbatim as the driver in the cockpit and CLI.
+Plain status lists each input’s name, kind and value. Status also carries
+`startedAt` and `updatedAt`, the times of its first and latest ledger events; a final run ended at
 `updatedAt`. CLI status and attempts render timestamps in local time and
 elapsed time as durations; JSON retains the stored timestamps. Status names
 the mission revision and stopped step (ID plus its frozen title), and attempts
-include their stop reason.
+include their stop reason. A stopped attempt uses the run’s terminal reason
+when that end stopped it, ahead of intermediate cancellation errors. A run
+ending while blocked names the last blocked step, even when it has no open
+dispatch; otherwise its active steps identify where it stopped.
 Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
@@ -999,7 +1003,10 @@ by attention and then finished runs newest first, the first five shown and the
 rest behind "N earlier runs". Every run row shows its local start time and
 state, followed by its Bead or the start of its first input. Choosing one shows
 it; a mission's Edit mission row puts the shown run
-away and returns to the current revision for authoring. The run bar says when
+away and returns to the current revision for authoring. The run bar has a
+reserved, fixed-height row even before selection and during loading, so
+Canvas and Flow never shift when it appears or changes. The canvas creation
+palette is absent from Flow, where a passed gate reads PASS. The run bar says when
 the shown run started, how long it took and who drives it; a run waiting at a
 gate says since when; and a run that ran an
 earlier revision draws its frozen graph and run states on Canvas and Flow,

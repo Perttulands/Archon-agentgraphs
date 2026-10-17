@@ -28,7 +28,7 @@ for (const failure of [409, 500]) test(`an external answer keeps the draft visib
   await expect(page.getByTestId('formations-error')).toContainText('Browser answer was not recorded.')
   if (failure === 500) answerElsewhere()
   const notice = page.locator('.answered-draft')
-  await expect(notice).toContainText('was answered elsewhere by the archon CLI: approved')
+  await expect(notice).toContainText('was answered elsewhere by agent:archon: approved')
   await expect(notice).toContainText('The CLI answer wins.')
   await expect(notice.getByLabel('Kept draft for Answer questions')).toHaveValue('Keep my unsubmitted words.')
 })

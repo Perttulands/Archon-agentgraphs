@@ -17,7 +17,7 @@ export function runActorLabel(actor = ''): string {
       return 'the operator in the cockpit'
     case 'agent:archon':
     case 'operator:archon':
-      return 'the archon CLI'
+      return actor
     case 'archond':
       return 'Archon'
     // The coordinator's own identity, which later events inherit from the

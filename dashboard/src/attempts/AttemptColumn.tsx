@@ -363,7 +363,7 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
       </div>
       <div className="attempt-outputs">
         {outputs.length ? outputs.map(({ output, files }) => <OutputView key={output.portId} attempt={attempt} output={output} files={files} view={view} />)
-          : <p className="attempt-quiet">{attempt.status === 'running' ? 'No output yet.' : attempt.status === 'stopped' ? 'Stopped before its output.' : 'No output recorded.'}</p>}
+          : <p className="attempt-quiet">{attempt.status === 'running' ? 'No output yet.' : attempt.status === 'stopped' ? attempt.stopReason?.text || 'Stopped before its output.' : 'No output recorded.'}</p>}
       </div>
       <div className="attempt-files">
         {others.length ? (

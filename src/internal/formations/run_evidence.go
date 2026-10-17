@@ -730,7 +730,23 @@ func runProblemNodes(events []RunEvent, index int) []string {
 	if len(nodes) > 0 || !isFinalRunEvent(events[index].Type) {
 		return nodes
 	}
-	return runOpenNodesAt(events, index)
+	nodes = runOpenNodesAt(events, index)
+	// A spent limit can stop the next step before it starts. Canceling
+	// while blocked still stops that step, even with no open attempt.
+	for i := index - 1; i >= 0; i-- {
+		switch events[i].Type {
+		case RunEventResumed:
+			return nodes
+		case RunEventBlocked:
+			for _, nodeID := range evidenceProblemNodes(events[i]) {
+				if !slices.Contains(nodes, nodeID) {
+					nodes = append(nodes, nodeID)
+				}
+			}
+			return nodes
+		}
+	}
+	return nodes
 }
 
 // runOpenNodesAt lists, in the order they opened, the nodes that had started
@@ -783,6 +799,11 @@ func evidenceProblemNodes(event RunEvent) []string {
 	add(event.GateID)
 	for _, key := range []string{"blockedNodeId", "blockedGateId", "nodeId"} {
 		add(stringFromEventData(event, key))
+	}
+	if len(nodes) == 0 {
+		if limit := limitFromAny(event.Data["limit"]); limit != nil {
+			add(limit.NodeID)
+		}
 	}
 	switch dispatches := event.Data["openDispatches"].(type) {
 	case []any:

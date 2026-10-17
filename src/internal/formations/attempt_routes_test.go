@@ -280,3 +280,47 @@ func TestStoppedAttemptKeepsCauseAndReattachClearsIt(t *testing.T) {
 		t.Fatalf("reattached = %+v", attempt)
 	}
 }
+
+// Cancel cleanup can record an executor cancellation and block immediately
+// before the operator's final reason. The final reason explains the attempt.
+func TestCanceledAttemptUsesOperatorReasonAfterExecutorBlock(t *testing.T) {
+	const reason = "Paused by the operator; artifacts kept."
+	board := &BoardDocument{Formations: []FormationNode{{ID: "fmn_work"}}}
+	events := numbered(
+		RunEvent{Type: RunEventStarted},
+		RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1},
+		RunEvent{Type: RunEventError, NodeID: "fmn_work", Data: map[string]any{"message": "context canceled"}},
+		RunEvent{Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "context canceled", "blockedNodeId": "fmn_work"}},
+		RunEvent{Type: RunEventCanceled, Actor: "operator:archon", Data: map[string]any{"reason": reason, "final": true}},
+	)
+	attempt := projectRunAttempts("run_x", "", board, events, &RunStatusProjection{Final: true, Status: RunStatusCanceled}, nil).Steps[0].Attempts[0]
+	if attempt.Status != AttemptStopped || attempt.StopReason == nil || attempt.StopReason.Text != reason || attempt.EndedAt != events[4].Timestamp {
+		t.Fatalf("canceled attempt = %+v", attempt)
+	}
+}
+
+func TestRunEndNamesBlockedStepBeforeItsNextAttemptStarts(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		end    RunEvent
+		resume bool
+		want   []string
+	}{
+		{name: "canceled while blocked", end: RunEvent{Type: RunEventCanceled}, want: []string{"fmn_work"}},
+		{name: "failed while blocked", end: RunEvent{Type: RunEventFailed}, want: []string{"fmn_work"}},
+		{name: "resumed block no longer applies", end: RunEvent{Type: RunEventCanceled}, resume: true, want: []string{}},
+		{name: "old limit-only failure", end: RunEvent{Type: RunEventFailed, Data: map[string]any{"limit": RunLimitReached{NodeID: "fmn_work"}}}, want: []string{"fmn_work"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := []RunEvent{{Type: RunEventStarted}, {Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1}, {Type: RunEventNodeOutput, NodeID: "fmn_work", Attempt: 1}, {Type: RunEventBlocked, Data: map[string]any{"blockedNodeId": "fmn_work", "code": RunBlockLimitReached}}}
+			if tc.resume {
+				events = append(events, RunEvent{Type: RunEventResumed})
+			}
+			events = numbered(append(events, tc.end)...)
+			problem := RunEndProblem(events)
+			if problem == nil || !reflect.DeepEqual(problem.NodeIDs, tc.want) {
+				t.Fatalf("end = %+v, want nodes %v", problem, tc.want)
+			}
+		})
+	}
+}

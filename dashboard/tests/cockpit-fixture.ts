@@ -566,7 +566,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       // A picked run (succeeded with picked) carried Execution's failed first
       // attempt on through its gate, so every output came through that pick.
       const outputs = runOutputs(currentBoard).map(output => options.picked ? { ...output, picks: [pickedExecution] } : output)
-      return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(options.declaredInputs ? { inputs: flowInputs } : {}), ...(outputs.length ? { outputs } : {}) })
+      return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', startedBy: 'agent:archon', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(options.declaredInputs ? { inputs: flowInputs } : {}), ...(outputs.length ? { outputs } : {}) })
     }
     if (options.succeeded && path === '/api/runs/run_browser/evidence/attempts') {
       const nodeId = url.searchParams.get('node') || 'execution'

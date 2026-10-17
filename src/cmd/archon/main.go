@@ -1833,10 +1833,13 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 }
 
 // writeRunStatusLines prints a run's status line, then one line per mission
-// output a succeeded run delivered.
+// output a succeeded run delivered, and each input supplied.
 func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjection) {
 	fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", status.RunID, status.Status, status.BoardSlug, status.EventCount)
 	fmt.Fprintf(stdout, "missionRev\t%d\nstartedBy\t%s\nstarted\t%s\nupdated\t%s\nduration\t%s\n", status.BoardRev, orDash(status.StartedBy), listTimeWords(status.StartedAt), listTimeWords(status.UpdatedAt), runDuration(status.StartedAt, status.UpdatedAt, status.Final))
+	for _, input := range status.Inputs {
+		fmt.Fprintf(stdout, "input\t%s\t%s\t%s\n", input.Name, input.Kind, input.Value)
+	}
 	// A pass a spent limit picked is named, so a reader knows the gate did
 	// not pass that work itself (archon-gihe).
 	for _, pick := range status.Picks {

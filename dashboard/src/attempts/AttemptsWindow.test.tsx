@@ -68,6 +68,13 @@ describe('AttemptsWindow', () => {
     expect(focused()).toBe('3')
   })
 
+  it('shows the terminal reason on a stopped attempt as soon as it opens', async () => {
+    attempts = [attempt(1, 'running', { status: 'stopped', stopReason: text('Paused by Perttu: artifacts kept.') })]
+    render(<Window />)
+    expect(await screen.findByTestId('attempt-1')).toHaveTextContent('Paused by Perttu: artifacts kept.')
+    expect(screen.getByTestId('attempt-1')).not.toHaveTextContent('Stopped before its output.')
+  })
+
   it('puts two attempts side by side and steps the focused side', async () => {
     render(<Window />)
     await screen.findByTestId('attempt-4')

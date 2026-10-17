@@ -9,7 +9,7 @@ const titleOf = (nodeId: string) => titles[nodeId] || ''
 describe('run outcome words', () => {
   it('names who ended a run in the operator\'s words', () => {
     expect(runActorLabel('human:ui')).toBe('the operator in the cockpit')
-    expect(runActorLabel('agent:archon')).toBe('the archon CLI')
+    expect(runActorLabel('agent:archon')).toBe('agent:archon')
     expect(runActorLabel('archond')).toBe('Archon')
     // Inherited from the run's start, so it names the recorder, not who asked.
     expect(runActorLabel('operator:standalone')).toBe('the coordinator')

@@ -57,6 +57,8 @@ in parentheses appear only in JSON and TOML.
 - **Question**: what a human gate asks the operator (a request in data).
   **Answer**: the operator's verdict at that gate, Approve or Send back, with
   a response.
+- **Driver**: the recorded actor that started a run (`startedBy`). Display its
+  ID verbatim in the cockpit and CLI, including `agent:archon`.
 - **The operator** is `human:ui` in data. **The agent** is the managing agent,
   the session the operator works with through the CLI; it is never a seat.
 
@@ -96,5 +98,8 @@ The operator steers a mission through its managing agent
 - Where an entry or edit is marked as the agent's, the mark is a word or weight
   before it is a colour; a new colour is an addition to the colour rule.
 - Nothing the operator is reading moves when something is added; motion only
-  confirms.
+  confirms. Reserve the run bar’s row before a run is selected, including while
+  its data loads. Keep that row’s height fixed as the run changes.
+- A passed gate reads **PASS** in Flow and attempts. The canvas creation
+  palette appears only on Canvas.
 - Drafts save with blanks; only validation and admission reject gaps.

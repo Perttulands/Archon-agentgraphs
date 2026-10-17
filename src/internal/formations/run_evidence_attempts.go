@@ -364,7 +364,14 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			}
 		case RunEventBlocked, RunEventError, RunEventFailed, RunEventCanceled:
 			for _, nodeID := range runProblemNodes(events, index) {
-				if attempt := current(nodeID); attempt != nil && attempt.Status == AttemptRunning && event.Type != RunEventError {
+				attempt := current(nodeID)
+				if attempt == nil || event.Type == RunEventError {
+					continue
+				}
+				// Cancel cleanup can block first with "context canceled".
+				// Its final event carries the operator's reason for stopping.
+				finalStop := isFinalRunEvent(event.Type) && attempt.Status == AttemptStopped && attempt.OutputSeq == 0
+				if attempt.Status == AttemptRunning || finalStop {
 					attempt.Status, attempt.EndedAt = AttemptStopped, event.Timestamp
 					reason := evidenceProblem(events, index, capper).Reason
 					if event.Type == RunEventBlocked && index > 0 && events[index-1].Type == RunEventError {

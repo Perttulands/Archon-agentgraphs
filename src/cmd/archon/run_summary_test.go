@@ -149,3 +149,15 @@ func TestRunAttemptAndStatusPrintReadableTimeAndStop(t *testing.T) {
 		}
 	}
 }
+
+func TestRunStatusShowsSuppliedInputsInRecordedOrder(t *testing.T) {
+	var out bytes.Buffer
+	writeRunStatusLines(&out, &formations.RunStatusProjection{Inputs: []formations.RunInput{
+		{Name: "brief", Kind: "text", Value: "Build the character\nKeep the rig"},
+		{Name: "reference", Kind: "file", Value: "/references/body.png"},
+	}})
+	want := "input\tbrief\ttext\tBuild the character\nKeep the rig\ninput\treference\tfile\t/references/body.png\n"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("missing inputs: %s", &out)
+	}
+}

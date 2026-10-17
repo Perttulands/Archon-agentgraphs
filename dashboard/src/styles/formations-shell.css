@@ -17,7 +17,8 @@
 .fmx .run-banner .run-meta{flex:0 1 auto;min-width:0;display:flex;align-items:center;gap:12px;margin-left:auto;overflow:hidden;color:var(--dim);font-size:11px;white-space:nowrap;}
 .fmx .run-banner .run-meta > *{overflow:hidden;text-overflow:ellipsis;}
 .fmx .run-banner .run-stop{margin-left:0;}
-@media (max-width:1100px){.fmx .run-banner{flex-wrap:wrap;}}
+.fmx .run-banner-space{height:40px;flex:0 0 40px;background:var(--card);border-bottom:1px solid var(--line);}
+.fmx .run-banner{height:40px;flex-wrap:nowrap;}
 
 /* Dock: the palette while the mission can be edited, the lock and the way out while it cannot. */
 .fmx .dock{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:85;display:flex;align-items:center;gap:4px;padding:6px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.4);cursor:default;}

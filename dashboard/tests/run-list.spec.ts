@@ -97,9 +97,12 @@ for (const entry of ['list', 'link'] as const) {
     await expect(review.getByRole('button', { name: 'Copied' })).toBeVisible()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${artifactRoot}/review.md`)
     expect(fixture.writes).toEqual([])
-    await page.getByTestId('canvas-dock').getByRole('button', { name: /Edit current mission/ }).click()
-    await expect(page.getByTestId('new-formation')).toBeEnabled()
+    // Flow has no canvas palette; its mission remains editable from the navigator.
+    await page.getByRole('button', { name: /^Edit mission/ }).click()
     await expect(page.getByTestId('flow-view')).not.toContainText('Frozen')
+    await expect(page.getByTestId('canvas-dock')).toHaveCount(0)
+    await page.getByRole('radio', { name: 'Canvas', exact: true }).click()
+    await expect(page.getByTestId('new-formation')).toBeEnabled()
   })
 }
 
@@ -173,3 +176,31 @@ test('runs of a TOML mission keep their start, status and Bead visible when the 
   await expect(page.getByTestId('run-banner')).toContainText('agent:identity')
   await expect(page.getByTestId('staffing-keyhint')).toHaveCount(0)
 })
+
+for (const view of ['Canvas', 'Flow'] as const) {
+  test(`selecting and clearing a run keeps ${view} in place, including while loading`, async ({ page }) => {
+    await cockpitFixture(page, { succeeded: true })
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    await page.route('**/api/runs**', async route => {
+      const url = new URL(route.request().url())
+      if (url.pathname === '/api/runs' && url.searchParams.get('mission') === 'browser')
+        return route.fulfill({ json: { success: true, data: [runs[0]] } })
+      if (url.pathname === '/api/runs/run_browser') await pending
+      return route.fallback()
+    })
+    await page.goto('/?mission=browser')
+    await expect(page.getByTestId('nav-run-run_browser')).toBeVisible()
+    await page.getByRole('radio', { name: view, exact: true }).click()
+    const viewport = page.getByTestId('formations-canvas')
+    const before = await viewport.boundingBox()
+    await page.getByTestId('nav-run-run_browser').click()
+    expect(await viewport.boundingBox()).toEqual(before)
+    release()
+    await expect(page.getByTestId('run-banner')).toBeVisible()
+    expect(await viewport.boundingBox()).toEqual(before)
+    await page.getByRole('button', { name: 'Edit mission', exact: false }).first().click()
+    await expect(page.getByTestId('run-banner')).toHaveCount(0)
+    expect(await viewport.boundingBox()).toEqual(before)
+  })
+}

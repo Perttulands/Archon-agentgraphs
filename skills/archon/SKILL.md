@@ -450,7 +450,7 @@ archon $S run status "$ARCHON_RUN_ID" --json
   daemon's host. A mission without declared inputs takes `--input brief=...`.
   Admission names each input that is missing, unknown or not a usable path
   (`missing_input`, `unknown_input`, `invalid_input`) and records no run. Run
-  status shows the values as `inputs`.
+  status prints each input’s name, kind and value (`inputs` in JSON).
 - `--bead` names the run's owning Bead; an Input card has none.
 - `formation run "$M" <formation>` runs one step on its own with the same
   inputs and run flags; its step receives the inputs as a first step does.
@@ -465,7 +465,8 @@ archon $S run status "$ARCHON_RUN_ID" --json
 - `--actor <name>` names the acting agent. Every CLI command taking it
   defaults to `ARCHON_DRIVER`, then `agent:archon`, resolved only by the CLI
   and sent as `actor` to the API. Pass your own session name when starting
-  a run. Run status, lists and the run bar show the recorded name as `startedBy`.
+  a run. Run status, lists and the run bar show that recorded ID verbatim
+  (`startedBy` in JSON), including the default `agent:archon`.
 - A lost receipt: check `run list --mission "$M" --json` before starting again.
   It lists only that mission's runs, each with `status`, `startedBy`,
   `startedAt`, `updatedAt` (a final run ended then) and `inputs`.
@@ -542,8 +543,11 @@ Every attempt of every step, judges included, has its own directory under
 `$ARCHON_STATE/.archon/artifacts/<runId>/<nodeId>/<attempt>/`.
 `run attempts "$ARCHON_RUN_ID" [--node <id>] [--files] [--json]` lists each
 step and attempt, its status, declared outputs and verdict with a reason
-one-liner, and whether it was picked. `--files` adds its directory files;
-`--json` keeps the complete evidence. `run status` prints a `pick` line for each pick (`picks` in JSON). The cockpit's output chips open the producing step's attempts, including nested
+one-liner, and whether it was picked. A stopped attempt carries the run's
+terminal reason when that end stopped it; status also names the last blocked
+or active step. `--files` adds its directory files; `--json` keeps the complete
+evidence. `run status` prints a `pick` line for each pick (`picks` in JSON).
+The cockpit's output chips open the producing step's attempts, including nested
 videos and contact sheets; cited images open from their thumbnails. The Produced
 menu groups files in run order and lists kept copies once. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).

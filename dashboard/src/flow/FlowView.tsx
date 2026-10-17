@@ -242,7 +242,7 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
       </div>
       {run ? (
         <div className="flow-status" aria-label={`Run state of ${title}`}>
-          <span className={`flow-state state-${state || 'idle'}`}>{STATE_WORDS[state || '']}</span>
+          <span className={`flow-state state-${state || 'idle'}`}>{step.kind === 'gate' && state === 'done' ? 'pass' : STATE_WORDS[state || '']}</span>
           {step.kind === 'formation' ? <AttemptsButton nodeId={step.id} className="flow-attempt" />
             : (run.attempts.get(step.id) || 0) > 1 ? <span className="flow-attempt">attempt {run.attempts.get(step.id)}</span> : null}
           {run.points.filter(point => (point.nodeId === step.id || judgeIds.includes(point.nodeId)) && point.kind !== 'running').map(point => (

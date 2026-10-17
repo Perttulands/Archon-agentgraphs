@@ -3344,8 +3344,9 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
           stepTitle={(slug, nodeId) => (slug === selectedSlug && board ? nodeTitle(board, nodeId) : '')}
           onNew={openCreateBoard} onRename={openRenameBoard} onDelete={openDeleteBoard} />
 
-        {/* The run banner docks above the canvas so it never covers cards. */}
+        {/* Reserve the run row even while authoring or loading a run. */}
         <div className="canvas-column">
+          <div className="run-banner-space">
             {activeRun ? (
               <div className="run-banner" data-testid="run-banner">
                 <span className={`badge ${runBadgeClass}`}>{recordingAnswer ? 'Recording answer…' : activeRun.status === 'running' && !runPoints.length ? 'Continuing' : runStatusLabel(activeRun.status)}</span>
@@ -3377,6 +3378,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   onResume={() => void resumeActiveRun()} onGrant={gives => void grantActiveRun(gives)} onPick={() => void grantActiveRun(null)} onStop={abortActiveRun} />
               </div>
             ) : null}
+          </div>
         <div className={`viewport${showFlow ? ' flow-mode' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           {showFlow && board ? (
             <Suspense fallback={null}>
@@ -3880,7 +3882,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               )}
           </div>
           </aside>
-          <div className={`dock${historical ? ' locked' : ''}`} data-testid="canvas-dock" onPointerDown={event => event.stopPropagation()}>
+          {!showFlow && <div className={`dock${historical ? ' locked' : ''}`} data-testid="canvas-dock" onPointerDown={event => event.stopPropagation()}>
             {historical && activeRun ? (
               <>
                 <span className="dock-lock" role="status">{LOCK_SVG}Showing revision {activeRun.missionRev} · read only</span>
@@ -3896,7 +3898,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                 <button type="button" className="docktool" aria-label="Roles" title="Roles: drag one onto a slot" aria-pressed={rosterOpen} data-testid="roles-toggle" onClick={() => setRosterOpen(open => !open)}>{ROLES_SVG}</button>
               </>
             )}
-          </div>
+          </div>}
           {activeRun && runEvents.filter(event => event.type === 'human_verdict_recorded'
             && !submittedHere.has(`${activeRun.runId}:${Number(event.data?.requestedSeq)}`)
             && hasGateDraft(activeRun.runId, Number(event.data?.requestedSeq))).map(event =>
