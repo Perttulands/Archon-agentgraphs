@@ -66,7 +66,7 @@ func TestRunAttemptsFilesAreOptInAndJSONKeepsEvidence(t *testing.T) {
 			if strings.Contains(got, "Detailed findings") {
 				t.Errorf("verdict is not one line: %s", got)
 			}
-			for _, detail := range []string{"directory /artifacts/work/1", "file work/1/transcript.json", "more files are not listed"} {
+			for _, detail := range []string{"directory /artifacts/work/1", "file work/1/transcript.json", "not listed"} {
 				if strings.Contains(got, detail) != tc.files {
 					t.Errorf("files=%v, output %s", tc.files, got)
 				}

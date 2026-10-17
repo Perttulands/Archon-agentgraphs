@@ -135,8 +135,10 @@ func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence
 			for _, file := range attempt.Files {
 				fmt.Fprintf(stdout, "    file %s %d bytes %s\n", file.Name, file.Size, file.Kind)
 			}
-			if attempt.FilesTruncated {
+			if attempt.FilesOmitted > 0 {
 				fmt.Fprintf(stdout, "    at least %d more files not listed\n", attempt.FilesOmitted)
+			} else if attempt.FilesTruncated {
+				fmt.Fprintln(stdout, "    folders beyond 16 levels are not listed")
 			}
 		}
 	}

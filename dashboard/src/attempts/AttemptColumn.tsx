@@ -377,7 +377,7 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
         ) : null}
         {attempt.filesTruncated ? (
           <p className="attempt-quiet">
-            {attempt.filesOmitted ? `at least ${attempt.filesOmitted} more files not listed. ` : 'Folders beyond 16 levels are not listed. '}
+            {attempt.filesOmitted ? `At least ${attempt.filesOmitted} more files not listed. ` : 'Folders beyond 16 levels are not listed. '}
             {attempt.directory ? <button type="button" className="evidence-link" onClick={event => open(folderFileRequest(attempt.directory!.path, context), event.currentTarget)}>Browse all files</button> : null}
           </p>
         ) : null}

@@ -167,7 +167,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
               ))}
             </ul>
           )}
-          {artifacts?.omitted ? <p className="evidence-note">at least {artifacts.omitted} more files not listed.</p> : null}
+          {artifacts?.omitted ? <p className="evidence-note">At least {artifacts.omitted} more files not listed.</p> : null}
         </section>
       </div>
     </div>

@@ -17,7 +17,7 @@ it('shows an output movie and the judge movie in the attempt without opening ano
   }
   render(<AttemptColumn attempt={attempt} marks={{ focused: true, settled: false }} onFocus={() => {}}
     view={{ runId: 'run_1', stepTitle: 'Draw', waitingGates: new Set(), zoom: null, onZoom: () => {}, compare: false, now: new Date() }} />)
-  expect(screen.getByText('at least 8215 more files not listed.')).toBeVisible()
+  expect(screen.getByText('At least 8215 more files not listed.')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Browse all files' })).toBeVisible()
   const output = within(screen.getByTestId('attempt-1-output-movie')).getByLabelText('turntable.mp4')
   const judge = within(screen.getByTestId('attempt-1-verdict-review')).getByLabelText('review.webm')
