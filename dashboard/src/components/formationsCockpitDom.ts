@@ -7,13 +7,6 @@ export function splitList(value: string): string[] {
   return value.split(',').map(item => item.trim()).filter(Boolean)
 }
 
-export function isTextEditingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  // A radio or checkbox just chosen is not text, so undo still reaches the board.
-  if (target instanceof HTMLInputElement) return target.type !== 'radio' && target.type !== 'checkbox'
-  return target.tagName === 'TEXTAREA' || target.isContentEditable
-}
-
 function findPortAt(clientX: number, clientY: number, selector: string): HTMLElement | null {
   const direct = (document.elementFromPoint(clientX, clientY) as HTMLElement | null)?.closest<HTMLElement>(selector)
   if (direct) return direct

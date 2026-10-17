@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, FocusEvent, KeyboardEvent, KeyboardEventHandler, PointerEvent, PointerEventHandler, RefObject } from 'react'
+import { isTextEditingTarget } from '../keyboard'
 import { RESIZE_KEYBOARD_STEP, capturePointerDrag } from './resizeGesture'
 import {
   FLOATING_WINDOW_MINIMUM,
@@ -199,6 +200,26 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
     track(id, rectRef.current)
     return unregister
   }, [id, register, track])
+
+  // A node window can deliberately leave focus on the canvas for selection
+  // shortcuts. Escape still dismisses the top window. Keys inside a surface
+  // use its own handler (including editors that consume Escape to cancel).
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (isTextEditingTarget(event.target)) return
+      // Dialogs such as run evidence can leave focus on the document body.
+      // They sit above floating windows and own Escape regardless of focus.
+      const surfaces = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="menu"]')
+      if (Array.from(surfaces).some(surface => !surface.closest('[data-window-id]'))) return
+      const order = stackRef.current.order
+      if (order[order.length - 1] !== id) return
+      event.preventDefault()
+      onCloseRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [id])
 
   const { onReflow } = stack
   useEffect(() => {

@@ -160,6 +160,42 @@ describe('floating windows', () => {
     }
   })
 
+  it('leaves Escape to a text field outside the windows', () => {
+    render(<><input type="search" aria-label="Filter" /><Harness initial={['w1', 'w2']} /></>)
+    const input = screen.getByRole('searchbox', { name: 'Filter' })
+    act(() => input.focus())
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    fireEvent(input, event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(windowOf('w1')).toBeInTheDocument()
+    expect(windowOf('w2')).toBeInTheDocument()
+  })
+
+  it('closes only the top window from the canvas, respecting raised windows and other surfaces', () => {
+    render(<Harness initial={['w1', 'w2']} />)
+    const canvas = screen.getByRole('button', { name: 'Reflow' })
+    act(() => canvas.focus())
+    fireEvent.keyDown(canvas, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'window w2' })).toBeNull()
+    expect(windowOf('w1')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open another' }))
+    fireEvent.pointerDown(screen.getByText('Body of w1'), { button: 0 })
+    act(() => canvas.focus())
+    // A modal or menu owns its Escape even when its handler lives on window.
+    const modal = document.createElement('div')
+    modal.setAttribute('role', 'dialog')
+    document.body.append(modal)
+    fireEvent.keyDown(modal, { key: 'Escape' })
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    modal.remove()
+    expect(windowOf('w1')).toBeInTheDocument()
+    expect(windowOf('w2')).toBeInTheDocument()
+    fireEvent.keyDown(canvas, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'window w1' })).toBeNull()
+    expect(windowOf('w2')).toBeInTheDocument()
+  })
+
   it('never lets a move or a resize cover the zoom column', () => {
     render(<Harness initial={['w1']} />)
     const head = windowOf('w1').querySelector('.fwin-head') as HTMLElement

@@ -1,0 +1,48 @@
+import { expect, test } from '@playwright/test'
+import { cockpitFixture } from './cockpit-fixture'
+
+test('Escape closes the top node window from the canvas and respects editing and modal surfaces', async ({ page }) => {
+  const fixture = await cockpitFixture(page)
+  await page.goto('/')
+  const canvas = page.getByTestId('formations-canvas')
+  const node = page.getByTestId('formation-node-execution')
+  const window = page.getByRole('dialog', { name: 'Formation · Execution' })
+  await node.locator('.fhead .tt').click()
+  await expect(window).toBeVisible()
+  await expect(canvas).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(window).toHaveCount(0)
+
+  await node.locator('.fhead .tt').click()
+  const filter = page.getByRole('searchbox', { name: 'Filter missions and runs' })
+  await filter.fill('mission')
+  await expect(filter).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(filter).toHaveValue('')
+  await expect(window).toBeVisible()
+
+  await window.getByRole('button', { name: 'Edit title', exact: true }).click()
+  const title = window.getByRole('textbox', { name: 'Title', exact: true })
+  await expect(title).toBeFocused()
+  await page.keyboard.press('Delete')
+  await expect(node).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(title).toHaveCount(0)
+  await expect(window).toBeVisible()
+  // A focused control in the window uses the window's own Escape handler.
+  await window.getByRole('button', { name: 'Edit title', exact: true }).focus()
+  await page.keyboard.press('Escape')
+  await expect(window).toHaveCount(0)
+
+  await node.locator('.fhead .tt').click()
+  await page.getByTestId('run-mission-mission').click()
+  const start = page.getByRole('dialog', { name: 'Start mission' })
+  await expect(start).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(start).toHaveCount(0)
+  await expect(window).toBeVisible()
+  await canvas.focus()
+  await page.keyboard.press('Escape')
+  await expect(window).toHaveCount(0)
+  expect(fixture.writes).toEqual([])
+})

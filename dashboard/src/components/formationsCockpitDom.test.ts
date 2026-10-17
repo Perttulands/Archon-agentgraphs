@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { connectionKind, isTextEditingTarget, laneYFrom, splitList } from './formationsCockpitDom'
+import { isTextEditingTarget } from '../keyboard'
+import { connectionKind, laneYFrom, splitList } from './formationsCockpitDom'
 
 describe('connectionKind', () => {
   it('classifies a connection by its judge/pass/fail source or target port', () => {

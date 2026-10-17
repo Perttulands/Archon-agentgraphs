@@ -50,7 +50,10 @@ test('every Scouting node reads in full in its window, with no edit dialog and n
 
   await review.getByRole('button', { name: 'Judged by Brief critic' }).click()
   const critic = page.getByRole('dialog', { name: 'Formation · Brief critic' })
-  await expect(critic.getByText('Agent is Judge on Codex · gpt-5.5 · medium.')).toBeVisible()
+  const staffing = critic.getByRole('region', { name: 'Staffing' })
+  for (const [part, value] of [['role', 'Judge'], ['harness', 'Codex'], ['model', 'gpt-5.5'], ['effort', 'medium']]) {
+    await expect(staffing.getByRole('button', { name: `Change the ${part} of Agent: ${value}`, exact: true })).toBeVisible()
+  }
   await critic.getByRole('button', { name: 'Judges 6 Adversarial review' }).click()
   await expect(review).toHaveClass(/focused/)
   await review.getByRole('button', { name: 'Pass → 7 Brief sign-off' }).click()
