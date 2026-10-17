@@ -296,6 +296,32 @@ describe('RunEvidence', () => {
     expect(file).toHaveTextContent('/srv/project/beads.md')
   })
 
+  it('shows absolute and relative cited renders as thumbnails that open their file', async () => {
+    const report = '/state/.archon/artifacts/run_1/judge/3/judge-report.md'
+    const image = '/state/.archon/artifacts/run_1/judge/3/renders/sh_face_hd.png'
+    const fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/nodes/gate_images')) return respond({ evidence: {
+        runId: 'run_1', nodeId: 'gate_images', kind: 'gate', evaluations: [{
+          seq: 1, kinds: ['formation'], criterion: text('Check eyes'),
+          kindResults: [{ seq: 2, kind: 'formation', verdict: 'fail', reason: text('Lids fail'), evidence: [
+            { kind: 'formation', text: text(report) },
+            { kind: 'formation', text: text('See `renders/sh_face_hd.png` at 1.2 m.') },
+          ] }],
+        }],
+      } })
+      if (url === `/api/files/preview?path=${encodeURIComponent(image)}`) return respond({ file: { path: image, name: 'sh_face_hd.png', kind: 'image', size: 120 } })
+      return url in routes ? respond(routes[url]) : respond(null, 404)
+    })
+    vi.stubGlobal('fetch', fetch)
+    render(<RunEvidence runId="run_1" nodeId="gate_images" title="Eyes" state="done" onClose={() => {}} />)
+    const thumbnail = await screen.findByRole('button', { name: 'Open sh_face_hd.png' })
+    expect(within(thumbnail).getByRole('img')).toHaveAttribute('src', `/api/files/raw?path=${encodeURIComponent(image)}`)
+    fireEvent.click(thumbnail)
+    expect(await screen.findByTestId('evidence-document')).toHaveTextContent('sh_face_hd.png')
+    expect(fetch).toHaveBeenCalledWith(`/api/files/preview?path=${encodeURIComponent(image)}`, expect.any(Object))
+  })
+
   it('says when evidence is unavailable', async () => {
     render(<RunEvidence runId="run_1" nodeId="fmn_missing" title="Missing" state="" onClose={() => {}} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Evidence unavailable: run evidence not found')

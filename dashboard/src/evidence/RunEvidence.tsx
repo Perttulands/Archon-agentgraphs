@@ -1,13 +1,13 @@
 import { useWindowStack } from '../windows/WindowManager'
 import MediaPreview from '../files/MediaPreview'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
 import FloatingWindow from '../windows/FloatingWindow'
 import { mediaKind } from '../files/mediaUrls'
 import { problemHeadline } from '../components/runOutcome'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
-import { useFileWindows } from '../files/FileWindows'
+import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { artifactFileRequest, referencedFileRequest } from '../files/fileWindowModel'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
@@ -29,6 +29,8 @@ import {
   type RunArtifactEntry,
   type RunArtifactPreview,
 } from './runEvidenceApi'
+import { citedPaths, resolveCitation } from './evidenceCitations'
+import '../attempts/attempts.css'
 import './evidence.css'
 
 // The cockpit's run evidence inspector. It reads the evidence routes
@@ -57,6 +59,14 @@ const CLEANUP_SETTLED = new Set(['ended', 'kept_on_call'])
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 const byteLength = (text: string) => new TextEncoder().encode(text).length
 
+const CitationContext = createContext<{ runId: string; artifacts: string[]; paths: string[]; open: (path: string, source?: Element) => void } | null>(null)
+
+function evidencePaths(value: unknown): string[] {
+  if (typeof value === 'string') return citedPaths(value).filter(path => path.startsWith('/'))
+  if (!value || typeof value !== 'object') return []
+  return [...new Set(Object.values(value).flatMap(evidencePaths))]
+}
+
 export default function RunEvidence({ runId, nodeId, title, state, board, onClose }: RunEvidenceProps) {
   const names = useMemo(() => evidenceNamesForBoard(board), [board])
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
@@ -67,7 +77,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
   // Escape closes an open document first, then the evidence dialog.
   const stack = useWindowStack()
-  const anchor = useRef(document.activeElement)
+  const anchor = useRef(document.activeElement ? fileAnchor(document.activeElement) : null)
   useEffect(() => {
     if (!openDocument) return
     const closeDocument = (event: KeyboardEvent) => {
@@ -100,11 +110,11 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   // In the cockpit an artifact opens in its own file window; elsewhere it opens in place.
   // A name with a leading slash is a ref outside the artifact directory, by absolute path.
   const files = useFileWindows()
-  const openArtifact = useCallback((name: string) => {
+  const openArtifact = useCallback((name: string, source?: Element) => {
     setDocumentError('')
     const absolute = name.startsWith('/')
     if (files) {
-      files.open(absolute ? referencedFileRequest(name, title) : artifactFileRequest(runId, name, title))
+      files.open(absolute ? referencedFileRequest(name, title) : artifactFileRequest(runId, name, title), (source || document.activeElement) ? fileAnchor((source || document.activeElement)!) : anchor.current)
       return
     }
     const preview = absolute ? fetchReferencedPreview(name) : fetchArtifactPreview(runId, name)
@@ -119,10 +129,12 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   }, [runId])
 
   return (
-    <FloatingWindow id={`evidence:${nodeId}`} kind="evidence" overCanvas label={`Run evidence · ${title}`}
+    <FloatingWindow id={`evidence:${nodeId}`} kind="evidence" label={`Run evidence · ${title}`}
       title={`Run evidence · ${title}`} className="run-evidence" defaultSize={{ width: 660, height: 640 }}
-      anchor={() => anchor.current?.getBoundingClientRect() || null}
+      anchor={() => anchor.current?.anchor || null}
+      keepClear={() => anchor.current?.keepClear || []} anchorKind={anchor.current?.anchorKind}
       onClose={onClose}>
+      <CitationContext.Provider value={{ runId, artifacts: artifacts?.artifacts.map(file => file.name) || [], paths: evidencePaths(evidence), open: openArtifact }}>
       <div data-testid="node-inspector" className="node-evidence">
         <dl className="node-evidence-identity">
           <div><dt>State</dt><dd data-testid="node-evidence-state">{state || 'not started'}</dd></div>
@@ -176,6 +188,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
           {artifacts?.omitted ? <p className="evidence-note">At least {artifacts.omitted} more files not listed.</p> : null}
         </section>
       </div>
+      </CitationContext.Provider>
     </FloatingWindow>
   )
 }
@@ -390,18 +403,46 @@ function EvidenceIds({ runId, nodeId, evidence, names }: { runId: string; nodeId
 }
 
 function EvidenceItems({ items, omitted }: { items: EvidenceItem[]; omitted?: number }) {
+  const context = useContext(CitationContext)
   if (items.length === 0) return null
   return (
+    <CitationContext.Provider value={context ? { ...context, paths: evidencePaths(items) } : null}>
     <ul className="evidence-items">
       {items.map((item, index) => (
         <li key={index}>
-          {item.text.text}
+          <CitedEvidence text={item.text.text} />
           {item.text.truncated ? <span className="evidence-meta"> · first {formatBytes(byteLength(item.text.text))} of {formatBytes(item.text.bytes)}</span> : null}
         </li>
       ))}
       {omitted ? <li className="evidence-meta">{omitted} more items not shown</li> : null}
     </ul>
+    </CitationContext.Provider>
   )
+}
+
+/** Fixed thumbnail frames keep decoded images from shifting the evidence. */
+function CitationFiles({ text, imagesOnly = false }: { text: string; imagesOnly?: boolean }) {
+  const context = useContext(CitationContext)
+  if (!context) return null
+  const paths = [...new Set(citedPaths(text).map(path => resolveCitation(path, context.artifacts, [...citedPaths(text).filter(path => path.startsWith('/')), ...context.paths])).filter((path): path is string => !!path))]
+  const images = paths.filter(path => /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(path))
+  const others = imagesOnly ? [] : paths.filter(path => !images.includes(path))
+  const raw = (path: string) => path.startsWith('/') ? `/api/files/raw?path=${encodeURIComponent(path)}` : artifactRawUrl(context.runId, path)
+  return <>
+    {images.length ? <div className="attempt-thumbs evidence">{images.map(path => <button key={path} type="button" className="attempt-thumb" title={path}
+      aria-label={`Open ${path.split('/').pop()}`} onClick={event => context.open(path, event.currentTarget)}>
+      <img src={raw(path)} alt={path.split('/').pop()} loading="lazy" decoding="async" draggable={false} />
+    </button>)}</div> : null}
+    {others.map(path => <button key={path} type="button" className="evidence-link" onClick={event => context.open(path, event.currentTarget)}>{path}</button>)}
+  </>
+}
+
+function CitedEvidence({ text }: { text: string }) {
+  const context = useContext(CitationContext)
+  const paths = citedPaths(text)
+  const standalone = paths.length === 1 && paths[0] === text.trim()
+  const resolved = standalone && context ? resolveCitation(paths[0], context.artifacts, context.paths) : null
+  return <>{resolved ? null : text}<CitationFiles text={text} /></>
 }
 
 function RefLink({ runId, value, onOpenArtifact }: { runId: string; value?: EvidenceRef; onOpenArtifact: (name: string) => void }) {
@@ -448,6 +489,7 @@ function EvidenceTextView({ value, label, format = 'markdown', basePath, runId, 
       ) : (
         <pre className="evidence-plain">{value.text}</pre>
       )}
+      <CitationFiles text={value.text} imagesOnly />
       {value.truncated ? (
         <p className="evidence-note" data-testid="evidence-truncated">
           Showing {formatBytes(byteLength(value.text))} of {formatBytes(value.bytes)}. The rest stays in the run evidence on the host.
