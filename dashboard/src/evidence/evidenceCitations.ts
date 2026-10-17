@@ -38,9 +38,10 @@ export function resolveCitation(path: string, artifacts: readonly string[], cont
     // citation may still include that folder's original name (replay/...),
     // so match its suffix only within this attempt and its output folders.
     const inDirectory = matches.filter(candidate => directories.some(directory => candidate.startsWith(`${directory}/`)))
-    return inDirectory.length === 1 ? inDirectory[0] : null
+    if (inDirectory.length === 1) return inDirectory[0]
+    if (inDirectory.length > 1) return null
   }
-  if (matches.length === 1) return matches[0]
+  if (matches.length === 1 && (!directories.length || path.startsWith('/'))) return matches[0]
   const context = contextPaths.filter(candidate => !scheme.test(candidate))
   const exact = matches.filter(candidate => context.some(cited => cited === candidate || cited.endsWith(`/${candidate}`)))
   if (exact.length === 1) return exact[0]

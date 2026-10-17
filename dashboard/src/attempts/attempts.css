@@ -49,7 +49,7 @@
 /* Each attempt is a column of four rows shared across the strip, so every
    verdict starts at the same height and the loop reads straight across. */
 .attempts-grid { display: grid; grid-template-rows: auto auto auto auto; column-gap: 12px; align-items: start; }
-.attempts-grid.strip { grid-auto-flow: column; grid-auto-columns: minmax(min(520px, calc(100cqw - 24px)), 1fr); }
+.attempts-grid.strip { grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); }
 .attempts-grid.compare { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .attempt-col {
   grid-row: span 4; display: grid; grid-template-rows: subgrid; align-self: stretch; min-width: 0;

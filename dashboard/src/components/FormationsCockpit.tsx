@@ -3230,6 +3230,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     version: runVersion,
     live: !activeRun.final,
     waitingGates: waitingGateIds,
+    gatesOf: nodeId => board?.connections.filter(edge => edge.from.split(':')[0] === nodeId && board.gates?.some(gate => gate.id === edge.to.split(':')[0])).map(edge => edge.to.split(':')[0]) || [],
     titleOf: nodeId => producedValue?.byNode.get(nodeId)?.definition?.title || (board ? nodeTitle(board, nodeId) : nodeId),
   } : null), [activeRun, board, nodeAttempts, producedValue, runVersion, waitingGateIds])
   const stepPick = useMemo<StepPick | null>(() => (pendingPick && pendingHumanGate && answerWindowOpen ? {

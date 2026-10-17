@@ -29,7 +29,7 @@ test('a step that looped opens its attempts as one strip that tells the loop, st
 
   // Each attempt's verdict and reason sit beside what it made; the pass stands out.
   await expect(win.getByTestId('attempt-1-verdict-gate')).toContainText('Review gate · ✕ fail')
-  await expect(win.getByTestId('attempt-1').locator('.attempt-head')).toContainText(failReasons[0])
+  await expect(win.getByTestId('attempt-1').locator('.attempt-head')).toContainText(`Review gate: ${failReasons[0]}`)
   await expect(win.getByTestId('attempt-5-verdict-gate')).toContainText(passReason)
   await expect(win.getByTestId('attempt-5')).toHaveClass(/settled/)
   await expect(win.getByTestId('attempts-pip-5')).toHaveClass(/settled/)
@@ -38,11 +38,26 @@ test('a step that looped opens its attempts as one strip that tells the loop, st
   // The oldest attempt's text was cut to the evidence budget, and says so.
   await expect(win.getByTestId('attempt-1-output-notes')).toContainText('… first 107 B of 6.1 KiB')
 
-  // The images are drawn large enough to judge, every one in view.
+  // Open with the selected attempt fully visible; selecting each one scrolls
+  // only the strip, keeping the window and underlying card stationary.
+  const visibleColumn = async (index: number) => {
+    const visible = await settledBox(page, win.locator('.attempts-scroll'))
+    const column = await settledBox(page, columns(page).nth(index))
+    expect(column.x).toBeGreaterThanOrEqual(visible.x)
+    expect(column.x + column.width).toBeLessThanOrEqual(visible.x + visible.width)
+  }
+  await visibleColumn(4)
+  const windowBox = await settledBox(page, win)
+  const cardBox = await settledBox(page, page.getByTestId('formation-node-execution'))
+  // The images are drawn large enough to judge, each in view when selected.
   const images = win.locator('[data-attempt] .attempt-image img')
   await expect(images).toHaveCount(5)
   await expect.poll(() => images.evaluateAll(list => list.every(image => (image as HTMLImageElement).naturalWidth > 0))).toBe(true)
   for (let index = 0; index < 5; index++) {
+    await win.getByTestId(`attempts-pip-${index + 1}`).click()
+    await visibleColumn(index)
+    expect(await settledBox(page, win)).toEqual(windowBox)
+    expect(await settledBox(page, page.getByTestId('formation-node-execution'))).toEqual(cardBox)
     const box = await settledBox(page, images.nth(index))
     expect(box.height).toBeGreaterThan(300)
     expect(box.x + box.width).toBeLessThan(1920)

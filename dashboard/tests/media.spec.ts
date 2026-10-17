@@ -168,7 +168,9 @@ for (const missing of ['unexported', 'delayed-request'] as const) {
     await expect(page.getByRole('button', { name: 'Reset view' })).toBeVisible()
     const stage = page.getByLabel('3D model body.fbx', { exact: true })
     const before = await stage.boundingBox()
-    const note = page.getByText('Some textures could not be loaded. Showing affected surfaces with a neutral material.', { exact: true })
+    const note = page.getByText(missing === 'unexported'
+      ? 'This export has no textures. Showing affected surfaces with a neutral material.'
+      : 'Some textures could not be loaded. Showing affected surfaces with a neutral material.', { exact: true })
     if (missing === 'delayed-request') {
       await expect.poll(() => textureRequested).toBe(true)
       await expect(note).toHaveCount(0)

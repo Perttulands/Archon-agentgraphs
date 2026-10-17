@@ -13,10 +13,12 @@ import {
   type EvidenceItem,
   type EvidenceText,
   type StepAttempt,
+  type StepAttempts,
 } from '../evidence/runEvidenceApi'
 import LinkedText from '../files/LinkedText'
 import { resolveCitation } from '../evidence/evidenceCitations'
-import { CitationContext, CitationFiles, CitedEvidence, attemptCitationScope } from '../evidence/CitationFiles'
+import { withJudgingAttempts } from '../evidence/citationAttempts'
+import { CitationContext, CitationFiles, CitedEvidence } from '../evidence/CitationFiles'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { artifactFileRequest, folderFileRequest, referencedFileRequest, type FileRequest } from '../files/fileWindowModel'
 import AttemptImage, { type ImageZoom } from './AttemptImage'
@@ -45,6 +47,7 @@ import {
 /** What every column in a window shares. */
 export interface AttemptView {
   runId: string
+  citationSteps?: StepAttempts[]
   stepTitle: string
   waitingGates: ReadonlySet<string>
   zoom: ImageZoom | null
@@ -334,7 +337,7 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
   const pickedBy = attempt.picked ? pickerWords(attempt.picked.decidedBy, view.titleOf) : ''
   const beside = (event: { shiftKey: boolean; target: EventTarget }) => event.shiftKey && !view.compare && !(event.target as Element).closest?.(OWN_CLICKS)
   return (
-    <CitationContext.Provider value={{ runId: view.runId, ...attemptCitationScope(attempt) }}>
+    <CitationContext.Provider value={{ runId: view.runId, ...withJudgingAttempts(attempt, view.citationSteps || []) }}>
     <article
       className={`attempt-col${marks.focused ? ' focused' : ''}${marks.settled ? ' settled' : ''}${excluded ? ' excluded' : ''}`}
       data-attempt={attempt.attempt}
@@ -354,7 +357,7 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
         <span className="attempt-time">{[attemptTiming(attempt, view.now), excluded ? 'not a candidate' : ''].filter(Boolean).join(' · ')}</span>
         {attempt.stopReason?.text.trim() ? <p className="attempt-reason attempt-stop-reason"><LinkedText text={attempt.stopReason.text} /></p> : null}
         {attempt.verdicts.filter(verdict => verdict.verdict === 'fail' && verdict.reason.text.trim()).map(verdict => (
-          <div className="attempt-reason" key={`${verdict.gateId}:${verdict.evaluationSeq}`}><LinkedText text={verdict.reason.text} /><CitationFiles text={verdict.reason.text} /></div>
+          <div className="attempt-reason" key={`${verdict.gateId}:${verdict.evaluationSeq}`}><strong>{verdict.gateTitle || view.titleOf?.(verdict.gateId) || verdict.gateId}: </strong><LinkedText text={verdict.reason.text} /><CitationFiles text={verdict.reason.text} /></div>
         ))}
       </header>
       <div className="attempt-verdicts">

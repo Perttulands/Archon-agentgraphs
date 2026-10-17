@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { fetchNodeEvidence, fetchRunAttempts, type StepAttempts, type NodeEvidence } from '../evidence/runEvidenceApi'
+import { fetchNodeEvidence, type StepAttempts, type NodeEvidence } from '../evidence/runEvidenceApi'
 
-import { CitationContext, CitationFiles, attemptCitationScope, evidencePaths } from '../evidence/CitationFiles'
+import { CitationContext, CitationFiles } from '../evidence/CitationFiles'
+
+import { fetchCitationAttempts, evaluationCitationScope } from '../evidence/citationAttempts'
 
 const POLL_MS = 5000
 
@@ -21,9 +23,10 @@ export function GateRunFacts({ runId, gateId, onSettle }: {
   const evaluationSeq = evidence?.evaluations?.slice(-1)[0]?.seq
   useEffect(() => {
     let current = true
-    fetchRunAttempts(runId).then(result => { if (current) setSteps(result.steps) }, () => {})
+    if (!evidence || evidence.nodeId !== gateId) return
+    fetchCitationAttempts(runId, evidence).then(steps => { if (current) setSteps(steps) }, () => {})
     return () => { current = false }
-  }, [runId, evaluationSeq])
+  }, [runId, gateId, evaluationSeq, evidence])
   const [settling, setSettling] = useState(false)
   useEffect(() => {
     let current = true
@@ -44,10 +47,9 @@ export function GateRunFacts({ runId, gateId, onSettle }: {
   const verdict = evaluation?.verdict
   const why = block?.reason.text.trim() || failure?.reason.text.trim() || ''
   if (!verdict && !why) return null
-  const matched = steps.flatMap(step => step.attempts.filter(attempt => attempt.verdicts.some(verdict => verdict.evaluationSeq === evaluation?.seq)))
-  const scopes = matched.map(attemptCitationScope)
+  const scope = evaluation ? evaluationCitationScope(evaluation, steps) : { artifacts: [], paths: [], directories: [] }
   return (
-    <CitationContext.Provider value={{ runId, artifacts: steps.flatMap(step => step.attempts.flatMap(attempt => attemptCitationScope(attempt).artifacts)), directories: scopes.flatMap(scope => scope.directories), paths: [...evidencePaths(evaluation), ...scopes.flatMap(scope => scope.paths)] }}>
+    <CitationContext.Provider value={{ runId, ...scope }}>
     <section className="ngate-run" data-testid={`gate-run-${gateId}`} aria-label="This run">
       {verdict ? (
         <div className={`ngate-verdict ${verdict.verdict === 'fail' ? 'fail' : 'pass'}`}>

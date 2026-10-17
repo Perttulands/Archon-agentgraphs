@@ -12,6 +12,28 @@ function place(element: Element, box: WindowRect) {
 afterEach(() => { document.body.innerHTML = '' })
 
 describe('attempts opening placement', () => {
+  it('fits a scrollable strip beside the replay status and its gate verdict in a crowded Flow', () => {
+    const status = { left: 1393, top: 362, width: 240, height: 213 }
+    const gateStatus = { left: 1393, top: 608, width: 240, height: 224 }
+    const verdict = { left: 549, top: 719, width: 828, height: 18 }
+    const handles = [
+      { left: 547, top: 362, width: 24, height: 24 },
+      { left: 581, top: 365, width: 152, height: 18 },
+      { left: 547, top: 433, width: 72, height: 17 },
+      { left: 547, top: 456, width: 72, height: 17 },
+      { left: 627, top: 455, width: 224, height: 18 },
+      { left: 547, top: 479, width: 72, height: 17 },
+      { left: 627, top: 478, width: 217, height: 18 },
+    ]
+    const window = placeOpeningWindow(attemptsWindowSize(3, { width: 1920, height: 1080 }), FLOATING_WINDOW_MINIMUM.attempts, {
+      workspace: { bounds: { left: 268, top: 85, width: 1644, height: 987 }, avoid: [] },
+      fitToMinimum: true, anchor: status, keepClear: [...handles, status, gateStatus, verdict],
+    })
+    for (const protectedBox of [...handles, status, gateStatus, verdict]) expect(rectsOverlap(window, protectedBox)).toBe(false)
+    expect(window.width).toBeGreaterThanOrEqual(420)
+    expect(window.height).toBeGreaterThanOrEqual(320)
+  })
+
   it('leaves the whole Flow status visible, including state and produced files', () => {
     document.body.innerHTML = '<div data-testid="flow-view"><li class="flow-step" data-flow-node="replay"><div class="flow-step-head"><button class="flow-title">Replay</button></div><div class="flow-status"><span class="flow-state">done</span><button class="attempts-open">1 attempt</button><button>replay/</button></div></li></div>'
     const title = { left: 580, top: 380, width: 200, height: 20 }

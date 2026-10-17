@@ -1,5 +1,5 @@
 import type { FilePlace } from '../files/FileWindows'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { fetchRunAttempts, type StepAttempt, type StepAttempts } from '../evidence/runEvidenceApi'
 import FloatingWindow from '../windows/FloatingWindow'
 import type { FrameSize } from '../windows/floatingWindowSize'
@@ -19,6 +19,7 @@ import {
   type AttemptsPick,
 } from './attemptsModel'
 import './attempts.css'
+import { citedAttemptNodes } from '../evidence/citationAttempts'
 
 // A step's attempts in one floating window (archon-7963). The strip shows
 // every attempt in order, each with what it produced and what its gates said,
@@ -73,6 +74,7 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
   onClose: () => void
 }) {
   const [step, setStep] = useState<StepAttempts | null>(null)
+  const [citationSteps, setCitationSteps] = useState<StepAttempts[]>([])
   const [error, setError] = useState('')
   const [poll, setPoll] = useState(0)
   const [focus, setFocus] = useState<number | null>(null)
@@ -100,6 +102,15 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'the daemon did not answer') })
     return () => { cancelled = true }
   }, [nodeId, poll, runId, stepTitle, version])
+
+  useEffect(() => {
+    let current = true
+    const nodes = citedAttemptNodes(runId, step).filter(node => node !== nodeId)
+    Promise.allSettled(nodes.map(node => fetchRunAttempts(runId, node))).then(results => {
+      if (current) setCitationSteps(results.flatMap(result => result.status === 'fulfilled' ? result.value.steps : []))
+    })
+    return () => { current = false }
+  }, [nodeId, runId, step])
 
   const attempts = useMemo(() => step?.attempts || [], [step])
   const numbers = useMemo(() => attempts.map(attempt => attempt.attempt), [attempts])
@@ -171,8 +182,8 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     setPair(current => (at === 0 ? [attempt, current[1]] : [current[0], attempt]))
   }, [compare, side])
 
-  // The focused column comes into view as the keys step to it.
-  useEffect(() => {
+  // Scroll only the strip, before paint; neither the window nor the page moves.
+  useLayoutEffect(() => {
     if (compare || focus === null) return
     const strip = scrollRef.current
     const column = strip?.querySelector<HTMLElement>(`[data-attempt="${focus}"]`)
@@ -180,7 +191,7 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     const box = column.getBoundingClientRect()
     const view = strip.getBoundingClientRect()
     const left = box.left < view.left ? box.left - view.left - 12 : box.right > view.right ? Math.min(box.left - view.left - 12, box.right - view.right + 12) : 0
-    if (left) strip.scrollBy?.({ left, behavior: 'smooth' })
+    if (left) strip.scrollLeft += left
   }, [compare, focus])
 
   // Switching views redraws the pips; a pip that had the keys takes them along
@@ -259,7 +270,7 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     }
   }
 
-  const view: AttemptView = { runId, stepTitle, waitingGates, zoom, onZoom: setZoom, compare, now, titleOf }
+  const view: AttemptView = { runId, stepTitle, waitingGates, zoom, onZoom: setZoom, compare, now, titleOf, citationSteps }
   const column = (attempt: StepAttempt, focused: boolean, onFocus: (beside: boolean) => void) => (
     <AttemptColumn key={attempt.attempt} attempt={attempt} view={view} onFocus={onFocus}
       marks={{

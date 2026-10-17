@@ -9,7 +9,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { modelResourceUrl } from './mediaUrls'
 import { ModelPreviewError, readModelData, requireFbxMesh } from './modelPreviewData'
-import { restoreMissingModelMaterials } from './modelMaterials'
+import { modelHasTextures, restoreMissingModelMaterials } from './modelMaterials'
 import './ModelViewer.css'
 
 function disposeModel(model: Object3D, retiredMaterials: Set<Material>) {
@@ -100,9 +100,12 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
     let resourcesLoaded = true
     const reconcileMaterials = () => {
       if (disposed || !model || !resourcesLoaded) return
+      const hasTextures = modelHasTextures(model)
       const retired = restoreMissingModelMaterials(model, /\.fbx$/i.test(name))
       for (const material of retired) retiredMaterials.add(material)
-      if (retired.size) setTextureNote('Some textures could not be loaded. Showing affected surfaces with a neutral material.')
+      if (retired.size) setTextureNote(hasTextures
+        ? 'Some textures could not be loaded. Showing affected surfaces with a neutral material.'
+        : 'This export has no textures. Showing affected surfaces with a neutral material.')
       render()
     }
     manager.onStart = () => { resourcesLoaded = false }

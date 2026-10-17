@@ -1,6 +1,16 @@
 import { Color, Mesh, MeshStandardMaterial, Texture } from 'three'
 import type { Material, Object3D } from 'three'
 
+export function modelHasTextures(model: Object3D): boolean {
+  let hasTextures = false
+  model.traverse(object => {
+    if (!(object instanceof Mesh)) return
+    const materials: Material[] = Array.isArray(object.material) ? object.material : [object.material]
+    if (materials.some(material => Object.values(material).some(value => value instanceof Texture))) hasTextures = true
+  })
+  return hasTextures
+}
+
 // Call only after the loader's resources have settled. A Texture without an
 // image can be either an FBX placeholder or a request that has not finished yet.
 export function restoreMissingModelMaterials(model: Object3D, fbx: boolean): Set<Material> {

@@ -18,7 +18,6 @@ import {
   fetchNodeEvidence,
   fetchRunArtifacts,
   fetchRunBrief,
-  fetchRunAttempts,
   type StepAttempts,
   formatBytes,
   type EvidenceAttempt,
@@ -34,6 +33,8 @@ import {
 import { CitationContext, CitationScopeProvider, CitationFiles, CitedEvidence, evidencePaths, attemptCitationScope } from './CitationFiles'
 import '../attempts/attempts.css'
 import './evidence.css'
+import { resolveCitation } from './evidenceCitations'
+import { fetchCitationAttempts, evaluationCitationScope, withJudgingAttempts } from './citationAttempts'
 
 // The cockpit's run evidence inspector. It reads the evidence routes
 // (ADR-0017) rather than the sanitized projection, so it shows what a node
@@ -69,9 +70,10 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const [attemptSteps, setAttemptSteps] = useState<StepAttempts[]>([])
   useEffect(() => {
     let current = true
-    fetchRunAttempts(runId).then(result => { if (current) setAttemptSteps(result.steps) }, () => {})
+    if (!evidence || evidence.nodeId !== nodeId) return
+    fetchCitationAttempts(runId, evidence).then(steps => { if (current) setAttemptSteps(steps) }, () => {})
     return () => { current = false }
-  }, [runId, state])
+  }, [runId, nodeId, evidence])
   const [artifactError, setArtifactError] = useState('')
   const [artifactRetry, setArtifactRetry] = useState(0)
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
@@ -208,7 +210,7 @@ function Attempts({ runId, nodeId, attempts, attemptSteps, names, onOpenArtifact
   const latestOutput = latestAttempt?.output
   const scopeFor = (number?: number) => {
     const attempt = attemptSteps.find(step => step.nodeId === nodeId)?.attempts.find(attempt => attempt.attempt === number)
-    return attempt ? attemptCitationScope(attempt) : {}
+    return attempt ? withJudgingAttempts(attempt, attemptSteps) : {}
   }
   // Seats usually return the same text as the whole output and as its port: print it once.
   const outputInPort = latestOutput ? latestOutput.ports.some(port => sameText(port.text, latestOutput.text)) : false
@@ -284,9 +286,7 @@ function Attempts({ runId, nodeId, attempts, attemptSteps, names, onOpenArtifact
 }
 
 export function gateCitationScope(evaluation: EvidenceEvaluation, steps: StepAttempts[]) {
-  const attempts = steps.flatMap(step => step.attempts.filter(attempt => attempt.verdicts.some(verdict => verdict.evaluationSeq === evaluation.seq)))
-  const scopes = attempts.map(attemptCitationScope)
-  return scopes.length ? { directories: scopes.flatMap(scope => scope.directories), paths: [...evidencePaths(evaluation), ...scopes.flatMap(scope => scope.paths)] } : { paths: evidencePaths(evaluation) }
+  return evaluationCitationScope(evaluation, steps)
 }
 
 function GateEvaluations({ runId, evaluations, attemptSteps, names, onOpenArtifact }: {
@@ -468,6 +468,11 @@ function EvidenceTextView({ value, label, format = 'markdown', basePath, runId, 
   runId?: string
   onOpenArtifact?: (name: string) => void
 }) {
+  const citations = useContext(CitationContext)
+  const markdownOpen = onOpenArtifact || (citations?.open ? (path: string) => {
+    const resolved = resolveCitation(path, citations.artifacts, citations.paths, citations.directories)
+    if (resolved) citations.open?.(resolved)
+  } : undefined)
   if (!value.text && !value.truncated) return null
   return (
     <div className="evidence-text" aria-label={label}>
@@ -475,7 +480,7 @@ function EvidenceTextView({ value, label, format = 'markdown', basePath, runId, 
         <Markdown
           content={value.text}
           basePath={basePath}
-          onOpenPath={onOpenArtifact}
+          onOpenPath={markdownOpen}
           imageUrl={runId ? path => artifactRawUrl(runId, path) : undefined}
         />
       ) : format === 'lines' ? (
@@ -483,7 +488,7 @@ function EvidenceTextView({ value, label, format = 'markdown', basePath, runId, 
       ) : (
         <pre className="evidence-plain">{value.text}</pre>
       )}
-      <CitationFiles text={value.text} />
+      <CitationFiles text={value.text} excludeMarkdownLinks={format === 'markdown'} />
       {value.truncated ? (
         <p className="evidence-note" data-testid="evidence-truncated">
           Showing {formatBytes(byteLength(value.text))} of {formatBytes(value.bytes)}. The rest stays in the run evidence on the host.

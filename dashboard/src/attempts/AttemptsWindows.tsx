@@ -24,6 +24,7 @@ export interface AttemptsRun {
   live: boolean
   /** The gates waiting for the operator now. */
   waitingGates: readonly string[]
+  gatesOf?: (nodeId: string) => readonly string[]
   titleOf: (nodeId: string) => string
 }
 
@@ -53,11 +54,11 @@ export function AttemptsWindowsProvider({ run, stack, children }: { run: Attempt
   const stackRef = useRef(stack)
   stackRef.current = stack
   const open = useCallback((nodeId: string, origin?: Element | null) => {
-    if (origin) places.current.set(nodeId, attemptsAnchor(origin))
+    if (origin) places.current.set(nodeId, attemptsAnchor(origin, run?.gatesOf?.(nodeId)))
     setOpened(current => current.runId !== runId ? { runId, nodes: [nodeId] }
       : current.nodes.includes(nodeId) ? current : { runId, nodes: [...current.nodes, nodeId] })
     stackRef.current.focus(attemptsWindowId(nodeId))
-  }, [runId])
+  }, [runId, run])
   const close = useCallback((nodeId: string) => setOpened(current => ({ ...current, nodes: current.nodes.filter(node => node !== nodeId) })), [])
   const nodes = opened.runId === runId ? opened.nodes : []
   const value = useMemo(() => ({ run, opened: nodes, places: places.current, open, close }), [close, nodes, open, run])

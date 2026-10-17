@@ -42,13 +42,16 @@ import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
  * (see cockpitScene.ts).
  *
  * The window may open smaller than asked to fit free space, but never below
- * half its size on either side, nor below the kind's minimum. Its remembered
+ * half its size on either side, nor below the kind's minimum. Scrollable
+ * attempt strips may fit down to their minimum when the scene requires it. Its remembered
  * size is not changed. Placement is pure: the same scene always gives the same
  * rectangle.
  */
 
 export interface PlacementScene {
   workspace: Workspace
+  /** Scrollable strips can fit down to their minimum to keep surrounding evidence visible. */
+  fitToMinimum?: boolean
   /** What the window belongs to. Never covered when a placement can avoid it. */
   anchor?: WindowRect | null
   /**
@@ -228,8 +231,8 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
   const avoid = scene.workspace.avoid.filter(inReach)
   const full = clampFrameSize(size, minimum, bounds)
   const smallest = {
-    width: Math.min(full.width, Math.max(minimum.width, Math.ceil(full.width * FIT_SHARE))),
-    height: Math.min(full.height, Math.max(minimum.height, Math.ceil(full.height * FIT_SHARE))),
+    width: Math.min(full.width, Math.max(minimum.width, Math.ceil(full.width * (scene.fitToMinimum ? 0 : FIT_SHARE)))),
+    height: Math.min(full.height, Math.max(minimum.height, Math.ceil(full.height * (scene.fitToMinimum ? 0 : FIT_SHARE)))),
   }
   const reach = grow(bounds, ANCHOR_REACH)
   // An anchor scrolled out of view says nothing about where to open.

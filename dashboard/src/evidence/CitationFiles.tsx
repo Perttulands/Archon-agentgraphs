@@ -21,18 +21,22 @@ export function attemptCitationScope(attempt: StepAttempt): CitationScope {
 export const CitationContext = createContext<(CitationScope & { runId: string; open?: (path: string, source?: Element) => void }) | null>(null)
 export function CitationScopeProvider({ scope, children }: { scope: Partial<CitationScope>; children: ReactNode }) {
   const parent = useContext(CitationContext)
-  return <CitationContext.Provider value={parent ? { ...parent, ...scope } : null}>{children}</CitationContext.Provider>
+  return <CitationContext.Provider value={parent ? { ...parent, ...scope, artifacts: [...parent.artifacts, ...(scope.artifacts || [])] } : null}>{children}</CitationContext.Provider>
 }
 export function evidencePaths(value: unknown): string[] {
   if (typeof value === 'string') return citedPaths(value).filter(path => path.startsWith('/'))
   if (!value || typeof value !== 'object') return []
   return [...new Set(Object.values(value).flatMap(evidencePaths))]
 }
-export function CitationFiles({ text, imagesOnly = false }: { text: string; imagesOnly?: boolean }) {
+export function CitationFiles({ text, imagesOnly = false, excludeMarkdownLinks = false }: { text: string; imagesOnly?: boolean; excludeMarkdownLinks?: boolean }) {
   const context = useContext(CitationContext)
   const windows = useFileWindows()
   if (!context) return null
-  const paths = [...new Set(citedPaths(text).map(path => resolveCitation(path, context.artifacts, [...citedPaths(text).filter(path => path.startsWith('/')), ...context.paths], context.directories)).filter((path): path is string => !!path))]
+  const linked = excludeMarkdownLinks ? new Set([
+    ...[...text.matchAll(/!?\[[^\]]*\]\(<?([^\s)>]+)>?(?:\s+["'][^"']*["'])?\)/g)].flatMap(match => citedPaths(match[1])),
+    ...[...text.matchAll(/^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?/gm)].flatMap(match => citedPaths(match[1])),
+  ]) : new Set<string>()
+  const paths = [...new Set(citedPaths(text).filter(path => !linked.has(path)).map(path => resolveCitation(path, context.artifacts, [...citedPaths(text).filter(path => path.startsWith('/')), ...context.paths], context.directories)).filter((path): path is string => !!path))]
   const images = paths.filter(path => /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(path))
   const open = (path: string, source: Element) => context.open ? context.open(path, source) : windows?.open(artifactFileRequest(context.runId, path), fileAnchor(source))
   return <>
