@@ -43,6 +43,7 @@ type formationsRunStartRequest struct {
 	MissionID    string            `json:"inputCardId"`
 	FormationID  string            `json:"formationId"`
 	Actor        string            `json:"actor"`
+	Driver       string            `json:"driver"`
 	ExpectedRev  int               `json:"expectedRev"`
 	Cwd          string            `json:"cwd"`
 	ContextPaths []string          `json:"contextPaths"`
@@ -714,7 +715,7 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status, err := engine.RunFormation(slug, request.FormationID, formations.FormationRunRequest{
-			Actor:        request.Actor,
+			Actor:        formations.RunDriver(request.Driver, request.Actor),
 			Personas:     h.personas,
 			Cwd:          request.Cwd,
 			ContextPaths: request.ContextPaths,
@@ -734,7 +735,7 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		ContextPaths:      request.ContextPaths,
 		BeadID:            request.BeadID,
 		Inputs:            request.Inputs,
-		Actor:             request.Actor,
+		Actor:             formations.RunDriver(request.Driver, request.Actor),
 		ExpectedBoardETag: r.Header.Get("If-Match"),
 		ExpectedBoardRev:  expectedRev,
 		Personas:          h.personas,
@@ -1293,10 +1294,6 @@ func (h *FormationsHandler) PatchBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("ETag", board.ETag)
 		response := map[string]interface{}{"mission": board}
-		// A model outside its harness's catalog is accepted with a warning.
-		if warnings := formations.SlotWarnings(board, assign.FormationID, assign.SlotID); len(warnings) > 0 {
-			response["warnings"] = warnings
-		}
 		core.WriteSuccess(w, response)
 		return
 	}

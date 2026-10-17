@@ -116,7 +116,7 @@ async function panSlotTo(page: Page, slot: Locator, edge: 'bottom' | 'right' | '
       for (let x = cx + 40; x < cx + cw - 40; x += 24) {
         const hit = document.elementFromPoint(x, y)
         const tx = x + mx, ty = y + my
-        if (hit?.closest('[data-testid="formations-world"]') !== null && hit?.closest('[data-node], .note-sticky, .zoomctl, .staffing-keyhint, .run-banner, .wire, svg')) continue
+        if (hit?.closest('[data-testid="formations-world"]') !== null && hit?.closest('[data-node], .note-sticky, .zoomctl, .run-banner, .wire, svg')) continue
         if (!hit?.closest('[data-testid="formations-canvas"]')) continue
         if (tx < cx + 4 || tx > cx + cw - 4 || ty < cy + 4 || ty > cy + ch - 4) continue
         return { x, y }

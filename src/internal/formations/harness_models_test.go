@@ -30,13 +30,13 @@ func useCodexModels(t *testing.T, fixture bool) string {
 
 func TestHarnessesOfferTheirKnownModels(t *testing.T) {
 	useCodexModels(t, true)
-	if got := HarnessModels("claude-code"); !reflect.DeepEqual(got, []HarnessModel{{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}}) {
+	if got := HarnessModels("claude-code"); !reflect.DeepEqual(got, []HarnessModel{{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}, {ID: "claude-opus-5-5"}, {ID: "claude-sonnet-5-5"}, {ID: "claude-haiku-5-5"}, {ID: "claude-fable-5-1"}}) {
 		t.Fatalf("claude-code models = %+v", got)
 	}
 	// Codex lists the models its picker shows, by priority, with each model's levels.
 	want := []HarnessModel{
 		{ID: "gpt-6-astra", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
-		{ID: "gpt-5.6-sol", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{ID: "gpt-6.1-sol", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
 		{ID: "gpt-5.5", Efforts: []string{"low", "medium", "high", "xhigh"}},
 	}
 	if got := HarnessModels("openai-codex"); !reflect.DeepEqual(got, want) {
@@ -176,25 +176,13 @@ func TestASlotsEffortIsCheckedAgainstItsModel(t *testing.T) {
 	}
 }
 
-func TestAModelOutsideTheCatalogIsAcceptedWithAWarning(t *testing.T) {
+// The catalog is for suggestions, never validation: both harnesses accept full
+// model IDs that can appear before the local catalog is refreshed.
+func TestAModelOutsideTheCatalogIsAccepted(t *testing.T) {
 	useCodexModels(t, true)
-	for _, check := range []struct {
-		harness, model, want string
-	}{
-		{"openai-codex", "gpt-7-nova", `slot "Worker" model "gpt-7-nova" is not in the openai-codex catalog; the harness decides`},
-		{"claude-code", "claude-opus-5", `slot "Worker" model "claude-opus-5" is not in the claude-code catalog; the harness decides`},
-		{"openai-codex", "gpt-6-astra", ""},
-		{"openai-codex", "gpt-reserve", ""},
-		{"claude-code", "opus", ""},
-		{"claude-code", "", ""},
-	} {
-		if got := SlotModelWarning(`"Worker"`, check.harness, check.model); got != check.want {
-			t.Errorf("%s %s: warning = %q, want %q", check.harness, check.model, got, check.want)
+	for _, harness := range []string{"claude-code", "openai-codex"} {
+		if err := validateSlotSettings(`"Worker"`, harness, "future-model", "xhigh"); err != nil {
+			t.Errorf("%s: %v", harness, err)
 		}
-	}
-	// Without a catalog for the harness there is nothing to warn about.
-	useCodexModels(t, false)
-	if got := SlotModelWarning(`"Worker"`, "openai-codex", "gpt-7-nova"); got != "" {
-		t.Fatalf("warning without a Codex cache = %q", got)
 	}
 }

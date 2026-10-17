@@ -86,8 +86,9 @@ func TestARecreatedMissionDoesNotInheritArchivedRuns(t *testing.T) {
 // artifacts carry absolute paths, and the mission as it ran stays readable
 // after edits (archon-o7p.2).
 func TestRunsSayWhoStartedThemWhenAndWhatTheyRan(t *testing.T) {
+	t.Setenv("ARCHON_DRIVER", "")
 	c, executor, _ := fixture(t)
-	w := post(t, c, "/api/runs", `{"inputs":{"brief":"run the proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1,"actor":"agent:driver"}`)
+	w := post(t, c, "/api/runs", `{"inputs":{"brief":"run the proof"},"mission":"proof","inputCardId":"mis_proof","expectedRev":1,"driver":"agent:driver","actor":"agent:other"}`)
 	if w.Code != 202 {
 		t.Fatalf("start %d %s", w.Code, w.Body.String())
 	}
@@ -114,7 +115,7 @@ func TestRunsSayWhoStartedThemWhenAndWhatTheyRan(t *testing.T) {
 		t.Fatal("second start")
 	}
 	for _, run := range listRuns(t, c, "/api/runs?mission=proof") {
-		if run.RunID != id && run.StartedBy != "operator:standalone" {
+		if run.RunID != id && run.StartedBy != "agent:archon" {
 			t.Fatalf("a start naming no actor is driven by %q", run.StartedBy)
 		}
 	}

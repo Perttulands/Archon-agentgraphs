@@ -48,7 +48,8 @@ test('an empty slot staffs in two inputs, says so in place, and one Ctrl+Z empti
 test('the keyboard path: N reaches the empty slot, typed words fill the sentence, and Enter staffs it with the policy\'s reason', async ({ page }) => {
   const fixture = await cockpitFixture(page, { emptyWorker: true, roles })
   await page.goto('/')
-  await expect(page.getByTestId('staffing-keyhint')).toContainText('N next empty slot · 1–6 effort on a focused slot')
+  await expect(page.getByTestId('slot-execution-worker')).toBeVisible()
+  await expect(page.getByTestId('staffing-keyhint')).toHaveCount(0)
   await page.mouse.click(1000, 950)
   await page.keyboard.press('n')
   const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
@@ -230,12 +231,12 @@ test('Esc and a click away change nothing; mistakes are named before they are wr
   await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Claude controller | Claude Code · opus · medium')
   await page.keyboard.press('Escape')
 
-  // A model outside the catalog is staffed, with a warning on the slot.
+  // A model outside the catalog is staffed without treating it as an error.
   await controller.locator('.slot-ring').click()
   await page.keyboard.type('gpt-7-nova')
   await page.keyboard.press('Enter')
   await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Claude controller | Claude Code · gpt-7-nova · medium')
-  await expect(controller.locator('.slot-warn')).toHaveText('model not in catalog')
+  await expect(controller.locator('.slot-warn')).toHaveCount(0)
   await expect(page.getByTestId('staffing-stamp')).toHaveText('gpt-7-nova: not in the catalog; the harness decides.')
   expect(assignments(fixture.patches)).toEqual([
     { formationId: 'execution', slotId: 'controller', agentId: 'claude', harness: 'claude-code', model: 'opus', effort: 'medium' },

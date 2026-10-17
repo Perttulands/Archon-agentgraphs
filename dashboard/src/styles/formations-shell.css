@@ -45,6 +45,5 @@
   .fmx .topbar .mission-title{flex:1 0 100%;}
   .fmx .viewport .zoomctl{bottom:72px;}
   .fmx .viewport .zoomlevel{bottom:72px;}
-  .fmx .viewport .staffing-keyhint{display:none;}
   .fmx .roster.floating{bottom:68px;height:min(360px,calc(100% - 90px));}
 }

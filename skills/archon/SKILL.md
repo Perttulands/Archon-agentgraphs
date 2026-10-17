@@ -145,7 +145,9 @@ archon $S mission input "$M"
 each: name, kind, required or optional, description. Names are a lowercase
 letter then lowercase letters, digits or underscores. Each seat's brief gets the
 value in place of `{name}`, or `(not supplied)` for an optional input left out;
-a reference to an undeclared name is the validation error
+`{bead}` always takes the run's `--bead` value, or an empty string when none
+was supplied, even if an input is named `bead`. It needs no declaration.
+Other references to undeclared names are the validation error
 `unknown_input_reference`. To show a seat a literal `{name}`, write `{{name}}`;
 it is never a reference. The first step also receives the inputs from the
 Input card: the implicit `brief` unchanged, or one `name: value` line per
@@ -208,9 +210,11 @@ and any of those flags given beside it wins. `claude-code` takes
 `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`,
 though a known Codex model may take fewer (`gpt-5.5` stops at `xhigh`). The
 known models are in `GET /api/agents` `harnesses[].models` and the `formation
-assign` usage: `claude-code` runs `opus`, `sonnet`, `haiku` and `fable`, and
-Codex the models its CLI lists on the daemon host. Another model is staffed
-with a warning; check its name. Omit `--role` for a vanilla agent. The
+assign` usage: `claude-code` offers its family aliases and full current model
+names, and Codex the models its CLI lists on the daemon host (including
+`gpt-6.1-sol` and `gpt-6-astra`). The catalog is not exhaustive; other model
+names are accepted without warnings and the harness decides whether they run.
+Omit `--role` for a vanilla agent. The
 operator sees and edits the same settings in the cockpit as a sentence on each
 slot (`Worker 1 is vanilla on Claude Code · opus · low`), so state each slot in
 full rather than leaving a choice to them. A role adds only its text, so one step's
@@ -458,8 +462,9 @@ archon $S run status "$ARCHON_RUN_ID" --json
 - A run's only limits are the mission's Limit cards (above); a launch sets
   none. Without a card a send-back loop continues until its gate passes or you
   stop the run with `run abort`.
-- `--actor <you>` names the run's driver (default `agent:archon`); run status
-  and the cockpit's run list show it as `startedBy`.
+- `--by <name>` names the run's driver (default `ARCHON_DRIVER`, then
+  `agent:archon`). API starts accept `driver`. Run status, lists and the run
+  bar show the recorded name as `startedBy`.
 - A lost receipt: check `run list --mission "$M" --json` before starting again.
   It lists only that mission's runs, each with `status`, `startedBy`,
   `startedAt`, `updatedAt` (a final run ended then) and `inputs`.

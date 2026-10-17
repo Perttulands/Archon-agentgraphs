@@ -22,9 +22,10 @@ export function runStateWord(status: string): string {
   return stateWords[status] || status
 }
 
-/** What a run is called in a row: its Bead when it has one, else when it started. */
+/** Start times stay visible even when runs share a Bead or the same input. */
 export function runRowLabel(run: RunStatusProjection, now = new Date()): string {
-  return run.beadId || shortTime(run.startedAt, now) || run.runId
+  const time = shortTime(run.startedAt, now)
+  return time ? `${time}:${String(new Date(run.startedAt!).getSeconds()).padStart(2, '0')}` : run.runId
 }
 
 const needsOperator = (run: RunStatusProjection) => !run.final && (run.status === 'waiting_human' || run.status === 'blocked')
@@ -71,7 +72,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
   }, [runs])
   const live = useMemo(() => new Set(missions.map(mission => mission.slug)), [missions])
   const titleOf = (slug: string) => missions.find(mission => mission.slug === slug)?.title || slug
-  const matches = (run: ListedRun, title: string) => !needle || [title, runRowLabel(run, now), runInputExcerpt(run), runStateWord(run.status)].some(text => text.toLowerCase().includes(needle))
+  const matches = (run: ListedRun, title: string) => !needle || [title, runRowLabel(run, now), run.beadId || '', runInputExcerpt(run), runStateWord(run.status)].some(text => text.toLowerCase().includes(needle))
 
   const needing = runsInListOrder(runs.filter(run => live.has(run.missionSlug) && needsOperator(run)), null).filter(run => matches(run, titleOf(run.missionSlug)))
   const sessions = runs.filter(run => live.has(run.missionSlug) && !run.final).flatMap(run => runSessions(run).map(session => ({ ...session, run })))
@@ -98,7 +99,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
 
   const runRow = (run: ListedRun, secondary: string, id = 'nav-run') => (
     <button type="button" key={run.runId} className={`nav-row${run.runId === shownRunId ? ' current' : ''}`} aria-current={run.runId === shownRunId || undefined}
-      data-testid={`${id}-${run.runId}`} title={`${run.runId}${run.startedAt ? ` · started ${new Date(run.startedAt).toLocaleString()}` : ''}`}
+      data-testid={`${id}-${run.runId}`} title={[run.runId, run.startedAt ? `started ${new Date(run.startedAt).toLocaleString()}` : '', runStateWord(run.status), run.beadId, runInputExcerpt(run)].filter(Boolean).join(' · ')}
       onClick={() => onRun(run.missionSlug, run.runId)}>
       <span className="nav-row-line">
         <span className="nav-row-name">{runRowLabel(run, now)}</span>
@@ -107,7 +108,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
       {secondary ? <span className="nav-row-sub">{secondary}</span> : null}
     </button>
   )
-  const whenOf = (run: ListedRun) => run.beadId ? shortTime(run.startedAt, now) : ''
+  const workOf = (run: ListedRun) => run.beadId || runInputExcerpt(run)
 
   return (
     <aside className="mission-nav" data-testid="mission-nav" aria-label="Missions and runs">
@@ -120,7 +121,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
       </div>
       <div className="mission-nav-list">
         {!loaded ? <div className="mission-nav-empty" role="status">Loading missions…</div> : missions.length === 0 ? <div className="mission-nav-empty">No missions yet</div> : null}
-        {needing.length ? group('needs-you', 'Needs you', needing.length, true, () => needing.map(run => runRow(run, [titleOf(run.missionSlug), runInputExcerpt(run)].filter(Boolean).join(' · '), 'nav-needs'))) : null}
+        {needing.length ? group('needs-you', 'Needs you', needing.length, true, () => needing.map(run => runRow(run, [titleOf(run.missionSlug), workOf(run)].filter(Boolean).join(' · '), 'nav-needs'))) : null}
         {missions.map(mission => {
           const own = runsInListOrder(bySlug.get(mission.slug) || [], null)
           const shown = own.filter(run => matches(run, mission.title))
@@ -146,7 +147,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
                   <span className="nav-state rev">rev {mission.rev}</span>
                 </span>
               </button>
-              {visible.map(run => runRow(run, [runInputExcerpt(run), whenOf(run)].filter(Boolean).join(' · ')))}
+              {visible.map(run => runRow(run, workOf(run)))}
               {shown.length > visible.length ? (
                 <button type="button" className="nav-row nav-more" onClick={() => setAllRuns(current => ({ ...current, [mission.slug]: true }))}>
                   {shown.length - visible.length} earlier {shown.length - visible.length === 1 ? 'run' : 'runs'}

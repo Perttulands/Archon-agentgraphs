@@ -2,7 +2,6 @@ package formations
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,12 +18,15 @@ type HarnessModel struct {
 	Efforts []string `json:"efforts,omitempty"`
 }
 
-// claudeCodeModels are the aliases `claude --model` resolves to the latest
-// model of each family. The first is the model a new Claude Code slot takes.
-var claudeCodeModels = []string{"opus", "sonnet", "haiku", "fable"}
+// claudeCodeModels includes the family aliases and current full model names
+// accepted by `claude --model`. The first is a new Claude Code slot's default.
+var claudeCodeModels = []string{
+	"opus", "sonnet", "haiku", "fable",
+	"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1",
+}
 
 // HarnessModels lists the models offered for a harness, the one a new slot on
-// that harness takes first. Claude Code offers its family aliases. Codex
+// that harness takes first. Claude Code offers aliases and full model names. Codex
 // offers the models its CLI lists, by priority, from the host's
 // models_cache.json; without that cache it offers none.
 func HarnessModels(harnessID string) []HarnessModel {
@@ -60,28 +62,6 @@ func modelEfforts(harnessID, model string) ([]string, bool) {
 		}
 	}
 	return nil, false
-}
-
-// SlotModelWarning names a model the harness is not known to run. Such a
-// model is still accepted, since the harness decides; a blank model, a known
-// one, or a harness whose models the host does not know warns of nothing.
-func SlotModelWarning(slot, harnessID, model string) string {
-	if model == "" {
-		return ""
-	}
-	if _, ok := modelEfforts(harnessID, model); ok {
-		return ""
-	}
-	models := HarnessModels(harnessID)
-	if len(models) == 0 {
-		return ""
-	}
-	for _, known := range models {
-		if known.ID == model {
-			return ""
-		}
-	}
-	return fmt.Sprintf("slot %s model %q is not in the %s catalog; the harness decides", slot, model, harnessID)
 }
 
 type codexModel struct {
@@ -167,25 +147,4 @@ func parseCodexModels(raw []byte) []codexModel {
 		models = append(models, model)
 	}
 	return models
-}
-
-// SlotWarnings lists what a staffed slot's settings should make its author
-// look at again; today that is a model outside its harness's catalog.
-func SlotWarnings(board *BoardDocument, formationID, slotID string) []string {
-	if board == nil {
-		return nil
-	}
-	for _, formation := range board.Formations {
-		if formation.ID != formationID {
-			continue
-		}
-		for _, slot := range formation.Slots {
-			if slot.ID == slotID {
-				if warning := SlotModelWarning(slotName(slot), slot.Harness, slot.Model); warning != "" {
-					return []string{warning}
-				}
-			}
-		}
-	}
-	return nil
 }

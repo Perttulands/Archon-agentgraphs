@@ -215,7 +215,7 @@ func TestAdmissionChecksTheSuppliedInputs(t *testing.T) {
 func TestRunsRecordInputsHandThemToTheFirstStepAndSubstituteBriefs(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic}. Sketch: {sketch}. Keep {\"port\": 1}. Write {{topic}} literally, and {{{topic}}}.", "Ship {topic} into {repo}."))
+	writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic}. Sketch: {sketch}. Keep {\"port\": 1}. Write {{topic}} literally, and {{{topic}}}.", "Ship {topic} into {repo} for {bead}."))
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
 		t.Fatal(err)
@@ -226,6 +226,7 @@ func TestRunsRecordInputsHandThemToTheFirstStepAndSubstituteBriefs(t *testing.T)
 	status, err := engine.RunMission("session-search", RunStartRequest{
 		MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
 		Inputs: map[string]string{"repo": " " + repo + " ", "topic": "video editing\nwith captions"},
+		BeadID: "archon-resumed",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +256,7 @@ func TestRunsRecordInputsHandThemToTheFirstStepAndSubstituteBriefs(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumed.Status != RunStatusSucceeded || len(executor.calls) != 1 || executor.calls[0].Brief.Goal != "Ship video editing\nwith captions into "+repo+"." {
+	if resumed.Status != RunStatusSucceeded || len(executor.calls) != 1 || executor.calls[0].Brief.Goal != "Ship video editing\nwith captions into "+repo+" for archon-resumed." {
 		t.Fatalf("resumed %s, calls %+v", resumed.Status, executor.calls)
 	}
 	events, err := store.ReadRunEvents(status.RunID)
@@ -303,7 +304,7 @@ func TestTheImplicitBriefReachesTheFirstStepUnchanged(t *testing.T) {
 func TestASingleStepTakesTheMissionsInputsAndRunFields(t *testing.T) {
 	store, personas := s4RunFixture(t)
 	createS4Persona(t, personas, "scout")
-	writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic}.", "Ship {topic} into {repo}."))
+	writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(inputsBoardFixture(declaredInputs), "Explore {topic}.", "Ship {topic} into {repo} for {bead}."))
 	board, err := store.ReadBoard("session-search")
 	if err != nil {
 		t.Fatal(err)
@@ -324,14 +325,14 @@ func TestASingleStepTakesTheMissionsInputsAndRunFields(t *testing.T) {
 		t.Fatalf("single step %s, calls %v", status.Status, executor.nodeIDs())
 	}
 	call := executor.calls[0]
-	if call.Brief.Goal != "Ship captions into (not supplied)." || call.Inputs[0].Text != "topic: captions" {
+	if call.Brief.Goal != "Ship captions into (not supplied) for archon-o7p.3." || call.Inputs[0].Text != "topic: captions" {
 		t.Fatalf("single step brief %q input %q", call.Brief.Goal, call.Inputs[0].Text)
 	}
 	if call.MissionBeadID != "archon-o7p.3" || !reflect.DeepEqual(call.ContextPaths, []string{context}) {
 		t.Fatalf("single step run fields: bead %q context %v", call.MissionBeadID, call.ContextPaths)
 	}
 	// The step's brief is the run's objective, resolved like the brief itself.
-	if call.MissionGoal != "Ship captions into (not supplied)." {
+	if call.MissionGoal != "Ship captions into (not supplied) for archon-o7p.3." {
 		t.Fatalf("single step objective = %q, want its references resolved", call.MissionGoal)
 	}
 	if info, err := os.Stat(call.Cwd); err != nil || !info.IsDir() || filepath.Base(call.Cwd) != status.RunID {
@@ -363,7 +364,7 @@ func TestEscapedBracesAreLiteralAndNeverReferences(t *testing.T) {
 		"{{Topic}} and {{ topic }}":    "{{Topic}} and {{ topic }}",
 		"plain text, {\"json\": true}": "plain text, {\"json\": true}",
 	} {
-		if got := SubstituteRunInputs(text, declared, inputs); got != want {
+		if got := SubstituteRunInputs(text, declared, inputs, ""); got != want {
 			t.Errorf("SubstituteRunInputs(%q) = %q, want %q", text, got, want)
 		}
 	}
@@ -373,5 +374,41 @@ func TestEscapedBracesAreLiteralAndNeverReferences(t *testing.T) {
 	}
 	if findings := findBoardFindings(ValidateBoard(board).Errors, FindingUnknownInputReference); len(findings) != 0 {
 		t.Fatalf("escaped braces reported as references: %+v", findings)
+	}
+}
+
+func TestRunBeadReference(t *testing.T) {
+	for _, bead := range []string{"", "archon-o7p.18.21"} {
+		t.Run(bead, func(t *testing.T) {
+			store, personas := s4RunFixture(t)
+			createS4Persona(t, personas, "scout")
+			writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(s5HumanGateBoardFixture(), "Work {bead}; literal {{bead}}; {brief}.", "Ship {bead}."))
+			board, err := store.ReadBoard("session-search")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if findings := findBoardFindings(ValidateBoard(board).Errors, FindingUnknownInputReference); len(findings) != 0 {
+				t.Fatalf("built-in reference rejected: %+v", findings)
+			}
+			executor := &fakeRunExecutor{}
+			engine := NewRunEngine(store, personas, executor)
+			status, err := engine.RunMission("session-search", RunStartRequest{
+				MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
+				BeadID: bead, Inputs: map[string]string{"brief": "Keep {bead} in supplied text"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := executor.calls[0].Brief.Goal, "Work "+bead+"; literal {bead}; Keep {bead} in supplied text."; got != want {
+				t.Fatalf("brief = %q, want %q", got, want)
+			}
+			if status.BeadID != bead {
+				t.Fatalf("run bead = %q", status.BeadID)
+			}
+		})
+	}
+	// The run identity wins over a same-named input; substitution is single-pass.
+	if got := SubstituteRunInputs("{bead} {{bead}}", []MissionInput{{Name: "bead"}}, []RunInput{{Name: "bead", Value: "input-value"}}, "run-value"); got != "run-value {bead}" {
+		t.Fatal(got)
 	}
 }

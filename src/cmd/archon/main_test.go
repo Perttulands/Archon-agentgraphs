@@ -2829,9 +2829,9 @@ func TestArchonRunListJSONListsDurableRunsAndFiltersBoard(t *testing.T) {
 	}
 
 	// Without --json each run is one line: run, mission, status, Bead,
-	// started, updated.
+	// started, updated, driver.
 	stdout, stderr, code = runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "run", "list")
-	if lines := strings.Split(strings.TrimSpace(stdout), "\n"); code != 0 || len(lines) != 2 || len(strings.Split(lines[0], "\t")) != 6 || !strings.Contains(stdout, alphaRun.RunID+"\talpha\tsucceeded\t") {
+	if lines := strings.Split(strings.TrimSpace(stdout), "\n"); code != 0 || len(lines) != 2 || len(strings.Split(lines[0], "\t")) != 7 || !strings.Contains(stdout, alphaRun.RunID+"\talpha\tsucceeded\t") {
 		t.Fatalf("run list code=%d stderr=%s:\n%s", code, stderr, stdout)
 	}
 

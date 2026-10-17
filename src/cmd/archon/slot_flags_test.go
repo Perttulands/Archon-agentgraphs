@@ -110,9 +110,9 @@ func TestArchonMissionMigrateSlotsIsUnknown(t *testing.T) {
 	}
 }
 
-// A model outside its harness's catalog is staffed with a warning, and the
+// A model outside its harness's catalog is staffed without a warning, and the
 // usage names the known models (archon-v53).
-func TestArchonFormationAssignWarnsOfAModelOutsideTheCatalog(t *testing.T) {
+func TestArchonFormationAssignAcceptsAModelOutsideTheCatalog(t *testing.T) {
 	workspace := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", t.TempDir())
 	store := formations.NewStore(workspace)
@@ -122,13 +122,13 @@ func TestArchonFormationAssignWarnsOfAModelOutsideTheCatalog(t *testing.T) {
 		return runArchon(t, runner, append([]string{"--workspace", workspace}, args...)...)
 	}
 	stdout, stderr, code := archon("formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code", "--model", "claude-opus-5", "--effort", "xhigh")
-	if code != 0 || stdout != "slot_a is vanilla · claude-code · claude-opus-5 · xhigh\n" || stderr != "warning: slot \"A\" (slot_a) model \"claude-opus-5\" is not in the claude-code catalog; the harness decides\n" {
+	if code != 0 || stdout != "slot_a is vanilla · claude-code · claude-opus-5 · xhigh\n" || stderr != "" {
 		t.Fatalf("off-catalog model: code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	if _, stderr, code := archon("formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code", "--model", "sonnet", "--effort", "xhigh"); code != 0 || stderr != "" {
 		t.Fatalf("known model: code=%d stderr=%q", code, stderr)
 	}
-	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable. Another model is accepted with a warning.") {
+	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5, claude-fable-5-1. Other model names are accepted; the harness decides.") {
 		t.Fatalf("usage does not name the known models:\n%s", stderr)
 	}
 }

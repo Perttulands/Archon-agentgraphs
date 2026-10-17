@@ -44,12 +44,13 @@ type StepAttempts struct {
 }
 
 type StepAttempt struct {
-	Attempt    int    `json:"attempt"`
-	Status     string `json:"status"`
-	StartedSeq int    `json:"startedSeq"`
-	StartedAt  string `json:"startedAt,omitempty"`
-	EndedAt    string `json:"endedAt,omitempty"`
-	OutputSeq  int    `json:"outputSeq,omitempty"`
+	Attempt    int           `json:"attempt"`
+	Status     string        `json:"status"`
+	StartedSeq int           `json:"startedSeq"`
+	StartedAt  string        `json:"startedAt,omitempty"`
+	EndedAt    string        `json:"endedAt,omitempty"`
+	StopReason *EvidenceText `json:"stopReason,omitempty"`
+	OutputSeq  int           `json:"outputSeq,omitempty"`
 	// Directory is the attempt's artifact directory, when it exists.
 	Directory      *AttemptDirectory `json:"directory,omitempty"`
 	Outputs        []AttemptOutput   `json:"outputs"`
@@ -265,6 +266,7 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			if last := current(event.NodeID); last != nil && last.Attempt == max(event.Attempt, 1) && last.OutputSeq == 0 {
 				last.Status = AttemptRunning
 				last.EndedAt = ""
+				last.StopReason = nil
 				continue
 			}
 			step.Attempts = append(step.Attempts, StepAttempt{
@@ -327,6 +329,11 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			picking[event.NodeID] = true
 			if attempt := current(event.NodeID); attempt != nil && attempt.Status == AttemptRunning {
 				attempt.Status, attempt.EndedAt = AttemptStopped, event.Timestamp
+				reason := capper.text("picking the best attempt")
+				if limit := limitFromAny(event.Data["limit"]); limit != nil {
+					reason = capper.text(limitReason(board, *limit))
+				}
+				attempt.StopReason = &reason
 			}
 		case RunEventGateVerdict:
 			if pick := pickData(event); pick != nil {
@@ -359,6 +366,11 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			for _, nodeID := range runProblemNodes(events, index) {
 				if attempt := current(nodeID); attempt != nil && attempt.Status == AttemptRunning && event.Type != RunEventError {
 					attempt.Status, attempt.EndedAt = AttemptStopped, event.Timestamp
+					reason := evidenceProblem(events, index, capper).Reason
+					if event.Type == RunEventBlocked && index > 0 && events[index-1].Type == RunEventError {
+						reason = evidenceProblem(events, index-1, capper).Reason
+					}
+					attempt.StopReason = &reason
 				}
 			}
 		case RunEventResumed:
@@ -380,15 +392,27 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 			for _, attempt := range resumed {
 				if attempt != nil && attempt.Status == AttemptStopped && attempt.OutputSeq == 0 {
 					attempt.Status, attempt.EndedAt = AttemptRunning, ""
+					attempt.StopReason = nil
 				}
 			}
 		}
 	}
 	if status.Final {
+		endReason := capper.text("run " + status.Status)
+		for i := len(events) - 1; i >= 0; i-- {
+			if isFinalRunEvent(events[i].Type) {
+				if reason := evidenceProblem(events, i, capper).Reason; reason.Text != "" {
+					endReason = reason
+				}
+				break
+			}
+		}
 		for i := range evidence.Steps {
 			for j := range evidence.Steps[i].Attempts {
 				if attempt := &evidence.Steps[i].Attempts[j]; attempt.Status == AttemptRunning {
 					attempt.Status, attempt.EndedAt = AttemptStopped, status.UpdatedAt
+					reason := endReason
+					attempt.StopReason = &reason
 				}
 			}
 		}
@@ -424,6 +448,9 @@ func spendAttemptsBudget(evidence *RunAttemptsEvidence) {
 	}
 	sort.SliceStable(newestFirst, func(i, j int) bool { return newestFirst[i].StartedSeq > newestFirst[j].StartedSeq })
 	for _, attempt := range newestFirst {
+		if attempt.StopReason != nil {
+			spend(attempt.StopReason)
+		}
 		for i := range attempt.Outputs {
 			spend(&attempt.Outputs[i].Text)
 		}

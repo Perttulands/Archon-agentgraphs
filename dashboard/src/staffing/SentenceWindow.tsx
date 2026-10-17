@@ -329,7 +329,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
     <button
       type="button"
       tabIndex={-1}
-      className={`staffing-token${list === part ? ' open' : ''}${!current || partValue(current, part) !== partValue(draft, part) ? ' changed' : ''}${part === 'model' && offCatalog(catalog, draft) ? ' warn' : ''}`}
+      className={`staffing-token${list === part ? ' open' : ''}${!current || partValue(current, part) !== partValue(draft, part) ? ' changed' : ''}`}
       data-token={part}
       aria-label={`${part}: ${value}`}
       onClick={() => (list === part ? setList(null) : openList(part))}
@@ -421,7 +421,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
           {offer && offer.effort !== draft.effort ? (
             <button type="button" className="staffing-offer" data-testid="staffing-window-offer" onClick={() => { land(withEffort(catalog, draft, offer.effort)); inputRef.current?.focus({ preventScroll: true }) }}>use {offer.effort}</button>
           ) : null}
-          {offCatalog(catalog, draft) ? <div className="staffing-issue">{draft.model}: not in the catalog; the harness decides.</div> : null}
+          {offCatalog(catalog, draft) ? <div className="staffing-note">{draft.model}: not in the catalog; the harness decides.</div> : null}
           {!effortsFor(catalog, draft.harness, draft.model).length ? <div className="staffing-issue">{harnessName(draft.harness) || draft.harness} is not a harness Archon starts.</div> : null}
         </div>
         {shownList || choosing ? null : <div className="staffing-keys">↵ staffs · Esc leaves it as it was · 1–6 effort · type words in any order</div>}

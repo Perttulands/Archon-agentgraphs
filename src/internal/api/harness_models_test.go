@@ -51,7 +51,7 @@ func TestAgentsRosterOffersEachHarnessesModels(t *testing.T) {
 		models[harness.ID] = harness.Models
 	}
 	want := map[string][]formations.HarnessModel{
-		"claude-code": {{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}},
+		"claude-code": {{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}, {ID: "claude-opus-5-5"}, {ID: "claude-sonnet-5-5"}, {ID: "claude-haiku-5-5"}, {ID: "claude-fable-5-1"}},
 		"openai-codex": {
 			{ID: "gpt-6-astra", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
 			{ID: "gpt-5.5", Efforts: []string{"low", "medium", "high", "xhigh"}},
@@ -62,9 +62,9 @@ func TestAgentsRosterOffersEachHarnessesModels(t *testing.T) {
 	}
 }
 
-// A model outside the catalog is staffed, and the response says so; a known
+// A model outside the catalog is staffed without a warning; a known
 // model's levels bound the effort.
-func TestAssignSlotWarnsOfAModelOutsideTheCatalog(t *testing.T) {
+func TestAssignSlotAcceptsAModelOutsideTheCatalog(t *testing.T) {
 	useCodexFixture(t)
 	store := formations.NewStore(t.TempDir())
 	writeFormationsAPIFixture(t, store.BoardPath("staff"), `schema = 1
@@ -112,7 +112,7 @@ controller = false
 	}
 
 	code, data := patch(`{"formationId":"fmn_work","slotId":"slot_a","harness":"openai-codex","model":"gpt-7-nova","effort":"ultra"}`)
-	if code != http.StatusOK || string(data["warnings"]) != `["slot \"A\" (slot_a) model \"gpt-7-nova\" is not in the openai-codex catalog; the harness decides"]` {
+	if code != http.StatusOK || data["warnings"] != nil {
 		t.Fatalf("off-catalog model = %d %s", code, data["warnings"])
 	}
 	if code, data = patch(`{"formationId":"fmn_work","slotId":"slot_a","harness":"openai-codex","model":"gpt-6-astra","effort":"ultra"}`); code != http.StatusOK || data["warnings"] != nil {

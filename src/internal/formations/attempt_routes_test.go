@@ -266,3 +266,17 @@ func TestAttemptsBudgetKeepsTheNewestAttempts(t *testing.T) {
 		t.Fatalf("newest = %d bytes (truncated %v), oldest = %d bytes (truncated %v)", len(newest.Text), newest.Truncated, len(oldest.Text), oldest.Truncated)
 	}
 }
+
+func TestStoppedAttemptKeepsCauseAndReattachClearsIt(t *testing.T) {
+	board := &BoardDocument{Formations: []FormationNode{{ID: "fmn_work"}}}
+	events := numbered(RunEvent{Type: RunEventStarted}, RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1}, RunEvent{Type: RunEventError, NodeID: "fmn_work", Data: map[string]any{"message": "harness disconnected"}}, RunEvent{Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "executor_failed"}})
+	attempt := projectRunAttempts("run_x", "", board, events, &RunStatusProjection{}, nil).Steps[0].Attempts[0]
+	if attempt.Status != AttemptStopped || attempt.StopReason == nil || attempt.StopReason.Text != "harness disconnected" {
+		t.Fatalf("stopped = %+v", attempt)
+	}
+	events = append(events, RunEvent{Type: RunEventResumed, Data: map[string]any{"resumeMode": "reattach", "openDispatches": []any{map[string]any{"dispatchId": "dsp_1", "nodeId": "fmn_work"}}}})
+	attempt = projectRunAttempts("run_x", "", board, numbered(events...), &RunStatusProjection{}, nil).Steps[0].Attempts[0]
+	if attempt.Status != AttemptRunning || attempt.StopReason != nil {
+		t.Fatalf("reattached = %+v", attempt)
+	}
+}

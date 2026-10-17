@@ -91,12 +91,18 @@ func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence
 		for _, attempt := range step.Attempts {
 			line := fmt.Sprintf("  attempt %d %s", attempt.Attempt, attempt.Status)
 			if attempt.StartedAt != "" {
-				line += " from " + attempt.StartedAt
+				line += " from " + listTimeWords(attempt.StartedAt)
 			}
 			if attempt.EndedAt != "" {
-				line += " to " + attempt.EndedAt
+				line += " to " + listTimeWords(attempt.EndedAt)
+			}
+			if attempt.StartedAt != "" {
+				line += " (" + runDuration(attempt.StartedAt, attempt.EndedAt, attempt.EndedAt != "") + ")"
 			}
 			fmt.Fprintln(stdout, line)
+			if attempt.StopReason != nil && attempt.StopReason.Text != "" {
+				fmt.Fprintln(stdout, "    reason "+firstLine(attempt.StopReason.Text))
+			}
 			if files && attempt.Directory != nil {
 				fmt.Fprintf(stdout, "    directory %s\n", attempt.Directory.Path)
 			}

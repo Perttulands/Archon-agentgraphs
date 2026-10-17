@@ -30,7 +30,7 @@ func formationAssignUsage() string {
 		"Choose the effort by the policy: " + formations.EffortPolicyText() + ". " + strings.Join(efforts, "; ") + "; a known Codex model may take fewer.\n" +
 		"A blank --model means the harness default model."
 	if len(models) > 0 {
-		usage += " Known models: " + strings.Join(models, "; ") + ". Another model is accepted with a warning."
+		usage += " Known models: " + strings.Join(models, "; ") + ". Other model names are accepted; the harness decides."
 	}
 	return usage
 }

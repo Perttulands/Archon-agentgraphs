@@ -6,11 +6,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // run list prints one line per run, newest first, without the runs' events;
 // --json keeps the daemon's full projection (archon-lmg2).
 func TestRunListPrintsOneLinePerRunNewestFirst(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.FixedZone("TEST", 7200)
+	t.Cleanup(func() { time.Local = previousLocal })
 	const body = `{"success":true,"data":[` +
 		`{"runId":"run_old","missionSlug":"proof","status":"succeeded","beadId":"","startedAt":"2026-10-01T09:00:00.123Z","updatedAt":"2026-10-01T09:05:00Z","events":[{"seq":1,"type":"run_started"}]},` +
 		`{"runId":"run_new","missionSlug":"proof","status":"waiting_human","beadId":"archon-lmg2","startedAt":"2026-10-02T08:00:00Z","updatedAt":"2026-10-02T08:01:30.5Z","events":[{"seq":1,"type":"run_started"},{"seq":2,"type":"node_started"}]}]}`
@@ -22,8 +26,8 @@ func TestRunListPrintsOneLinePerRunNewestFirst(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code %d: %s", code, stderr)
 	}
-	want := "run_new\tproof\twaiting_human\tarchon-lmg2\t2026-10-02T08:00:00Z\t2026-10-02T08:01:30Z\n" +
-		"run_old\tproof\tsucceeded\t-\t2026-10-01T09:00:00Z\t2026-10-01T09:05:00Z\n"
+	want := "run_new\tproof\twaiting_human\tarchon-lmg2\t2026-10-02 10:00:00 TEST\t2026-10-02 10:01:30 TEST\t-\n" +
+		"run_old\tproof\tsucceeded\t-\t2026-10-01 11:00:00 TEST\t2026-10-01 11:05:00 TEST\t-\n"
 	if stdout != want {
 		t.Fatalf("run list printed:\n%s\nwant:\n%s", stdout, want)
 	}

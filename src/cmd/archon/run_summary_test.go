@@ -127,3 +127,19 @@ func TestFinalRunStatusExplainsTerminalOutcome(t *testing.T) {
 		})
 	}
 }
+
+func TestRunAttemptAndStatusPrintReadableTimeAndStop(t *testing.T) {
+	var out bytes.Buffer
+	writeRunAttempts(&out, &formations.RunAttemptsEvidence{Steps: []formations.StepAttempts{{NodeID: "fmn_work", Attempts: []formations.StepAttempt{{Attempt: 1, Status: "stopped", StartedAt: "2026-10-17T10:00:00.123456789Z", EndedAt: "2026-10-17T10:02:03.123456789Z", StopReason: &formations.EvidenceText{Text: "executor disconnected"}}}}}}, false)
+	if got := out.String(); !strings.Contains(got, "2m3s") || !strings.Contains(got, "reason executor disconnected") || strings.Contains(got, "123456789") {
+		t.Fatalf("attempt text: %s", got)
+	}
+	out.Reset()
+	writeRunStatusLines(&out, &formations.RunStatusProjection{BoardRev: 7, StartedBy: "agent:tester", StartedAt: "2026-10-17T10:00:00.123456789Z", UpdatedAt: "2026-10-17T10:02:03.123456789Z", Final: true})
+	writeCurrentRunBlock(&out, []formations.RunProblem{{NodeIDs: []string{"fmn_work"}, EvidenceProblem: formations.EvidenceProblem{Type: formations.RunEventBlocked, Reason: formations.EvidenceText{Text: "executor disconnected"}}}})
+	for _, want := range []string{"missionRev\t7", "startedBy\tagent:tester", "duration\t2m3s", "step\tfmn_work"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q: %s", want, out.String())
+		}
+	}
+}

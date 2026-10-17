@@ -362,7 +362,7 @@ func remoteUsage(stderr io.Writer, name string) int {
 // daemon. Both take the same run fields and the mission's inputs.
 func remoteRunStart(client *remoteClient, noun string, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags(noun+" run", stderr)
-	actor := fs.String("actor", "agent:archon", "who drives the run; the run list shows it")
+	actor := fs.String("actor", "", "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -394,7 +394,7 @@ func remoteRunStart(client *remoteClient, noun string, args []string, stdout, st
 		return fail(stderr, err)
 	}
 	board := &mission.Data.Board
-	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs, "actor": *actor}
+	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs, "actor": formations.RunDriver(*run.driver, *actor)}
 	if noun == "formation" {
 		formationID, err := resolveFormationSelector(board, fs.Arg(1))
 		if err != nil {

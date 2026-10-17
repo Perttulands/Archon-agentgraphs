@@ -76,13 +76,15 @@ patch naming none of them empties the
 slot, as does `formation unassign`. The harness must be one Archon starts and must accept the effort,
 and a model is one name without spaces. The agent roster serves each
 harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
-`haiku` and `fable`, and `openai-codex` runs the models its CLI lists in
+`haiku` and `fable` plus the full names `claude-opus-5-5`,
+`claude-sonnet-5-5`, `claude-haiku-5-5` and `claude-fable-5-1`.
+`openai-codex` runs the models its CLI lists in
 `$CODEX_HOME/models_cache.json` (default `~/.codex`), by priority, each with
 the efforts it accepts; without that cache Codex lists none. A known Codex
 model narrows the slot's efforts to its own: `gpt-5.5` takes `low` to `xhigh`.
-A model outside the catalog is accepted and the harness decides; the
-`assignSlot` answer then carries `warnings`, and `formation assign` prints
-them. Choose the effort by the policy the agent
+The catalog is a picker, not an exhaustive list of accepted names. A model
+outside it is accepted without a warning; the harness decides whether it can
+run. Choose the effort by the policy the agent
 roster serves as `effortPolicy`, each line with the role kinds it suits:
 `low` for errands (`verifier`, `scout`), `medium` for making things
 (`builder`, `debugger`, `operator`), `xhigh` for architecture and review
@@ -96,8 +98,8 @@ role (or `vanilla`) over `<Harness> · <model> · <effort>`, as in `Claude · op
 blank model as `default`; sentences say `Claude Code` and `default model`. On a
 card only a long model gives way, never the harness or the effort, and the
 workers of an orchestrated step sit under `workers` with a solo slot's width;
-an empty slot says `open slot`. A model outside the catalog is marked `model
-not in catalog`. The node window and Flow say the same, for example `Worker 1
+an empty slot says `open slot`. Models outside the catalog receive no error
+mark. The node window and Flow say the same, for example `Worker 1
 is vanilla on Claude Code · opus · low.` Rosters list roles by name; roles
 carry no harness. The Missions rail counts across every formation of the
 mission: `25 roles · 6 in use`, and a role in use says `in 2 slots`. Clicking a role in the Missions rail opens it in a window beside the
@@ -328,7 +330,7 @@ and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
 The engine's own fail-fast checks remain behind this report. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
 starting again. A mission run and a single step's run take the same run fields:
-`cwd`, `contextPaths`, `beadId` and `inputs`. Omit `cwd` (or send an empty string) to create a private workspace
+`cwd`, `contextPaths`, `beadId`, `inputs` and `driver`. Omit `cwd` (or send an empty string) to create a private workspace
 for this run under `<state-dir>/workspaces/<runId>`. The daemon's
 `--run-workspace-root` flag can select another absolute root. Admission records
 the resolved directory in `run_started` and run status; every seat uses it.
@@ -385,10 +387,13 @@ The Input card hands its first step the supplied values: the implicit `brief`
 unchanged, or one `name: value` line per supplied input in declared order. A
 step brief references an input as `{name}`, and each seat's brief carries the
 value in its place, or `(not supplied)` for an optional input the run left out.
+`{bead}` is built in: it takes the run's `beadId` (`--bead`), or an empty
+string when none was supplied. It needs no input declaration and takes
+precedence over an input named `bead`. `{{bead}}` remains literal.
 Braces around anything else stay as written. The one escape is `{{name}}`: it
 reaches the seat as a literal `{name}` and is never a reference, so a brief can
-show an agent a placeholder. A reference to a name the mission does not declare
-is the validation error `unknown_input_reference`: "Plan's brief references
+show an agent a placeholder. Other references to names the mission does not declare
+are the validation error `unknown_input_reference`: "Plan's brief references
 {topic}, but the mission has no input named topic; its inputs are change,
 spec". `run_started` records the supplied values as `inputs`
 (`name`, `kind`, `value`), and run status and the run list project them, so
@@ -651,11 +656,16 @@ artifact contents, brief paths, native session IDs and arbitrary private event
 data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
 responses, briefs and artifacts to the operator.
-Run status also carries `startedBy`, the run's driver (the `actor` the start
-named, `operator:standalone` when it named none; the CLI's run starts take
-`--actor`, default `agent:archon`), and `startedAt` and `updatedAt`, the
+Run status and lists carry `startedBy`, the run's driver, recorded as the
+start event's actor. CLI run starts accept `--by <name>` and API starts accept
+`driver`; these take precedence over an explicit `actor`. An explicit actor
+still names the driver when neither is supplied. Otherwise the default is `ARCHON_DRIVER`, then `agent:archon`. Historical runs keep their
+recorded actor. Status also carries `startedAt` and `updatedAt`, the
 times of its first and latest ledger events; a final run ended at
-`updatedAt`. Each waiting gate carries `requestedAt`, when it asked.
+`updatedAt`. CLI status and attempts render timestamps in local time and
+elapsed time as durations; JSON retains the stored timestamps. Status names
+the mission revision and stopped step, and attempts include their stop reason.
+Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality, exiting 0, or 7 for a `picked` run as
@@ -986,9 +996,9 @@ and a link to a run of the deleted mission is reported and not shown
 for a human, then running, then blocked, newest first. The navigator on the
 left lists every mission with its runs (archon-o7p.2, archon-fh5c.4), open runs
 by attention and then finished runs newest first, the first five shown and the
-rest behind "N earlier runs". A run is named by its Bead, or by when it started
-when it has none, with its state as a word and the start of its first text
-input. Choosing one shows it; a mission's Edit mission row puts the shown run
+rest behind "N earlier runs". Every run row shows its local start time and
+state, followed by its Bead or the start of its first input. Choosing one shows
+it; a mission's Edit mission row puts the shown run
 away and returns to the current revision for authoring. The run bar says when
 the shown run started, how long it took and who drives it; a run waiting at a
 gate says since when; and a run that ran an
@@ -1675,7 +1685,7 @@ a rejected start names.
 ### Run inspection
 
 `run list` prints one line per run, newest first: its ID, mission, status,
-Bead (`-` when none), start and last change, tab-separated; `--json` prints
+Bead (`-` when none), start, last change and driver, tab-separated; `--json` prints
 each run's full projection. Starting a run without `--cwd` allocates a workspace
 automatically; `--cwd` selects an existing project.
 
@@ -2037,7 +2047,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   judge), `outputs` (its
   output ports from the frozen mission: `id`, `label`, `kind`) and `attempts`,
   oldest first. An attempt has `attempt`, `status` (`running`, `done` or
-  `stopped`), `startedSeq`, `startedAt`, `endedAt`, `outputSeq`, `directory`
+  `stopped`), `startedSeq`, `startedAt`, `endedAt`, optional `stopReason`
+  (bounded evidence text explaining a stopped attempt), `outputSeq`, `directory`
   (`name` relative to the run's artifact directory and absolute `path`, when
   it exists), `outputs` (`portId`, `label`, `kind`, `text`, and for a path
   `path`, `artifact` for the artifact routes, `size` and `fileKind`: `image`,

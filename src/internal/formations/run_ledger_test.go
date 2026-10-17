@@ -292,3 +292,22 @@ func readRunEvents(t *testing.T, path string) []RunEvent {
 	}
 	return events
 }
+
+func TestRunDriverDefaultsAndExplicitPrecedence(t *testing.T) {
+	for _, env := range []string{"", "agent:environment"} {
+		t.Setenv("ARCHON_DRIVER", env)
+		want := env
+		if want == "" {
+			want = "agent:archon"
+		}
+		if got := RunDriver("", ""); got != want {
+			t.Fatalf("default driver = %q, want %q", got, want)
+		}
+		if got := RunDriver("", "agent:actor"); got != "agent:actor" {
+			t.Fatalf("actor driver = %q", got)
+		}
+		if got := RunDriver("agent:explicit", "agent:actor"); got != "agent:explicit" {
+			t.Fatalf("explicit driver = %q", got)
+		}
+	}
+}

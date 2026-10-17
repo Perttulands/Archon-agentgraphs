@@ -1100,6 +1100,20 @@ func runArtifactPath(slug, runID, suffix string) string {
 	return filepath.ToSlash(filepath.Join(".archon", "runs", slug, runID+suffix))
 }
 
+// RunDriver chooses the supplied driver, the start actor, or the environment default.
+func RunDriver(driver, actor string) string {
+	if driver = strings.TrimSpace(driver); driver != "" {
+		return driver
+	}
+	if actor = strings.TrimSpace(actor); actor != "" {
+		return actor
+	}
+	if driver = strings.TrimSpace(os.Getenv("ARCHON_DRIVER")); driver != "" {
+		return driver
+	}
+	return "agent:archon"
+}
+
 func defaultRunActor(actor string) string {
 	if actor == "" {
 		return "agent:archon"

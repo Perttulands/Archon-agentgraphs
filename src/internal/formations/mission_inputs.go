@@ -233,8 +233,9 @@ func RenderRunInputs(board *BoardDocument, inputs []RunInput) string {
 // SubstituteRunInputs replaces each {name} reference to a mission input in a
 // step brief with the run's value, or with "(not supplied)" for an optional
 // input the run left out. An escaped {{name}} becomes a literal {name} and is
-// never a reference. Other braces stay as written.
-func SubstituteRunInputs(text string, declared []MissionInput, inputs []RunInput) string {
+// never a reference. {bead} always names the run's Bead, empty when absent,
+// even if an input is also named bead. Other braces stay as written.
+func SubstituteRunInputs(text string, declared []MissionInput, inputs []RunInput, beadID string) string {
 	if !strings.Contains(text, "{") {
 		return text
 	}
@@ -251,6 +252,9 @@ func SubstituteRunInputs(text string, declared []MissionInput, inputs []RunInput
 			return reference[1 : len(reference)-1]
 		}
 		name := reference[1 : len(reference)-1]
+		if name == "bead" {
+			return beadID
+		}
 		if !known[name] {
 			return reference
 		}
@@ -317,7 +321,7 @@ func missionInputFindings(board *BoardDocument) []BoardFinding {
 		reported := map[string]bool{}
 		for _, match := range inputReferencePattern.FindAllStringSubmatch(formation.Brief.Goal, -1) {
 			name := match[2]
-			if name == "" || known[name] || reported[name] {
+			if name == "" || name == "bead" || known[name] || reported[name] {
 				continue
 			}
 			reported[name] = true

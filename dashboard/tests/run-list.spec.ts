@@ -140,3 +140,36 @@ test('a run waiting for you is counted and stands out on the bar and the canvas'
   await expect(page.getByTestId('run-chip-loose')).toHaveText('waiting for you')
   await page.screenshot({ path: test.info().outputPath('waiting.png') })
 })
+
+
+test('runs of a TOML mission keep their start, status and Bead visible when the inputs repeat', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  const fixture = await cockpitFixture(page, { tomlMission: true })
+  const subject = 'The same character request '.repeat(12)
+  const recent = projection('run_01LATEST', 'succeeded', true, { startedAt: ago(10), updatedAt: ago(8), startedBy: 'agent:identity', beadId: 'archon-identity',
+    inputs: [{ name: 'subject', kind: 'text', value: subject }, { name: 'reference', kind: 'file', value: '/references/plate.png' }] })
+  const older = projection('run_01BEFORE', 'failed', true, { ...recent, runId: 'run_01BEFORE', status: 'failed', startedAt: ago(20), updatedAt: ago(18) })
+  await page.route('**/api/runs**', route => {
+    const path = new URL(route.request().url()).pathname
+    const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
+    if (path === '/api/runs') return respond([recent, older])
+    if (path === '/api/runs/run_01LATEST') return respond(recent)
+    if (path === '/api/runs/run_01LATEST/evidence/mission') return respond({ mission: { missionRev: 1, graph: fixture.board(), text: { text: '', bytes: 0 } } })
+    return route.fallback()
+  })
+  await page.goto('/?mission=browser')
+  const rows = page.getByTestId('nav-group-browser').locator('[data-testid^="nav-run-"]')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.nth(0).locator('.nav-row-name')).toHaveText(/\d{2}:\d{2}:\d{2}$/)
+  expect(await rows.nth(0).locator('.nav-row-name').textContent()).not.toBe(await rows.nth(1).locator('.nav-row-name').textContent())
+  await expect(rows.nth(0).locator('.nav-state')).toHaveText('succeeded')
+  await expect(rows.nth(1).locator('.nav-state')).toHaveText('failed')
+  await expect(rows.nth(0).locator('.nav-row-sub')).toHaveText('archon-identity')
+  await expect(rows.nth(0)).toHaveAttribute('title', new RegExp('archon-identity.*The same character request'))
+  await expect(page.getByTestId('slot-judge-judge_1')).toContainText('claude-opus-5-5')
+  await expect(page.getByTestId('slot-judge-judge_1').locator('.slot-warn')).toHaveCount(0)
+  await expect(page.getByTestId('staffing-keyhint')).toHaveCount(0)
+  await rows.nth(0).click()
+  await expect(page.getByTestId('run-banner')).toContainText('agent:identity')
+  await expect(page.getByTestId('staffing-keyhint')).toHaveCount(0)
+})

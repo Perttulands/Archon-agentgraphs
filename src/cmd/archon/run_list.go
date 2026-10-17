@@ -19,6 +19,7 @@ type runListLine struct {
 	RunID     string `json:"runId"`
 	Mission   string `json:"missionSlug"`
 	Status    string `json:"status"`
+	StartedBy string `json:"startedBy"`
 	BeadID    string `json:"beadId"`
 	StartedAt string `json:"startedAt"`
 	UpdatedAt string `json:"updatedAt"`
@@ -27,7 +28,7 @@ type runListLine struct {
 func runListLines(runs []formations.RunStatusProjection) []runListLine {
 	lines := make([]runListLine, 0, len(runs))
 	for _, run := range runs {
-		lines = append(lines, runListLine{RunID: run.RunID, Mission: run.BoardSlug, Status: run.Status, BeadID: run.BeadID, StartedAt: run.StartedAt, UpdatedAt: run.UpdatedAt})
+		lines = append(lines, runListLine{RunID: run.RunID, Mission: run.BoardSlug, Status: run.Status, StartedBy: run.StartedBy, BeadID: run.BeadID, StartedAt: run.StartedAt, UpdatedAt: run.UpdatedAt})
 	}
 	return lines
 }
@@ -36,7 +37,7 @@ func runListLines(runs []formations.RunStatusProjection) []runListLine {
 func writeRunList(w io.Writer, runs []runListLine) {
 	sort.SliceStable(runs, func(i, j int) bool { return listTime(runs[i].StartedAt).After(listTime(runs[j].StartedAt)) })
 	for _, run := range runs {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", run.RunID, run.Mission, run.Status, orDash(run.BeadID), listTimeWords(run.StartedAt), listTimeWords(run.UpdatedAt))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", run.RunID, run.Mission, run.Status, orDash(run.BeadID), listTimeWords(run.StartedAt), listTimeWords(run.UpdatedAt), orDash(run.StartedBy))
 	}
 }
 
@@ -57,13 +58,13 @@ func listTime(value string) time.Time {
 	return at
 }
 
-// listTimeWords is a ledger time to the second, in UTC.
+// listTimeWords is a ledger time to the second in the operator’s local time.
 func listTimeWords(value string) string {
 	at := listTime(value)
 	if at.IsZero() {
 		return "-"
 	}
-	return at.UTC().Format(time.RFC3339)
+	return at.Local().Format("2006-01-02 15:04:05 MST")
 }
 
 func orDash(value string) string {
@@ -71,4 +72,20 @@ func orDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+// runDuration formats elapsed run or attempt time without ledger precision.
+func runDuration(start, end string, finished bool) string {
+	from := listTime(start)
+	if from.IsZero() {
+		return "-"
+	}
+	to := listTime(end)
+	if !finished {
+		to = time.Now()
+	}
+	if to.IsZero() || to.Before(from) {
+		return "-"
+	}
+	return to.Sub(from).Round(time.Second).String()
 }

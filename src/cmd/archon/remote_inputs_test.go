@@ -205,3 +205,42 @@ func TestRemoteGateResponseFileErrorsNeverSend(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteRunDriverSelection(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		args []string
+		want string
+	}{
+		{"", nil, "agent:archon"}, {"agent:environment", nil, "agent:environment"},
+		{"agent:environment", []string{"--by", "agent:explicit"}, "agent:explicit"},
+		{"agent:environment", []string{"--actor", "agent:actor", "--by", "agent:explicit"}, "agent:explicit"},
+	} {
+		t.Run(tc.want+strings.Join(tc.args, ""), func(t *testing.T) {
+			t.Setenv("ARCHON_DRIVER", tc.env)
+			var actor string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == "GET" {
+					fmt.Fprint(w, `{"data":{"mission":{"rev":1,"inputCards":[{"id":"mis_proof"}]}}}`)
+					return
+				}
+				var body struct {
+					Actor string `json:"actor"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				actor = body.Actor
+				fmt.Fprint(w, `{"data":{"runId":"run_proof"}}`)
+			}))
+			defer server.Close()
+			args := append([]string{"--server", server.URL, "mission", "run", "proof"}, tc.args...)
+			if _, stderr, code := runArchon(t, &fakeTmux{}, args...); code != 0 {
+				t.Fatalf("exit %d: %s", code, stderr)
+			}
+			if actor != tc.want {
+				t.Fatalf("driver %q, want %q", actor, tc.want)
+			}
+		})
+	}
+}

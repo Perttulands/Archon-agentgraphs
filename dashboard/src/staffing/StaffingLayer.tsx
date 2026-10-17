@@ -59,14 +59,3 @@ export function StaffingLayer({ store, host, savedOf, stage = viewportStage }: {
     document.body,
   )
 }
-
-/** The keyboard path, in the canvas corner; it gives way while a sentence is open. */
-export function StaffingKeyHint({ store }: { store: StaffingStore }) {
-  useStaffingVersion(store)
-  if (store.open) return null
-  return (
-    <div className="staffing-keyhint" data-testid="staffing-keyhint">
-      <kbd>N</kbd> next empty slot · <kbd>1</kbd>–<kbd>6</kbd> effort on a focused slot
-    </div>
-  )
-}

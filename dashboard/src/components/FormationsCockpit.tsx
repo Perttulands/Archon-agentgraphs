@@ -81,7 +81,7 @@ import { nodeTitle } from '../nodeWindow/boardRoutes'
 import { slotStaffed } from '../nodeWindow/staffing'
 import { CanvasSlot } from '../staffing/CanvasSlot'
 import type { Part } from '../staffing/SlotFace'
-import { StaffingKeyHint, StaffingLayer } from '../staffing/StaffingLayer'
+import { StaffingLayer } from '../staffing/StaffingLayer'
 import { PAN_MS, type StaffingStage } from '../staffing/staffingPlacement'
 import { dropRole, moveStaffing, previewRole, staff, type StaffingHost } from '../staffing/staffingActions'
 import { captionText, retiredRolesOf, roleName, roleNamer, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
@@ -3801,7 +3801,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
             </div>
           ) : null}
 
-          {!showFlow && !historical && board?.formations.length ? <StaffingKeyHint store={staffingStore} /> : null}
           <div className="zoomlevel">{Math.round(view.scale * 100)}%</div>
           <div className="zoomctl">
             <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>

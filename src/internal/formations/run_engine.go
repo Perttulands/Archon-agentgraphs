@@ -1125,7 +1125,7 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 	inputs := ResolveRunInputs(board, req.Inputs)
 	// The step's brief is the run's objective, with its {name} references
 	// resolved as the brief itself is at dispatch.
-	goal = SubstituteRunInputs(goal, MissionRunInputs(board), inputs)
+	goal = SubstituteRunInputs(goal, MissionRunInputs(board), inputs, req.BeadID)
 	mission := MissionNode{
 		ID:    "single_" + formation.ID,
 		Title: "Single formation: " + formation.Title,
@@ -2099,7 +2099,7 @@ func (e *RunEngine) dispatchFormation(req FormationExecution) (FormationExecutio
 	}
 	// A step brief's {name} references take the run's input values.
 	if strings.Contains(req.Brief.Goal, "{") {
-		req.Brief.Goal = SubstituteRunInputs(req.Brief.Goal, MissionRunInputs(board), RunInputsFromEventData(events[0].Data["inputs"]))
+		req.Brief.Goal = SubstituteRunInputs(req.Brief.Goal, MissionRunInputs(board), RunInputsFromEventData(events[0].Data["inputs"]), events[0].BeadID)
 	}
 	if req.Formation.Type == FormationTypePeer {
 		req.PeerMessages = e.peerMessagesUse(board, events, req)

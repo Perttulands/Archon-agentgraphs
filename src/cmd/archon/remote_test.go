@@ -876,9 +876,9 @@ func TestRepeatedAuthoringEditsKeepTheRevisionOfflineAndRemote(t *testing.T) {
 	}
 }
 
-// A model outside the catalog warns the same way offline and through the
-// daemon, which answers the warning with the staffed mission.
-func TestRemoteAssignWarnsOfAModelOutsideTheCatalogAsOfflineDoes(t *testing.T) {
+// A model outside the catalog is accepted without warnings both offline
+// and through the daemon.
+func TestRemoteAssignAcceptsAModelOutsideTheCatalogAsOfflineDoes(t *testing.T) {
 	offline, remote, _ := newAuthoringSides(t)
 	for _, side := range []authoringSide{offline, remote} {
 		if _, stderr, code := side.run("mission", "new", "demo"); code != 0 {
@@ -901,7 +901,7 @@ func TestRemoteAssignWarnsOfAModelOutsideTheCatalogAsOfflineDoes(t *testing.T) {
 		}
 		warnings = append(warnings, strings.ReplaceAll(stderr, slot.ID, "<slot>"))
 	}
-	if warnings[0] != warnings[1] || !strings.Contains(warnings[0], `warning: slot "Agent" (<slot>) model "claude-opus-5" is not in the claude-code catalog; the harness decides`) {
+	if warnings[0] != "" || warnings[1] != "" {
 		t.Fatalf("warnings offline %q remote %q", warnings[0], warnings[1])
 	}
 }

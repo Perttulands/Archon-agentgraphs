@@ -464,6 +464,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		Inputs       map[string]string `json:"inputs"`
 		BeadID       string            `json:"beadId"`
 		Actor        string            `json:"actor"`
+		Driver       string            `json:"driver"`
 		FormationID  string            `json:"formationId"`
 		Board        string            `json:"mission"`
 		MissionID    string            `json:"inputCardId"`
@@ -535,7 +536,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.FormationID != "" {
-		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: runActor(req.Actor), Personas: c.personas, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
+		started, execute, err := c.engine.PrepareFormationRun(req.Board, req.FormationID, formations.FormationRunRequest{Actor: formations.RunDriver(req.Driver, req.Actor), Personas: c.personas, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Cwd: req.Cwd, ContextPaths: req.ContextPaths, BeadID: req.BeadID, Inputs: req.Inputs})
 		if err != nil {
 			failure(w, err)
 			return
@@ -558,7 +559,7 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 		reply(w, 422, map[string]string{"error": "wire the Input card to a step"})
 		return
 	}
-	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: runActor(req.Actor), Personas: c.personas})
+	started, err := c.store.StartRun(req.Board, formations.RunStartRequest{Cwd: req.Cwd, ContextPaths: req.ContextPaths, Inputs: req.Inputs, BeadID: req.BeadID, MissionID: req.MissionID, ExpectedBoardRev: req.ExpectedRev, ExpectedBoardETag: r.Header.Get("If-Match"), Actor: formations.RunDriver(req.Driver, req.Actor), Personas: c.personas})
 	if err != nil {
 		failure(w, err)
 		return
@@ -569,15 +570,6 @@ func (c *Coordinator) start(w http.ResponseWriter, r *http.Request) {
 	startedWorker = true
 	c.launch(started.RunID, func() error { _, err := c.engine.ExecuteStartedMission(started.RunID); return err })
 	reply(w, http.StatusAccepted, map[string]string{"runId": started.RunID})
-}
-
-// runActor is who drives a run started over HTTP: the actor the start names,
-// or the standalone operator.
-func runActor(actor string) string {
-	if strings.TrimSpace(actor) == "" {
-		return "operator:standalone"
-	}
-	return actor
 }
 
 func (c *Coordinator) recordFailure(runID string, err error) {

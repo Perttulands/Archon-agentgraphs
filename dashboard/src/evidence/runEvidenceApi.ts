@@ -254,6 +254,8 @@ export interface AttemptFile {
 export interface StepAttempt {
   attempt: number
   status: 'running' | 'done' | 'stopped'
+  /** Why dispatch ended before recording output. */
+  stopReason?: EvidenceText
   startedSeq: number
   startedAt?: string
   endedAt?: string

@@ -820,7 +820,6 @@ func runFormationAssign(store *formations.Store, args []string, stdout, stderr i
 		return failDefinitionWrite(stderr, err, *f.jsonOut, "formation", fs.Arg(1))
 	}
 	result.TOML = ""
-	printWarnings(stderr, formations.SlotWarnings(result, formationID, *f.slot))
 	if *f.jsonOut {
 		return writeJSON(stdout, result)
 	}
@@ -1627,6 +1626,7 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 type runStartFlags struct {
 	cwd          *string
 	bead         *string
+	driver       *string
 	contextPaths stringList
 	inputs       runInputFlags
 }
@@ -1634,6 +1634,7 @@ type runStartFlags struct {
 func registerRunStartFlags(fs *flag.FlagSet) *runStartFlags {
 	flags := &runStartFlags{}
 	flags.cwd = fs.String("cwd", "", "absolute existing directory the agents work in; omit to create a workspace for the run")
+	flags.driver = fs.String("by", "", "who drives the run; defaults to ARCHON_DRIVER or agent:archon")
 	flags.bead = fs.String("bead", "", "the Beads issue the run belongs to")
 	fs.Var(&flags.contextPaths, "context-path", "absolute file or directory the agents inspect as context; repeat for more")
 	flags.inputs.register(fs)
@@ -1655,7 +1656,7 @@ func (f *runStartFlags) checkCwd() error {
 
 func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("mission run", stderr)
-	actor := fs.String("actor", "agent:archon", "run actor")
+	actor := fs.String("actor", "", "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1701,7 +1702,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 		ContextPaths:      run.contextPaths,
 		BeadID:            *run.bead,
 		Inputs:            inputs,
-		Actor:             *actor,
+		Actor:             formations.RunDriver(*run.driver, *actor),
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
@@ -1714,7 +1715,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 
 func runFormationRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("formation run", stderr)
-	actor := fs.String("actor", "agent:archon", "run actor")
+	actor := fs.String("actor", "", "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1747,7 +1748,7 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	defer release()
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunFormation(slug, formationID, formations.FormationRunRequest{
-		Actor:             *actor,
+		Actor:             formations.RunDriver(*run.driver, *actor),
 		Personas:          personas,
 		Cwd:               *run.cwd,
 		ContextPaths:      run.contextPaths,
@@ -1833,6 +1834,7 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 // output a succeeded run delivered.
 func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjection) {
 	fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", status.RunID, status.Status, status.BoardSlug, status.EventCount)
+	fmt.Fprintf(stdout, "missionRev\t%d\nstartedBy\t%s\nstarted\t%s\nupdated\t%s\nduration\t%s\n", status.BoardRev, orDash(status.StartedBy), listTimeWords(status.StartedAt), listTimeWords(status.UpdatedAt), runDuration(status.StartedAt, status.UpdatedAt, status.Final))
 	// A pass a spent limit picked is named, so a reader knows the gate did
 	// not pass that work itself (archon-gihe).
 	for _, pick := range status.Picks {
@@ -1854,6 +1856,9 @@ func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, probl
 		problem := problems[i]
 		if problem.Type != formations.RunEventFailed && problem.Type != formations.RunEventCanceled {
 			continue
+		}
+		if len(problem.NodeIDs) > 0 {
+			fmt.Fprintf(stdout, "step\t%s\n", strings.Join(problem.NodeIDs, ", "))
 		}
 		if problem.Code != "" {
 			fmt.Fprintf(stdout, "reason\t%s\t%s\n", problem.Code, problem.Reason.Text)
@@ -1883,6 +1888,9 @@ func writeCurrentRunBlock(stdout io.Writer, problems []formations.RunProblem) {
 		}
 		if problem.ResumedSeq != 0 {
 			return
+		}
+		if len(problem.NodeIDs) > 0 {
+			fmt.Fprintf(stdout, "step\t%s\n", strings.Join(problem.NodeIDs, ", "))
 		}
 		code, reason := problem.Code, problem.Reason.Text
 		if i > 0 && problems[i-1].Type == formations.RunEventError && problems[i-1].Seq == problem.Seq-1 {

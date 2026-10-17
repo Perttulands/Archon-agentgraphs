@@ -204,7 +204,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
   // A CLI-authored mission has declarations but no saved canvas layout.
   if (options.declaredInputs) {
@@ -216,6 +216,15 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     currentBoard.inputCards[0].outputs = [{ name: 'summary', kind: 'text', from: 'execution:out', required: true }]
   }
   if (options.tomlStyle) currentBoard.inputCards[0].inputs = [{ name: 'body', kind: 'folder', required: true, description: 'Approved body' }]
+  // Agent-authored TOML missions have declared inputs and may have no saved layout.
+  if (options.tomlMission) {
+    currentBoard.inputCards[0].inputs = [
+      { name: 'subject', kind: 'text', required: true, description: 'The character to make.' },
+      { name: 'reference', kind: 'file', required: true, description: 'The approved plate.' },
+    ]
+    currentBoard.formations[0].brief = { goal: 'Make {subject} from {reference} for {bead}.' }
+    currentBoard.formations[2].slots[0].model = 'claude-opus-5-5'
+  }
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
     currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', harness: 'claude-code', model: 'opus', effort: 'low', controller: false }
@@ -284,6 +293,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
   if (options.secondGate) nodes = [...nodes, { id: 'second', x: 112, y: 920 }]
   if (options.blockedAtLimit) nodes = [...nodes, { id: 'lim_cap', x: 448, y: 476 }]
+  if (options.tomlMission) nodes = []
   const endsOf = () => (currentBoard.ends ||= [])
   const limitsOf = () => (currentBoard.limits ||= [])
   // Mirrors the store (checkLimitWrite): a target must be a step or the Input card, and no knob negative.

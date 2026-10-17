@@ -80,7 +80,7 @@ export function SlotFace({ label, badge, staffing, caption, marks, landed, note 
   badge?: number
   staffing: Staffing | null
   caption: ReactNode
-  /** Short words beside the label: a model outside the catalog, the policy's offer. */
+  /** Short words beside the label: a missing role or the policy's offer. */
   marks?: ReactNode
   landed?: number
   /**
