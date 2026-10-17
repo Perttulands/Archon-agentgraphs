@@ -1838,7 +1838,7 @@ func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjectio
 	fmt.Fprintf(stdout, "%s\t%s\t%s\t%d events\n", status.RunID, status.Status, status.BoardSlug, status.EventCount)
 	fmt.Fprintf(stdout, "missionRev\t%d\nstartedBy\t%s\nstarted\t%s\nupdated\t%s\nduration\t%s\n", status.BoardRev, orDash(status.StartedBy), listTimeWords(status.StartedAt), listTimeWords(status.UpdatedAt), runDuration(status.StartedAt, status.UpdatedAt, status.Final))
 	for _, input := range status.Inputs {
-		fmt.Fprintf(stdout, "input\t%s\t%s\t%s\n", input.Name, input.Kind, input.Value)
+		fmt.Fprintf(stdout, "input\t%s\t%s\t%s\n", input.Name, input.Kind, runInputSummary(input.Value))
 	}
 	// A pass a spent limit picked is named, so a reader knows the gate did
 	// not pass that work itself (archon-gihe).
@@ -3441,4 +3441,13 @@ func runStepNames(ids []string, board *formations.BoardDocument) string {
 		names = append(names, name)
 	}
 	return strings.Join(names, ", ")
+}
+
+func runInputSummary(value string) string {
+	first, _, _ := strings.Cut(value, "\n")
+	chars := []rune(strings.TrimSpace(first))
+	if len(chars) > 100 {
+		return string(chars[:99]) + "…"
+	}
+	return string(chars)
 }

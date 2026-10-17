@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -370,7 +371,7 @@ func projectRunAttempts(runID, onlyNode string, board *BoardDocument, events []R
 				}
 				// Cancel cleanup can block first with "context canceled".
 				// Its final event carries the operator's reason for stopping.
-				finalStop := isFinalRunEvent(event.Type) && attempt.Status == AttemptStopped && attempt.OutputSeq == 0
+				finalStop := event.Type == RunEventCanceled && attempt.Status == AttemptStopped && attempt.OutputSeq == 0 && cancelCleanupStoppedAttempt(events, index, nodeID, attempt)
 				if attempt.Status == AttemptRunning || finalStop {
 					attempt.Status, attempt.EndedAt = AttemptStopped, event.Timestamp
 					reason := evidenceProblem(events, index, capper).Reason
@@ -584,4 +585,19 @@ func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int
 		files = append(files, AttemptFile{Name: entry.Name, Path: path, Size: entry.Size, ModifiedAt: entry.ModifiedAt, Kind: classifyEvidenceFile(path, entry.Size)})
 	}
 	return files, truncated || omitted > 0, omitted, nil
+}
+
+// Only the cleanup block immediately before cancellation can borrow its reason.
+// A previous failure owns its cause and end time even if the run is later canceled.
+func cancelCleanupStoppedAttempt(events []RunEvent, index int, nodeID string, attempt *StepAttempt) bool {
+	if index < 2 {
+		return false
+	}
+	block, failure := events[index-1], events[index-2]
+	return block.Type == RunEventBlocked && failure.Type == RunEventError &&
+		block.NodeID == nodeID && failure.NodeID == nodeID &&
+		stringFromEventData(block, "code") == "executor_failed" &&
+		stringFromEventData(failure, "code") == "executor_failed" &&
+		strings.Contains(stringFromEventData(failure, "message"), "context canceled") &&
+		attempt.EndedAt == block.Timestamp
 }

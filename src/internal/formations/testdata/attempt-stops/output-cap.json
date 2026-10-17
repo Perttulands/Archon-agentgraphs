@@ -1,0 +1,51 @@
+[
+  {
+    "ts": "2026-10-12T23:41:23.865193675Z",
+    "seq": 209,
+    "type": "node_started",
+    "nodeId": "fmn_01M4S3FE69DVK9RC8KHEFXWMJB",
+    "attempt": 1,
+    "data": {
+      "nodeKind": "formation",
+      "reason": "initial"
+    }
+  },
+  {
+    "ts": "2026-10-12T23:42:07.611488793Z",
+    "seq": 215,
+    "type": "seat_cleanup",
+    "nodeId": "fmn_01M4S3FE69DVK9RC8KHEFXWMJB",
+    "data": {}
+  },
+  {
+    "ts": "2026-10-12T23:42:07.613525299Z",
+    "seq": 216,
+    "type": "error",
+    "nodeId": "fmn_01M4S3FE69DVK9RC8KHEFXWMJB",
+    "data": {
+      "code": "oversized_output_ref",
+      "message": "output ref \"/example/overview.jpg\" exceeds configured output cap",
+      "reason": "output ref \"/example/overview.jpg\" exceeds configured output cap"
+    }
+  },
+  {
+    "ts": "2026-10-12T23:42:07.615461129Z",
+    "seq": 217,
+    "type": "run_blocked",
+    "nodeId": "fmn_01M4S3FE69DVK9RC8KHEFXWMJB",
+    "data": {
+      "blockedNodeId": "fmn_01M4S3FE69DVK9RC8KHEFXWMJB",
+      "code": "oversized_output_ref",
+      "reason": "output ref \"/example/overview.jpg\" exceeds configured output cap"
+    }
+  },
+  {
+    "ts": "2026-10-12T23:42:34.227323399Z",
+    "seq": 218,
+    "type": "run_canceled",
+    "data": {
+      "final": true,
+      "reason": "Show WisQi blocked on oversized_output_ref; lead shows the result"
+    }
+  }
+]

@@ -11,13 +11,6 @@ import type { EvidenceProblem } from '../evidence/runEvidenceApi'
 /** Who an actor recorded in the ledger is, in the operator's words. */
 export function runActorLabel(actor = ''): string {
   switch (actor) {
-    case '':
-      return ''
-    case 'human:ui':
-      return 'the operator in the cockpit'
-    case 'agent:archon':
-    case 'operator:archon':
-      return actor
     case 'archond':
       return 'Archon'
     // The coordinator's own identity, which later events inherit from the

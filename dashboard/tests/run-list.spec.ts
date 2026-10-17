@@ -193,14 +193,22 @@ for (const view of ['Canvas', 'Flow'] as const) {
     await expect(page.getByTestId('nav-run-run_browser')).toBeVisible()
     await page.getByRole('radio', { name: view, exact: true }).click()
     const viewport = page.getByTestId('formations-canvas')
-    const before = await viewport.boundingBox()
+    const target = view === 'Canvas' ? page.locator('.formation[data-node]').first() : viewport
+    await expect(target).toBeVisible()
+    const position = async () => {
+      const box = await target.boundingBox()
+      // Run output can grow a card; its position and zoom must stay put.
+      return box && { x: box.x, y: box.y, width: box.width }
+    }
+    const before = await position()
     await page.getByTestId('nav-run-run_browser').click()
-    expect(await viewport.boundingBox()).toEqual(before)
+    await expect.poll(position).toEqual(before)
     release()
     await expect(page.getByTestId('run-banner')).toBeVisible()
-    expect(await viewport.boundingBox()).toEqual(before)
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await expect.poll(position).toEqual(before)
     await page.getByRole('button', { name: 'Edit mission', exact: false }).first().click()
     await expect(page.getByTestId('run-banner')).toHaveCount(0)
-    expect(await viewport.boundingBox()).toEqual(before)
+    await expect.poll(position).toEqual(before)
   })
 }

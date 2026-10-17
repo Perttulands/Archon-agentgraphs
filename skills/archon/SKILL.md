@@ -450,7 +450,8 @@ archon $S run status "$ARCHON_RUN_ID" --json
   daemon's host. A mission without declared inputs takes `--input brief=...`.
   Admission names each input that is missing, unknown or not a usable path
   (`missing_input`, `unknown_input`, `invalid_input`) and records no run. Run
-  status prints each input’s name, kind and value (`inputs` in JSON).
+  status prints each input's name, kind and first line, up to 100 characters.
+  JSON keeps full values in `inputs`.
 - `--bead` names the run's owning Bead; an Input card has none.
 - `formation run "$M" <formation>` runs one step on its own with the same
   inputs and run flags; its step receives the inputs as a first step does.

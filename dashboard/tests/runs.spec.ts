@@ -66,7 +66,7 @@ test('Stop asks first, Escape keeps the run, and the canceled run says who stopp
   await page.getByLabel('Why (optional)').fill('The brief was wrong')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Stop run' }).click()
   await expect.poll(() => aborts).toEqual([{ reason: 'The brief was wrong', requestedBy: 'human:ui' }])
-  await expect(page.getByTestId('run-point')).toHaveText('canceled at Disconnected gate by the operator in the cockpit: The brief was wrong')
+  await expect(page.getByTestId('run-point')).toHaveText('canceled at Disconnected gate by human:ui: The brief was wrong')
   await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0)
 })
 

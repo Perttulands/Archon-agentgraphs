@@ -156,8 +156,20 @@ func TestRunStatusShowsSuppliedInputsInRecordedOrder(t *testing.T) {
 		{Name: "brief", Kind: "text", Value: "Build the character\nKeep the rig"},
 		{Name: "reference", Kind: "file", Value: "/references/body.png"},
 	}})
-	want := "input\tbrief\ttext\tBuild the character\nKeep the rig\ninput\treference\tfile\t/references/body.png\n"
+	want := "input\tbrief\ttext\tBuild the character\ninput\treference\tfile\t/references/body.png\n"
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("missing inputs: %s", &out)
+	}
+}
+
+func TestRunInputSummary(t *testing.T) {
+	for _, tc := range []struct{ value, want string }{
+		{"  First line \r\nprivate details", "First line"},
+		{strings.Repeat("界", 110), strings.Repeat("界", 99) + "…"},
+		{"\nsecond line", ""},
+	} {
+		if got := runInputSummary(tc.value); got != tc.want {
+			t.Errorf("summary = %q, want %q", got, tc.want)
+		}
 	}
 }

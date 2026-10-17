@@ -289,8 +289,8 @@ func TestCanceledAttemptUsesOperatorReasonAfterExecutorBlock(t *testing.T) {
 	events := numbered(
 		RunEvent{Type: RunEventStarted},
 		RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1},
-		RunEvent{Type: RunEventError, NodeID: "fmn_work", Data: map[string]any{"message": "context canceled"}},
-		RunEvent{Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"reason": "context canceled", "blockedNodeId": "fmn_work"}},
+		RunEvent{Type: RunEventError, NodeID: "fmn_work", Data: map[string]any{"code": "executor_failed", "message": "context canceled"}},
+		RunEvent{Type: RunEventBlocked, NodeID: "fmn_work", Data: map[string]any{"code": "executor_failed", "reason": "context canceled", "blockedNodeId": "fmn_work"}},
 		RunEvent{Type: RunEventCanceled, Actor: "operator:archon", Data: map[string]any{"reason": reason, "final": true}},
 	)
 	attempt := projectRunAttempts("run_x", "", board, events, &RunStatusProjection{Final: true, Status: RunStatusCanceled}, nil).Steps[0].Attempts[0]

@@ -196,7 +196,7 @@ rather than rewriting someone else's note. The cockpit is the operator's own
 surface, so everything it does names `human:ui` (archon-by4a): its mission
 edits' `updatedBy`, its notes, and its run starts, verdicts, resumes and stops
 (a verdict is recorded as decided by `human:operator`, whoever sent it); run
-evidence reads that actor as "the operator in the cockpit". It
+evidence reads that actor as "human:ui". It
 shows notes on the canvas in their own layer above the cards, as a preview of
 each thread's latest entry, the full thread, or hidden, with the operator's and
 agents' entries styled apart. A card's note pin or sticky, or Mission notes, opens
@@ -660,12 +660,13 @@ start event's actor. Every CLI command taking `--actor <name>` defaults it
 to `ARCHON_DRIVER`, then `agent:archon`. The CLI alone resolves that
 environment default and sends `actor` to the API. Historical runs keep their
 recorded actor, displayed verbatim as the driver in the cockpit and CLI.
-Plain status lists each input’s name, kind and value. Status also carries
+Plain status lists each input's name, kind and first line, up to 100 characters;
+JSON keeps the full value. Status also carries
 `startedAt` and `updatedAt`, the times of its first and latest ledger events; a final run ended at
 `updatedAt`. CLI status and attempts render timestamps in local time and
 elapsed time as durations; JSON retains the stored timestamps. Status names
 the mission revision and stopped step (ID plus its frozen title), and attempts
-include their stop reason. A stopped attempt uses the run’s terminal reason
+include their stop reason. A stopped attempt uses the run's terminal reason
 when that end stopped it, ahead of intermediate cancellation errors. A run
 ending while blocked names the last blocked step, even when it has no open
 dispatch; otherwise its active steps identify where it stopped.

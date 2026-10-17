@@ -98,8 +98,8 @@ The operator steers a mission through its managing agent
 - Where an entry or edit is marked as the agent's, the mark is a word or weight
   before it is a colour; a new colour is an addition to the colour rule.
 - Nothing the operator is reading moves when something is added; motion only
-  confirms. Reserve the run bar’s row before a run is selected, including while
-  its data loads. Keep that row’s height fixed as the run changes.
+  confirms. Reserve the run bar's row before a run is selected, including while
+  its data loads. Keep that row's height fixed as the run changes.
 - A passed gate reads **PASS** in Flow and attempts. The canvas creation
   palette appears only on Canvas.
 - Drafts save with blanks; only validation and admission reject gaps.

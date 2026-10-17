@@ -1,0 +1,47 @@
+[
+  {
+    "ts": "2026-10-17T03:31:23.869755717Z",
+    "seq": 118,
+    "type": "node_started",
+    "nodeId": "fmn_rig",
+    "attempt": 4
+  },
+  {
+    "ts": "2026-10-17T04:00:02.697334436Z",
+    "seq": 123,
+    "type": "seat_cleanup",
+    "nodeId": "fmn_rig",
+    "data": {}
+  },
+  {
+    "ts": "2026-10-17T04:00:02.700744538Z",
+    "seq": 124,
+    "type": "error",
+    "nodeId": "fmn_rig",
+    "data": {
+      "code": "executor_failed",
+      "message": "context canceled",
+      "reason": "context canceled"
+    }
+  },
+  {
+    "ts": "2026-10-17T04:00:02.703311514Z",
+    "seq": 125,
+    "type": "run_blocked",
+    "nodeId": "fmn_rig",
+    "data": {
+      "blockedNodeId": "fmn_rig",
+      "code": "executor_failed",
+      "reason": "context canceled"
+    }
+  },
+  {
+    "ts": "2026-10-17T04:00:02.706415924Z",
+    "seq": 126,
+    "type": "run_canceled",
+    "data": {
+      "final": true,
+      "reason": "Paused by Perttu (via Athena): Ahti is on hold until he works on it in person in two days; MetaHuman may be the route, especially for the face/blink problem. Artifacts kept."
+    }
+  }
+]

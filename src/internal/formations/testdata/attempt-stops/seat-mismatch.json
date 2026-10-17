@@ -1,0 +1,51 @@
+[
+  {
+    "ts": "2026-10-16T10:27:18.773478948Z",
+    "seq": 13,
+    "type": "node_started",
+    "nodeId": "fmn_01M523S44EC3V59H96788M71E7",
+    "attempt": 1,
+    "data": {
+      "nodeKind": "formation",
+      "reason": "judge"
+    }
+  },
+  {
+    "ts": "2026-10-16T10:29:54.060676486Z",
+    "seq": 18,
+    "type": "seat_cleanup",
+    "nodeId": "fmn_01M523S44EC3V59H96788M71E7",
+    "data": {}
+  },
+  {
+    "ts": "2026-10-16T10:29:54.064075413Z",
+    "seq": 19,
+    "type": "error",
+    "nodeId": "fmn_01M523S44EC3V59H96788M71E7",
+    "data": {
+      "code": "seat_settings_mismatch",
+      "message": "seat model/effort mismatch: expected opus/xhigh, observed claude-opus-5-5/xhigh",
+      "reason": "seat model/effort mismatch: expected opus/xhigh, observed claude-opus-5-5/xhigh"
+    }
+  },
+  {
+    "ts": "2026-10-16T10:29:54.066968937Z",
+    "seq": 20,
+    "type": "run_blocked",
+    "nodeId": "fmn_01M523S44EC3V59H96788M71E7",
+    "data": {
+      "blockedNodeId": "fmn_01M523S44EC3V59H96788M71E7",
+      "code": "seat_settings_mismatch",
+      "reason": "seat model/effort mismatch: expected opus/xhigh, observed claude-opus-5-5/xhigh"
+    }
+  },
+  {
+    "ts": "2026-10-16T10:30:54.32246599Z",
+    "seq": 21,
+    "type": "run_canceled",
+    "data": {
+      "final": true,
+      "reason": "Completed judge rejected solely for valid opus alias resolution; preserve evidence and rerun with explicit resolved model."
+    }
+  }
+]

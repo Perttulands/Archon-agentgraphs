@@ -312,8 +312,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const pendingNode = useRef<{ runId: string; nodeId: string } | null>(null)
   /** The card the run on the canvas is at, which a legible fit centres. */
   const fitFocusRef = useRef('')
-  const focusedRunRef = useRef('')
-  const fitViewRef = useRef<(() => void) | null>(null)
   // Every mission's runs that need the operator, for the picker counts and the page title.
   const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
   // Link problems outlive the board loads that clear ordinary errors.
@@ -455,7 +453,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const recordUndo = useCallback((label: string, ...steps: UndoStep[]) => recordEntry({ label, steps }), [recordEntry])
   // Undo belongs to the board it was recorded on.
   useEffect(() => undoHistory.setBoard(selectedSlug), [selectedSlug, undoHistory])
-  const fittedBoardRef = useRef<string | null>(null)
+  const fittedBoardRef = useRef<{ slug: string; rev: number; runId?: string } | null>(null)
   const judgeHoverRef = useRef<string | null>(null)
   const openJudgePickerRef = useRef<((gate: GateNode, x: number, y: number) => void) | null>(null)
   const boardDialogReturnFocusRef = useRef<HTMLElement | null>(null)
@@ -813,19 +811,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // Every gate waiting and step running now; the first most needs the operator.
   const runPoints = useMemo(() => runCurrentPoints(runEvents, activeRun), [runEvents, activeRun])
   fitFocusRef.current = runPoints.find(point => point.nodeId)?.nodeId || ''
-  // Once a run's point is known, the opening view moves to it, once a run.
-  const fitFocus = fitFocusRef.current
-  useEffect(() => {
-    const runId = activeRun?.runId
-    if (!fitFocus || !runId || !board || focusedRunRef.current === runId) return
-    // After the run's graph has drawn: a frozen graph arrives later than the run does.
-    const frame = window.requestAnimationFrame(() => {
-      if (![...(worldRef.current?.querySelectorAll<HTMLElement>('[data-node]') || [])].some(card => card.dataset.node === fitFocus)) return
-      focusedRunRef.current = runId
-      fitViewRef.current?.()
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [fitFocus, activeRun?.runId, board])
   const outputNodeIds = useMemo(() => new Set(runEvents.filter(event => event.type === 'node_output' && event.nodeId).map(event => event.nodeId)), [runEvents])
   // What the run's steps produced, for their cards, node windows and the run bar.
   const runProduced = useRunProduced(activeRun?.runId || '', runEvents, Boolean(activeRun?.final))
@@ -2058,7 +2043,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       y: narrow ? pad - minY * next : (rect.height - (maxY - minY) * next) / 2 - minY * next,
     })
   }, [])
-  fitViewRef.current = fitView
 
   // Centre a card in the viewport at the current zoom and mark it briefly.
   const locateNode = useCallback((nodeId: string) => {
@@ -2106,13 +2090,21 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [boardView, locateNode, openNodeWindow])
 
   useLayoutEffect(() => {
-    if (!board || !layout || fittedBoardRef.current === board.slug) return
+    if (!board || !layout) return
+    const shown = { slug: board.slug, rev: board.rev, runId: activeRun?.runId }
+    const previous = fittedBoardRef.current
+    // Selecting a run of the displayed revision preserves the operator's view.
+    // Ordinary edits also keep it; only navigating to another graph fits again.
+    if (previous?.slug === shown.slug && (previous.rev === shown.rev || previous.runId === shown.runId)) {
+      fittedBoardRef.current = shown
+      return
+    }
     const frame = window.requestAnimationFrame(() => {
       fitView()
-      fittedBoardRef.current = board.slug
+      fittedBoardRef.current = shown
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [board, layout, fitView])
+  }, [board, layout, fitView, activeRun?.runId])
 
   const arrangeBoard = useCallback(async () => {
     const currentBoard = boardRef.current
