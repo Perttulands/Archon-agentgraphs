@@ -68,6 +68,19 @@ describe('Limit card words', () => {
     expect(limitSummary(board, best('mis'))).toBe('Cap: the whole mission may make at most 3 step runs')
   })
 
+  it('states immediate failure and preserved attempts for step and mission cards', () => {
+    for (const target of ['fmn_review', 'mis']) {
+      for (const knobs of [{ rounds: 3 }, { seconds: 1800 }, { tokens: 50000 }]) {
+        const fail: LimitNode = { ...card(target), ...knobs, whenSpent: 'fail' }
+        const meaning = limitMeaning(board, fail)
+        expect(meaning).toContain('the run fails at once, keeping every attempt as evidence')
+        expect(meaning).not.toContain('until you grant')
+        expect(limitSpentWords(board, fail)).toBe('then fails the run')
+        expect(limitSummary(board, fail)).toContain(', then fails the run')
+      }
+    }
+  })
+
   it('states a tokens knob, alone and beside the others, with how it counts (archon-o7p.9)', () => {
     const tokens = (target: string, extra: Partial<LimitNode> = {}): LimitNode => ({ ...card(target), tokens: 50000, ...extra })
     expect(tokenWords(1)).toBe('1 token')

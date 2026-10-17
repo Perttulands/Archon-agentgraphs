@@ -281,6 +281,11 @@ func TestAbortCancelsOwnedSeatAndHoldsAdmissionUntilCleanup(t *testing.T) {
 		t.Fatal(response.Body.String())
 	}
 	p := awaitState(t, c, id, "canceled")
+	for _, event := range p.Events {
+		if event.Type == formations.RunEventError || event.Type == formations.RunEventBlocked {
+			t.Fatalf("abort recorded a phantom failure: %+v", event)
+		}
+	}
 	found := false
 	for _, event := range p.Events {
 		if event.Type == "seat_cleanup" && event.Outcome == "left_cleanup_failed" && event.Seq < p.EventCount {

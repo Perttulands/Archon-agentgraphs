@@ -3092,6 +3092,12 @@ type executionFailureDetails struct {
 }
 
 func (e *RunEngine) appendExecutionFailureAndBlock(runID, nodeID string, err error) error {
+	// The coordinator records the abort after execution and seat cleanup settle.
+	// Only the run owner's cancellation is an abort; executor-local cancellation
+	// still needs failure evidence, and shutdown retains its recovery block.
+	if errors.Is(err, context.Canceled) && errors.Is(context.Cause(e.runContext(runID)), context.Canceled) {
+		return nil
+	}
 	var pending *pendingOutputError
 	if errors.As(err, &pending) {
 		return e.appendPendingOutputBlock(runID, *pending)

@@ -16,8 +16,9 @@ import (
 func runAttempts(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("run attempts", stderr)
 	nodeID := fs.String("node", "", "only this step's attempts")
+	files := fs.Bool("files", false, "list files in each attempt directory")
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "files": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -31,15 +32,16 @@ func runAttempts(store *formations.Store, args []string, stdout, stderr io.Write
 	if *jsonOut {
 		return writeJSON(stdout, evidence)
 	}
-	writeRunAttempts(stdout, evidence)
+	writeRunAttempts(stdout, evidence, *files)
 	return 0
 }
 
 func remoteRunAttempts(c *remoteClient, args []string, stdout, stderr io.Writer) int {
 	fs := remoteFlags("run attempts", stderr)
 	nodeID := fs.String("node", "", "only this step's attempts")
+	files := fs.Bool("files", false, "list files in each attempt directory")
 	jsonOut := fs.Bool("json", false, "write JSON")
-	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
+	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true, "files": true})); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
@@ -66,13 +68,13 @@ func remoteRunAttempts(c *remoteClient, args []string, stdout, stderr io.Writer)
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return fail(stderr, err)
 	}
-	writeRunAttempts(stdout, &envelope.Data.Attempts)
+	writeRunAttempts(stdout, &envelope.Data.Attempts, *files)
 	return 0
 }
 
 // writeRunAttempts prints each step, then each of its attempts with what it
-// output, how gates judged it and the files it left.
-func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence) {
+// output and how gates judged it. Files are opt-in.
+func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence, files bool) {
 	if len(evidence.Steps) == 0 {
 		fmt.Fprintln(stdout, "No attempts.")
 		return
@@ -95,7 +97,7 @@ func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence
 				line += " to " + attempt.EndedAt
 			}
 			fmt.Fprintln(stdout, line)
-			if attempt.Directory != nil {
+			if files && attempt.Directory != nil {
 				fmt.Fprintf(stdout, "    directory %s\n", attempt.Directory.Path)
 			}
 			for _, output := range attempt.Outputs {
@@ -126,6 +128,9 @@ func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence
 					line += ": " + reason
 				}
 				fmt.Fprintln(stdout, line)
+			}
+			if !files {
+				continue
 			}
 			for _, file := range attempt.Files {
 				fmt.Fprintf(stdout, "    file %s %d bytes %s\n", file.Name, file.Size, file.Kind)

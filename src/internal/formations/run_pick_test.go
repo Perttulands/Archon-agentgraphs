@@ -621,7 +621,7 @@ to = "end_done:in"
 		{"no selecting gate", judged + card("fmn_ship", "best"), "Limit Cap picks the best attempt of Ship when spent, but no gate judges it and sends it back: wire a judge or human gate that only it feeds and whose fail returns to it, or set it to stop"},
 		{"a code gate", strings.Replace(judged, `kinds = ["formation"]`, `kinds = ["code"]`, 1) + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but its gate Review checks with code only, which cannot compare attempts: give it a judge or a human, or set it to stop"},
 		{"two selecting gates", judged + secondGate + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but Review and Second review both judge it and send it back, so neither can pick: keep one, or set it to stop"},
-		{"another value", judged + card("fmn_work", "never"), `Limit Cap holds whenSpent = "never": set it to stop or best`},
+		{"another value", judged + card("fmn_work", "never"), `Limit Cap holds whenSpent = "never": set it to stop, best or fail`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			board, err := parseBoard([]byte(tc.toml))
@@ -641,7 +641,7 @@ to = "end_done:in"
 			}
 		})
 	}
-	for _, whenSpent := range []string{"best", "stop"} {
+	for _, whenSpent := range []string{"best", "stop", "fail"} {
 		board, err := parseBoard([]byte(judged + card("fmn_work", whenSpent)))
 		if err != nil {
 			t.Fatal(err)
@@ -651,13 +651,13 @@ to = "end_done:in"
 				t.Fatalf("whenSpent %s: %+v", whenSpent, finding)
 			}
 		}
-		if want := map[string]string{"best": "best", "stop": ""}[whenSpent]; board.Limits[0].WhenSpent != want {
+		if want := map[string]string{"best": "best", "stop": "", "fail": "fail"}[whenSpent]; board.Limits[0].WhenSpent != want {
 			t.Fatalf("whenSpent %s decoded as %q", whenSpent, board.Limits[0].WhenSpent)
 		}
 	}
 }
 
-// whenSpent is written as best and cleared by stop; any other value is
+// whenSpent accepts best and fail and is cleared by stop; any other value is
 // refused.
 func TestWhenSpentAuthoring(t *testing.T) {
 	store, _ := s4RunFixture(t)
@@ -676,6 +676,14 @@ func TestWhenSpentAuthoring(t *testing.T) {
 	board = created.Board
 	if created.Limit.WhenSpent != LimitWhenSpentBest || !strings.Contains(board.TOML, "whenSpent = \"best\"\n") || len(ValidateBoard(board).Errors) != 0 {
 		t.Fatalf("created %+v:\n%s", created.Limit, board.TOML)
+	}
+	fail := "fail"
+	board, err = store.UpdateLimit("session-search", LimitUpdateRequest{LimitID: created.Limit.ID, WhenSpent: &fail}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if board.Limits[0].WhenSpent != LimitWhenSpentFail || !strings.Contains(board.TOML, `whenSpent = "fail"`) || len(ValidateBoard(board).Errors) != 0 {
+		t.Fatalf("fail update: %+v", board)
 	}
 	stop := "stop"
 	updated, err := store.UpdateLimit("session-search", LimitUpdateRequest{LimitID: created.Limit.ID, WhenSpent: &stop}, WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})

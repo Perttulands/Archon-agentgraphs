@@ -31,7 +31,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | End node | Ends a path on purpose (`[[end]]` in TOML: `id`, `title`, `outcome`). Its outcome is `done` or `rejected`. Its only port is `in`, which takes any number of routes; it leads nowhere. |
 | Connection | A directed edge between `node-id:port-id` endpoints. Formation input and output ports have explicit IDs. |
 | Judge chain | Formations wired from a gate's `judge` port and back to that same port: from the step the port feeds, each step returns to the port, which completes the chain, or hands on to the first step it feeds. A chain that leaves the steps (through a Tool or gate), loops or never returns is no chain, so validation names the gate incomplete; the engine and the cockpit share this rule. The final judge result decides the formation kind. |
-| Limit card | Caps the rounds, time and tokens of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`, `tokens`, `whenSpent`). A run has no limits without one. A spent card blocks the run for a grant, or on a step, with `whenSpent = "best"`, picks the best attempt its gate judged and goes on. |
+| Limit card | Caps the rounds, time and tokens of the step it covers, or of the whole mission when it covers the Input card (`[[limit]]` in TOML, `limits` in JSON: `id`, `title`, `target`, `rounds`, `seconds`, `warnSeconds`, `tokens`, `whenSpent`). A run has no limits without one. A spent card defaults to blocking for a grant, fails the run with `whenSpent = "fail"`, or on a step, with `whenSpent = "best"`, picks the best attempt its gate judged and goes on. |
 | Pushback edge | A gate's `fail` connection back to work, delivering feedback and starting the next attempt, capped only by a Limit card. There is no `retry_control` port. |
 | Run | One admitted mission or isolated formation, with definition and persona snapshots and inputs. Later edits affect later runs. |
 | Ledger | Private append-only NDJSON events, ordered by sequence. It records dispatch, results, routing and recovery evidence. |
@@ -583,7 +583,12 @@ spends N tokens.
 A step covered by its own card and the mission's card stops at whichever is
 spent first. Before a step starts, the engine checks its card and then the
 mission's, rounds before time before tokens; at a spent limit the step does
-not start, and when time or tokens run out the running step stops. The run
+not start, and when time or tokens run out the running step stops. With
+`whenSpent = "fail"`, on a step or Input card, the run immediately ends
+`run_failed` with `code` `limit_reached`, the plain usage reason naming the
+covered step (or mission), the spent `limit`, and `endedBy` `archond`. It opens
+no block or grant request and keeps every attempt's verdicts and outputs as
+evidence. With `stop` (the default), the run
 blocks with `code` `limit_reached`, the plain reason ("Review used 3 of 3
 rounds", "The mission used 20 of 20 rounds, 1 of them granted", "Review used
 30 min of 30 min", "Review used 51,230 of 50,000 tokens"), `resumePolicy`
@@ -672,11 +677,11 @@ covers the whole mission: only a step's card can pick; set it to stop"), on a
 step without a selecting gate ("Limit Cap picks the best attempt of Draft when
 spent, but no gate judges it and sends it back: wire a judge or human gate that
 only it feeds and whose fail returns to it, or set it to stop"), two such gates
-or a code-only gate, and any value other than `stop` or `best`; admission
+or a code-only gate, and any value other than `stop`, `best` or `fail`; admission
 refuses the run with the same words. `limit create|update --when-spent
-stop|best` and the patch operations' `whenSpent` set it; another value is
+stop|best|fail` and the patch operations' `whenSpent` set it; another value is
 refused with `INVALID_LIMIT` (HTTP 400). In the cockpit the card's window sets
-it (When spent: Stop for a grant, or Pick the best attempt), the card reads
+it (When spent: Stop for a grant, Pick the best attempt, or Fail the run), the card reads
 "then picks the best", and Flow and the step's window say ", then the best
 attempt goes on".
 
@@ -817,7 +822,8 @@ archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
 - `any-change` returns at the next ledger event and lists the new events. When
   that event opens a new ask it answers as `needs-you` (exit 3) instead.
 
-Every mode returns at once for a final run, and says how it ended: its status,
+`run status` also shows a final run's outcome, terminal reason and `endedBy`.
+Every wait mode returns at once for a final run, and says how it ended: its status,
 the step it stopped at, the terminal reason and code from its evidence
 problems, and who ended it. Every other answer ends with the command that
 waits for what comes next, carrying `--since <seq>`, the ledger sequence the
@@ -1516,7 +1522,7 @@ canvas dock or right-click the canvas (End node · done or rejected); an End car
 takes any number of wires into its one port, its window and right-click menu
 change its outcome, and a finished run lights the End nodes its paths reached.
 `archon limit create <mission> --target <step|input> [--rounds <n>] [--time
-<duration>] [--warn <duration>] [--tokens <n>] [--when-spent stop|best] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
+<duration>] [--warn <duration>] [--tokens <n>] [--when-spent stop|best|fail] [--title <title>]` adds a Limit card covering a step, named by ID or title, or the Input
 card (`input`, or its ID) for the whole mission; it prints `created <id>`, or
 with `--json` `{mission, layout, limit}`. `archon limit update <mission>
 <limit> [--target] [--rounds] [--time] [--warn] [--tokens] [--when-spent] [--title]` changes only what
@@ -1951,6 +1957,9 @@ sanitized ledger projection. The same trusted-network access boundary applies.
 
 ### Run evidence
 
+Aborting active work records cancellation and seat cleanup, without an executor
+failure or a resumable block for the run's own context cancellation.
+
 Absolute paths in terminals, file text, briefs, outputs and notes open read-only
 file windows beside their source. Bead IDs copy on click (tooltip: "Bead ID,
 copied on click"); Archon has no Beads catalog or card API. File and folder
@@ -2030,8 +2039,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   from `/api/runs/{runId}/artifacts/{name...}` by a file's `name` or an
   output's `artifact`. Texts share the node evidence caps, spent on the newest
   attempts first, so a long run cuts its oldest attempts' texts. `archon run attempts
-  <runId> [--node <id>] [--json]` prints the same, offline or through
-  `--server`.
+  <runId> [--node <id>] [--files] [--json]` defaults to each step and
+  attempt with its number, status, verdict and reason one-liner, and declared
+  outputs. `--files` adds directory files; `--json` keeps the complete evidence,
+  offline or through `--server`.
 - `/api/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
   `text`, `image`, `pdf` or `binary`, and `path`, its absolute path on the

@@ -21,7 +21,7 @@ const (
 	limitTimeHelp      = "how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count"
 	limitWarnHelp      = "how much time is left when the covered seats are warned, such as 5m"
 	limitTokensHelp    = "how many tokens the step, or every step of the mission, may spend, approximately: input not read from the cache, cache writes included, plus output, subagents included"
-	limitWhenSpentHelp = "what the spent card does: stop (the default) blocks the run for a grant; best picks the best attempt the step's gate judged and goes on through its pass route"
+	limitWhenSpentHelp = "what the spent card does: fail ends the run as failed; stop (the default) blocks the run for a grant; best picks the best attempt the step's gate judged and goes on through its pass route"
 )
 
 func runLimitCommand(store *formations.Store, verb string, args []string, stdout, stderr io.Writer) int {

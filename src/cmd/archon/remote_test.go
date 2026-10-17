@@ -418,10 +418,10 @@ func authoringScript(t *testing.T, jsonOut bool) []authoringStep {
 			return []string{"formation", "wire", "demo", nodeIDTitled(board, "Default") + ":fail", nodeIDTitled(board, "Sent back") + ":in"}
 		})},
 		// A Limit card caps a step or the whole mission (archon-o7p.8).
-		{args: with(fixed("limit", "create", "demo", "--target", "Worker", "--rounds", "3", "--title", "Worker cap")), creates: "limit"},
-		{args: with(fixed("limit", "create", "demo", "--target", "input", "--rounds", "12")), creates: "limit"},
-		{args: with(fixed("limit", "update", "demo", "Worker cap", "--rounds", "4", "--title", "Worker rounds"))},
-		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--time", "30m", "--warn", "5m"))},
+		{args: with(fixed("limit", "create", "demo", "--target", "Worker", "--rounds", "3", "--when-spent", "fail", "--title", "Worker cap")), creates: "limit"},
+		{args: with(fixed("limit", "create", "demo", "--target", "input", "--rounds", "12", "--when-spent", "fail")), creates: "limit"},
+		{args: with(fixed("limit", "update", "demo", "Worker cap", "--rounds", "4", "--when-spent", "stop", "--title", "Worker rounds"))},
+		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--time", "30m", "--warn", "5m", "--when-spent", "fail"))},
 		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--warn", ""))},
 		// Tokens cap what the step spends (archon-o7p.9).
 		{args: with(fixed("limit", "update", "demo", "Worker rounds", "--tokens", "50000"))},

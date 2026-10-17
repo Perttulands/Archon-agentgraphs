@@ -267,8 +267,14 @@ func limitWarningText(board *BoardDocument, limit LimitNode, left int) string {
 	if isMissionLimit(board, limit) {
 		whose = "the mission's"
 	}
-	return fmt.Sprintf("Archon: %s left of %s working time (Limit card %s). When it runs out the step stops and the run waits for the operator. Finish your output now.",
-		durationWords(left), whose, nodeName(board, limit.ID))
+	ending := "waits for the operator"
+	if limit.WhenSpent == LimitWhenSpentFail {
+		ending = "fails, keeping the attempts as evidence"
+	} else if limit.WhenSpent == LimitWhenSpentBest {
+		ending = "picks the best judged attempt, or waits if none is eligible"
+	}
+	return fmt.Sprintf("Archon: %s left of %s working time (Limit card %s). When it runs out the step stops and the run %s. Finish your output now.",
+		durationWords(left), whose, nodeName(board, limit.ID), ending)
 }
 
 // peerGrantRound is how many rounds a grant gives the limit a run spent: one,
@@ -332,11 +338,20 @@ func limitReason(board *BoardDocument, use RunLimitReached) string {
 	return reason
 }
 
-// appendLimitBlock stops the run at a spent limit before nodeID starts. The
+// appendLimitBlock fails the run when the spent card says fail; otherwise the
+// run blocks at the spent limit before nodeID starts. The
 // block names the limit and resumes with a grant, or, when the step's own
 // card is spent and its selecting gate judged an attempt, with a grant or a
 // pick of the best attempt (archon-gihe).
 func (e *RunEngine) appendLimitBlock(runID string, board *BoardDocument, nodeID string, use RunLimitReached) error {
+	if card, ok := findLimit(board, use.LimitID); ok && card.WhenSpent == LimitWhenSpentFail {
+		if err := e.EndKeptSeats(runID); err != nil {
+			return err
+		}
+		return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventFailed, Actor: RunFailureActor, NodeID: nodeID, Data: map[string]any{
+			"code": RunBlockLimitReached, "reason": limitReason(board, use), "limit": use, "final": true,
+		}})
+	}
 	if err := e.appendLimitError(runID, board, nodeID, use); err != nil {
 		return err
 	}

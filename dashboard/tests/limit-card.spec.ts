@@ -148,6 +148,33 @@ test('Limit cards are created, wired, edited, deleted and restored on the canvas
   await expect(page.getByRole('dialog', { name: 'Limit card · Limit' })).toBeVisible()
 })
 
+test('step and mission Limit cards can fail the run when spent and undo restores stop', async ({ page }) => {
+  const fixture = await cockpitFixture(page)
+  await page.goto('/?mission=browser')
+  await expect(page.getByTestId('formation-node-execution')).toBeVisible()
+  await drag(page, await center(page, '[data-testid="limit-token"]'), await center(page, '[data-testid="formation-node-execution"]'))
+  await expect(page.locator('.limitcard')).toHaveCount(1)
+  const cap = fixture.board().limits![0]
+  const window = page.getByRole('dialog', { name: 'Limit card · Limit' })
+  await window.getByRole('button', { name: 'Edit rounds' }).click()
+  await window.getByRole('textbox', { name: 'Rounds' }).fill('5')
+  await window.getByRole('button', { name: 'Save rounds' }).click()
+  await window.getByLabel('When spent').selectOption('fail')
+  await expect.poll(() => fixture.board().limits![0].whenSpent).toBe('fail')
+  await expect(window.getByTestId(`limit-meaning-${cap.id}`)).toContainText('the run fails at once, keeping every attempt as evidence')
+  await window.getByLabel('Covers').selectOption('mission')
+  await expect(window.getByLabel('When spent')).toHaveValue('fail')
+  await expect(window.getByLabel('When spent').locator('option')).toHaveCount(2)
+  await expect(window.getByTestId(`limit-meaning-${cap.id}`)).toContainText('The whole mission may make at most 5 step runs')
+  await window.getByLabel('When spent').selectOption('stop')
+  await expect.poll(() => fixture.board().limits![0].whenSpent).toBeUndefined()
+  await window.getByLabel('When spent').selectOption('fail')
+  await window.getByRole('button', { name: /close/i }).first().click()
+  await page.keyboard.press('Control+z')
+  await expect.poll(() => fixture.board().limits![0].whenSpent).toBeUndefined()
+  await expect(page.getByTestId(`limit-node-${cap.id}`)).not.toContainText('then fails the run')
+})
+
 test('a step\'s Limit card reads in Flow and in the step\'s window', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())

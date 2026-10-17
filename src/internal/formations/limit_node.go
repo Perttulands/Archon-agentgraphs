@@ -56,19 +56,20 @@ const ResumePolicyGrant = "grant"
 const (
 	LimitWhenSpentStop = "stop"
 	LimitWhenSpentBest = "best"
+	LimitWhenSpentFail = "fail"
 )
 
 // NormalizeLimitWhenSpent returns the stored form of a card's whenSpent:
-// empty for stop or no value, best for best. Any other value is an
+// empty for stop or no value, otherwise best or fail. Any other value is an
 // ErrInvalidLimit naming the allowed values.
 func NormalizeLimitWhenSpent(value string) (string, error) {
 	switch whenSpent := strings.TrimSpace(value); whenSpent {
 	case "", LimitWhenSpentStop:
 		return "", nil
-	case LimitWhenSpentBest:
+	case LimitWhenSpentBest, LimitWhenSpentFail:
 		return whenSpent, nil
 	default:
-		return "", fmt.Errorf("%w: whenSpent %q must be stop or best", ErrInvalidLimit, value)
+		return "", fmt.Errorf("%w: whenSpent %q must be stop, best or fail", ErrInvalidLimit, value)
 	}
 }
 
@@ -87,7 +88,7 @@ type LimitNode struct {
 	Seconds     *int   `json:"seconds,omitempty"`
 	WarnSeconds *int   `json:"warnSeconds,omitempty"`
 	Tokens      *int   `json:"tokens,omitempty"`
-	// WhenSpent is best when the spent card picks the step's best attempt;
+	// WhenSpent is best to pick a judged attempt or fail to end the run;
 	// empty means stop (archon-gihe).
 	WhenSpent string `json:"whenSpent,omitempty"`
 }
@@ -387,7 +388,7 @@ func decodeLimitNodes(document map[string]any) ([]LimitNode, error) {
 		if node.Target, err = tomlString(table, "target"); err != nil {
 			return nil, err
 		}
-		// A hand-written value other than stop or best is kept, so validation
+		// A hand-written value other than stop, best or fail is kept, so validation
 		// can name it.
 		if node.WhenSpent, err = tomlString(table, "whenSpent"); err != nil {
 			return nil, err
@@ -492,11 +493,11 @@ func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
 func whenSpentProblem(board *BoardDocument, limit LimitNode) string {
 	name := nodeName(board, limit.ID)
 	switch strings.TrimSpace(limit.WhenSpent) {
-	case "", LimitWhenSpentStop:
+	case "", LimitWhenSpentStop, LimitWhenSpentFail:
 		return ""
 	case LimitWhenSpentBest:
 	default:
-		return fmt.Sprintf("Limit %s holds whenSpent = %q: set it to stop or best", name, limit.WhenSpent)
+		return fmt.Sprintf("Limit %s holds whenSpent = %q: set it to stop, best or fail", name, limit.WhenSpent)
 	}
 	if _, ok := findMission(board, limit.Target); ok {
 		return fmt.Sprintf("Limit %s picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop", name)

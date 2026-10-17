@@ -250,7 +250,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (knobs.seconds !== undefined && knobs.seconds < 0) return 'time must be a positive whole number of seconds'
     if (knobs.warnSeconds !== undefined && knobs.warnSeconds < 0) return 'the warning must be a positive whole number of seconds'
     if (knobs.tokens !== undefined && knobs.tokens < 0) return 'tokens must be a positive whole number'
-    if (knobs.whenSpent !== undefined && !['', 'stop', 'best'].includes(knobs.whenSpent)) return `invalid_limit: whenSpent "${knobs.whenSpent}" must be stop or best`
+    if (knobs.whenSpent !== undefined && !['', 'stop', 'best', 'fail'].includes(knobs.whenSpent)) return `invalid_limit: whenSpent "${knobs.whenSpent}" must be stop, best or fail`
     return ''
   }
   let seatsFetches = 0
@@ -361,7 +361,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
           const { title, target = '', rounds = 0, seconds = 0, warnSeconds = 0, tokens = 0, whenSpent = '', x, y } = body.createLimit
           const refused = refuseLimit(target, { rounds, seconds, warnSeconds, tokens, whenSpent })
           if (refused) return refused
-          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}), ...(seconds ? { seconds } : {}), ...(warnSeconds ? { warnSeconds } : {}), ...(tokens ? { tokens } : {}), ...(whenSpent === 'best' ? { whenSpent: 'best' as const } : {}) }
+          const limit: LimitNode = { id: `lim_${currentBoard.rev}`, title: title || 'Limit', target, ...(rounds ? { rounds } : {}), ...(seconds ? { seconds } : {}), ...(warnSeconds ? { warnSeconds } : {}), ...(tokens ? { tokens } : {}), ...(['best', 'fail'].includes(whenSpent) ? { whenSpent: whenSpent as 'best' | 'fail' } : {}) }
           limitsOf().push(limit)
           nodes = [...nodes, { id: limit.id, x, y }]
           currentBoard.rev++
@@ -381,7 +381,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
             else if (knobs[knob] !== undefined) limit[knob] = knobs[knob]
           }
           // whenSpent stop is stored as absent (archon-gihe).
-          if (knobs.whenSpent === 'best') limit.whenSpent = 'best'
+          if (knobs.whenSpent === 'best' || knobs.whenSpent === 'fail') limit.whenSpent = knobs.whenSpent
           else if (knobs.whenSpent !== undefined) delete limit.whenSpent
         } else if (body.deleteLimit) {
           const id = body.deleteLimit.id

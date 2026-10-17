@@ -227,7 +227,7 @@ type formationsCreateLimitRequest struct {
 	Seconds     int    `json:"seconds"`
 	WarnSeconds int    `json:"warnSeconds"`
 	Tokens      int    `json:"tokens"`
-	// WhenSpent is stop, the default, or best (archon-gihe).
+	// WhenSpent is stop (the default), best, or fail.
 	WhenSpent   string `json:"whenSpent"`
 	X           int    `json:"x"`
 	Y           int    `json:"y"`

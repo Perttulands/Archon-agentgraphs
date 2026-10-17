@@ -1815,12 +1815,16 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 		return writeJSON(stdout, status)
 	}
 	writeRunStatusLines(stdout, status)
-	if status.Status == formations.RunStatusBlocked {
+	if status.Status == formations.RunStatusBlocked || status.Final {
 		problems, err := store.ProjectRunProblems(status.RunID)
 		if err != nil {
 			return fail(stderr, err)
 		}
-		writeCurrentRunBlock(stdout, problems)
+		if status.Final {
+			writeRunEnd(stdout, status, problems)
+		} else {
+			writeCurrentRunBlock(stdout, problems)
+		}
 	}
 	return 0
 }
@@ -1838,6 +1842,30 @@ func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjectio
 		for _, line := range runOutputLines(output) {
 			fmt.Fprintln(stdout, line)
 		}
+	}
+}
+
+// writeRunEnd uses terminal evidence, never an earlier block or error, to
+// explain a final status just as run wait does.
+func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, problems []formations.RunProblem) {
+	fmt.Fprintf(stdout, "outcome\t%s\n", status.Status)
+	actor := status.EndedBy
+	for i := len(problems) - 1; i >= 0; i-- {
+		problem := problems[i]
+		if problem.Type != formations.RunEventFailed && problem.Type != formations.RunEventCanceled {
+			continue
+		}
+		fmt.Fprintf(stdout, "reason\t%s\t%s\n", problem.Code, problem.Reason.Text)
+		if problem.Reason.Truncated {
+			fmt.Fprintln(stdout, "Full reason is in the run evidence problems.")
+		}
+		if problem.Actor != "" {
+			actor = problem.Actor
+		}
+		break
+	}
+	if actor != "" {
+		fmt.Fprintf(stdout, "endedBy\t%s\n", actor)
 	}
 }
 

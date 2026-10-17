@@ -325,7 +325,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		writeRunStatusLines(stdout, &envelope.Data)
-		if envelope.Data.Status == formations.RunStatusBlocked || args[1] == "logs" {
+		if envelope.Data.Status == formations.RunStatusBlocked || envelope.Data.Final || args[1] == "logs" {
 			raw, err := request("GET", "/api/runs/"+url.PathEscape(envelope.Data.RunID)+"/evidence/problems", nil)
 			if err != nil {
 				return fail(stderr, err)
@@ -342,6 +342,8 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 				for _, problem := range problems.Data.Problems {
 					fmt.Fprintf(stdout, "%d\t%s\t%s\t%s\n", problem.Seq, problem.Type, problem.Code, problem.Reason.Text)
 				}
+			} else if envelope.Data.Final {
+				writeRunEnd(stdout, &envelope.Data, problems.Data.Problems)
 			} else {
 				writeCurrentRunBlock(stdout, problems.Data.Problems)
 			}

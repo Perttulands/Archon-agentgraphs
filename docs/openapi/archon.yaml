@@ -1089,7 +1089,7 @@ components:
       type: object
       description: A Limit card. It covers one target, a step or the Input card (the whole mission), and
         caps its rounds, time and tokens; a run blocks with code limit_reached at a spent card until run
-        resume --grant, or on a step with whenSpent best picks the step's best judged attempt and goes on.
+        resume --grant, fails immediately with whenSpent fail, or on a step with whenSpent best picks the step's best judged attempt and goes on.
       required: [id, title, target]
       properties:
         id:
@@ -1122,11 +1122,11 @@ components:
             the step (or every step, for the Input card). Omitted sets no tokens.
         whenSpent:
           type: string
-          enum: [best]
+          enum: [best, fail]
           description: best when the spent card picks the step's best attempt its selecting gate judged and
             sends it on through the gate's pass route (archon-gihe); omitted is stop, which blocks the run for
-            a grant. Valid only on a step's card whose step has one judge or human gate that only it feeds
-            and whose fail returns to it.
+            a grant. fail ends the run immediately as failed on a step or mission card, retaining evidence.
+            best is valid only on a step whose selecting judge or human gate sends failures back to it.
     FormationPort:
       type: object
       description: A formation port. Only an output port carries a kind, and only file or folder; text is absent.
@@ -2155,9 +2155,9 @@ components:
               description: Omitted or 0 sets no tokens.
             whenSpent:
               type: string
-              enum: ['', stop, best]
+              enum: ['', stop, best, fail]
               description: Omitted, empty or stop blocks the run at the spent card; best picks the step's best
-                attempt (archon-gihe). Another value is refused with INVALID_LIMIT.
+                attempt (archon-gihe); fail ends the run as failed, keeping evidence. Another value is refused with INVALID_LIMIT.
             x:
               type: integer
             y:
@@ -2191,9 +2191,9 @@ components:
               minimum: 0
             whenSpent:
               type: string
-              enum: ['', stop, best]
+              enum: ['', stop, best, fail]
               description: Empty or stop stores the default, stop; best picks the step's best attempt when
-                spent (archon-gihe).
+                spent (archon-gihe); fail ends the run as failed, keeping evidence.
             expectedRev:
               type: integer
             updatedBy:

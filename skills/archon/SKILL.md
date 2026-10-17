@@ -342,14 +342,18 @@ archon $S limit create "$M" --target input --rounds 20 --time 2h --warn 10m --ti
 ```
 
 `limit update "$M" "$LIMIT" --rounds <n>|--time <d>|--warn <d>|--tokens
-<n>|--when-spent stop|best|--target <t>|--title <t>` changes a card (an empty `--rounds`, `--time`,
+<n>|--when-spent stop|best|fail|--target <t>|--title <t>` changes a card (an empty `--rounds`, `--time`,
 `--warn` or `--tokens` clears that knob) and `limit delete "$M" "$LIMIT"` removes it. Validation
 rejects a card wired to nothing, a second card on one target, a value that is
 not a positive whole number and a warning without time or not shorter than it
 (`invalid_limit`). At a spent limit the step does not start, or stops when its
-time runs out, and the run blocks with `limit_reached` and a plain reason,
+time runs out. By default the run blocks with `limit_reached` and a plain reason,
 "Review used 3 of 3 rounds", "Review used 30 min of 30 min" or "Review used
 51,230 of 50,000 tokens"; see Recover.
+
+`--when-spent fail` on a step or mission card ends the run as failed at the
+spent limit, with its usage reason and every attempt's verdicts and outputs
+kept as evidence. It needs no operator grant. `stop` remains the default.
 
 **Best of N.** `--when-spent best` on a step's card picks the best attempt
 instead of blocking: when the card is spent, the step's gate compares the
@@ -393,7 +397,9 @@ archon $S mission validate "$M" --json
 archon $S mission arrange "$M" --json
 ```
 
-Reach zero errors before running. Findings name node IDs: unstaffed slots,
+Reach zero errors before running. For unattended missions, set `whenSpent`
+on every Limit card so exhaustion follows the mission's terms instead of
+waiting for an operator grant. Findings name node IDs: unstaffed slots,
 incomplete gates, routes that lead nowhere (`route_leads_nowhere`), an unwired
 Input card, a mission with several Input cards, `duplicate_slot_id`. Warnings
 name nodes no path from the Input card reaches (`unreachable_node`); wire a
@@ -403,6 +409,20 @@ route into them or delete them. A rejected `mission run` prints the same finding
 To build and launch a lab daemon, import examples, configure
 notifications or smoke-test routing, read
 [references/lab-and-examples.md](references/lab-and-examples.md).
+
+## Manage a mission for the operator
+
+Clarify the mission's inputs in the conversation and prepare it for review.
+Start only on an explicit go, passing the owning Bead with `--bead`.
+Follow the run with `run wait` and read its final outcome.
+For unattended missions, set each Limit card's `whenSpent`: use `fail` to end
+on exhaustion, or `best` where a judged attempt should go on as failed work.
+Keep the admitted mission intact: make no mid-run grants or edits.
+Change the mission between runs through a retro recorded on the owning Bead.
+Give the rundown from `run attempts` and the artifacts: what ran, what passed
+or failed, what was produced, and where the evidence is.
+Escalate only taste or direction calls, as one question with options and a
+recommendation.
 
 ## Run a mission
 
@@ -509,10 +529,10 @@ succeeded.
 
 Every attempt of every step, judges included, has its own directory under
 `$ARCHON_STATE/.archon/artifacts/<runId>/<nodeId>/<attempt>/`.
-`run attempts "$ARCHON_RUN_ID" [--node <id>] [--json]` lists each attempt in
-order: when it ran, its outputs, the gate verdicts on them with reason and
-evidence, whether a spent card picked it as the best (`picked`), and its
-files. `run status` prints a `pick` line for each pick (`picks` in JSON). The cockpit's Produced list opens them. Check each
+`run attempts "$ARCHON_RUN_ID" [--node <id>] [--files] [--json]` lists each
+step and attempt, its status, declared outputs and verdict with a reason
+one-liner, and whether it was picked. `--files` adds its directory files;
+`--json` keeps the complete evidence. `run status` prints a `pick` line for each pick (`picks` in JSON). The cockpit's Produced list opens them. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 
 The runtime writes the brief each seat receives, including its output contract;

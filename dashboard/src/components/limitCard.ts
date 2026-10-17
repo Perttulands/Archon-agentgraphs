@@ -135,9 +135,9 @@ function picksWhenSpent(board: Board, limit: LimitNode): boolean {
   return limit.whenSpent === 'best' && limitCoverage(board, limit).kind === 'step'
 }
 
-/** "then picks the best", on the face of a step's card that picks when spent. */
+/** What happens when spent, on the face of the card. */
 export function limitSpentWords(board: Board, limit: LimitNode): string {
-  return picksWhenSpent(board, limit) ? 'then picks the best' : ''
+  return limit.whenSpent === 'fail' ? 'then fails the run' : picksWhenSpent(board, limit) ? 'then picks the best' : ''
 }
 
 /**
@@ -181,7 +181,7 @@ export function limitSummary(board: Board, limit: LimitNode): string {
   const name = limit.title || 'Limit'
   if (!limit.rounds && !limit.seconds && !limit.tokens) return `${name}: sets no limit yet`
   const warn = limitWarnWords(limit)
-  const tail = warn ? `, ${warn}` : ''
+  const tail = `${warn ? `, ${warn}` : ''}${limit.whenSpent === 'fail' ? ', then fails the run' : ''}`
   if (limitCoverage(board, limit).kind === 'mission') {
     const knobs = listWords([
       limit.rounds ? `make at most ${plural(limit.rounds, 'step run')}` : '',
@@ -219,20 +219,21 @@ export function limitMeaning(board: Board, limit: LimitNode): string {
   const step = coverage.kind === 'step' ? coverage.node.title || 'The step' : ''
   // A step's card set to best picks instead of blocking (archon-gihe).
   const picks = coverage.kind === 'step' && limit.whenSpent === 'best'
-  const blocks = (grant: string) => (picks ? PICK_WORDS : `the run blocks until you grant ${grant}`)
+  const fails = limit.whenSpent === 'fail'
+  const blocks = (grant: string) => (fails ? 'the run fails at once, keeping every attempt as evidence' : picks ? PICK_WORDS : `the run blocks until you grant ${grant}`)
   if (limit.rounds) {
     if (coverage.kind === 'mission') {
-      sentences.push(`The whole mission may make at most ${plural(limit.rounds, 'step run')}, judges included. When they are spent the run blocks before the next step starts, until you grant one more round.`)
+      sentences.push(`The whole mission may make at most ${plural(limit.rounds, 'step run')}, judges included. When they are spent ${fails ? 'the run fails at once, keeping every attempt as evidence' : 'the run blocks before the next step starts, until you grant one more round'}.`)
     } else if (coverage.kind === 'step' && coverage.node.type === 'peer') {
       sentences.push(`${step} may hold at most ${plural(limit.rounds, 'journal message')} over all its attempts. At the cap its conversation stops and ${blocks('one more round')}.`)
     } else {
-      sentences.push(`${step} may run at most ${limit.rounds === 1 ? 'once' : `${limit.rounds} times`}, send-backs and resumed re-runs included. When its rounds are spent ${picks ? PICK_WORDS : 'the run blocks before it starts again, until you grant one more round'}.`)
+      sentences.push(`${step} may run at most ${limit.rounds === 1 ? 'once' : `${limit.rounds} times`}, send-backs and resumed re-runs included. When its rounds are spent ${fails ? 'the run fails at once, keeping every attempt as evidence' : picks ? PICK_WORDS : 'the run blocks before it starts again, until you grant one more round'}.`)
     }
   }
   if (limit.seconds) {
     const time = durationWords(limit.seconds)
     if (coverage.kind === 'mission') {
-      sentences.push(`The whole mission may work at most ${time}, counted while any step runs, judges included. Waiting on a human gate does not count while no other step runs, nor does a blocked run. When the time runs out the running step stops and the run blocks until you grant ${time} more.`)
+      sentences.push(`The whole mission may work at most ${time}, counted while any step runs, judges included. Waiting on a human gate does not count while no other step runs, nor does a blocked run. When the time runs out the running step stops and ${blocks(`${time} more`)}.`)
     } else {
       sentences.push(`${step} may work at most ${time} over all its attempts, counted only while one runs. Waiting on a human gate does not count, so a send-back resumes it with the time it has left. When the time runs out the step stops and ${blocks(`${time} more`)}.`)
     }
@@ -245,7 +246,7 @@ export function limitMeaning(board: Board, limit: LimitNode): string {
   if (limit.tokens) {
     const tokens = tokenWords(limit.tokens)
     sentences.push(coverage.kind === 'mission'
-      ? `The whole mission may spend at most ${tokens}, counted over every step, judges included. When they are spent the running step stops and the run blocks until you grant ${tokens} more.`
+      ? `The whole mission may spend at most ${tokens}, counted over every step, judges included. When they are spent the running step stops and ${blocks(`${tokens} more`)}.`
       : `${step} may spend at most ${tokens} over all its attempts. When they are spent the step stops and ${blocks(`${tokens} more`)}.`)
     sentences.push(TOKENS_DEFINITION)
   }

@@ -257,8 +257,8 @@ export interface LimitNode {
   seconds?: number
   warnSeconds?: number
   tokens?: number
-  /** best when the spent card picks the step's best judged attempt and goes on; absent is stop (archon-gihe). */
-  whenSpent?: 'best'
+  /** best picks a step's best judged attempt; fail ends the run; absent is stop for a grant. */
+  whenSpent?: 'best' | 'fail'
 }
 
 export interface CodeGateProfileDescriptor {

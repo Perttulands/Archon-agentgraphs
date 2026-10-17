@@ -83,7 +83,7 @@ export interface NodeWindowOps {
 }
 
 /** One change to a Limit card: its target, one knob in whole seconds or rounds, or what it does when spent. */
-export type LimitChange = { target?: string; rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number; whenSpent?: 'stop' | 'best' }
+export type LimitChange = { target?: string; rounds?: number; seconds?: number; warnSeconds?: number; tokens?: number; whenSpent?: 'stop' | 'best' | 'fail' }
 
 const BEAD_HINT = 'A Beads issue ID such as ctx-ug7.25, or blank.'
 const beadProblem = (value: string) => (value && !isSafeBeadsIssueID(value) ? `Enter a Beads issue ID such as ctx-ug7.25, or leave it blank.` : '')
@@ -447,7 +447,7 @@ function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: Bo
     setSaving(false)
     setTargetError(saved === true ? '' : saved)
   }
-  const changeWhenSpent = async (whenSpent: 'stop' | 'best') => {
+  const changeWhenSpent = async (whenSpent: 'stop' | 'best' | 'fail') => {
     if (whenSpent === (limit.whenSpent || 'stop')) return
     setSaving(true)
     const saved = await ops.setLimit(limit, { whenSpent })
@@ -489,13 +489,14 @@ function LimitFields({ limit, board, steps, ops }: { limit: LimitNode; board: Bo
         validate={tokensProblem} onSave={value => ops.setLimit(limit, { tokens: value ? Number(value) : 0 })}>
         {limit.tokens ? tokenWords(limit.tokens) : undefined}
       </EditableField>
-      {coverage.kind === 'step' || limit.whenSpent ? (
+      {coverage.kind === 'step' || coverage.kind === 'mission' || limit.whenSpent ? (
         <div className="nfield">
           <div className="nfield-head"><label className="nfield-label" htmlFor={`limit-when-spent-${limit.id}`}>When spent</label></div>
           <select id={`limit-when-spent-${limit.id}`} className="nwin-select" aria-label="When spent" value={limit.whenSpent || 'stop'}
-            disabled={saving} onChange={event => void changeWhenSpent(event.target.value as 'stop' | 'best')}>
+            disabled={saving} onChange={event => void changeWhenSpent(event.target.value as 'stop' | 'best' | 'fail')}>
             <option value="stop">Stop for a grant</option>
-            <option value="best">Pick the best attempt</option>
+            {coverage.kind === 'step' || limit.whenSpent === 'best' ? <option value="best">Pick the best attempt</option> : null}
+            <option value="fail">Fail the run</option>
           </select>
           {whenSpentError ? <p className="nfield-note error" role="alert">{whenSpentError}</p> : null}
         </div>
