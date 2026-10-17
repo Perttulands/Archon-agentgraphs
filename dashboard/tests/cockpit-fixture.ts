@@ -71,12 +71,12 @@ const blockedAtJudgeEvents = [
 
 // The run succeeded: Execution returned its result as text, and Peer review, the
 // last step, wrote review.md. A worker log is in the artifacts too.
-export const flowInputs = [{ name: 'subject', kind: 'text', value: 'A character seen from behind and in conversation. '.repeat(12) + 'Keep the final detail.' }, { name: 'facts', kind: 'file', value: '/workspace/identity.md' }]
+export const flowInputs = [{ name: 'subject', kind: 'text', value: 'A character seen from behind and in conversation. '.repeat(12) + 'Keep the final detail.' }, { name: 'facts', kind: 'file', value: '/workspace/identity.md' }, { name: 'previous', kind: 'folder', value: '/workspace/previous' }]
 const succeededEvents = [
   { seq: 1, type: 'run_started' },
   { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
   { seq: 3, type: 'node_output', nodeId: 'execution', status: 'done' },
-  { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'pass' },
+  { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'pass', reason: 'The reviewed implementation passes all checks.' },
   { seq: 5, type: 'node_started', nodeId: 'peer', attempt: 1 },
   { seq: 6, type: 'node_output', nodeId: 'peer', status: 'done' },
   { seq: 7, type: 'run_succeeded' },
@@ -559,12 +559,12 @@ export async function cockpitFixture(page: Page, options: { noLayout?: boolean; 
     // The file routes read a succeeded run's output snapshots by absolute path.
     if (options.succeeded && path === '/api/files/directory') {
       const folder = url.searchParams.get('path') || ''
-      if (!folder.startsWith(runArtifacts)) return route.fulfill({ status: 404, json: { success: false, error: { message: 'directory not found' } } })
+      if (!folder.startsWith(runArtifacts) && folder !== '/workspace/previous') return route.fulfill({ status: 404, json: { success: false, error: { message: 'directory not found' } } })
       return respond({ items: [...(folder.endsWith('/assets') ? [] : [{ name: 'assets', path: `${folder}/assets`, isDir: true }]), { name: 'index.html', path: `${folder}/index.html`, isDir: false }] })
     }
     if (options.succeeded && path === '/api/files/preview') {
       const file = url.searchParams.get('path') || ''
-      const text = file.startsWith(runArtifacts) ? snapshotText(file.split('/').pop() || '') : undefined
+      const text = file === '/workspace/identity.md' ? '# Identity facts\n\nKeep the character consistent.' : file.startsWith(runArtifacts) ? snapshotText(file.split('/').pop() || '') : undefined
       if (text === undefined) return route.fulfill({ status: 404, json: { success: false, error: { message: 'file not found' } } })
       return respond({ file: { path: file, name: file.split('/').pop(), size: text.length, modifiedAt: '', kind: file.endsWith('.md') ? 'markdown' : 'text', text: evidenceText(text) } })
     }

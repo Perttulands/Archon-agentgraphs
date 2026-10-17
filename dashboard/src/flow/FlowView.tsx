@@ -1,5 +1,5 @@
 import { NodeProblems, type NodeFindings } from '../components/formationsDrafts'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { noteAuthor } from '../components/NoteThread'
 import RunPoint from '../components/RunPoint'
 import { endPathWords, endTitleSuffix } from '../components/endNode'
@@ -9,7 +9,7 @@ import type { AgentProjection, BoardDocument, FormationNode, MissionNode, Missio
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { AttemptsButton } from '../attempts/AttemptsWindows'
-import { textValueRequest, referencedFileRequest } from '../files/fileWindowModel'
+import { textValueRequest, referencedFileRequest, folderFileRequest } from '../files/fileWindowModel'
 import { useFileProblems } from '../files/referencedFiles'
 import { humanChannelLabel, humanChannelOf } from '../humanChannel/humanChannel'
 import { staffingSentence } from '../nodeWindow/staffing'
@@ -18,7 +18,6 @@ import type { WindowRect } from '../windows/windowGeometry'
 import { buildFlow, type FlowStep, type FlowTarget, type GateDecider } from './flowModel'
 import { missionRunInputs } from '../components/missionInputs'
 import { runOutputRequest, runOutputPickLines } from '../files/RunOutputs'
-import { fetchNodeEvidence } from '../evidence/runEvidenceApi'
 import './flow.css'
 
 /**
@@ -158,6 +157,8 @@ function MissionValues({ mission, run }: { mission: MissionNode; run: FlowRun | 
           <strong>{declaration.name}</strong> · {declaration.kind || 'text'} · {declaration.required ? 'required' : 'optional'}
           {value && run ? <> · <button type="button" className="flow-link" onClick={event => files?.open(
             'nodeId' in value ? runOutputRequest(run.runId, value)
+              : value.kind === 'file' ? referencedFileRequest(value.value, mission.title)
+              : value.kind === 'folder' ? folderFileRequest(value.value, mission.title)
               : textValueRequest(`run-input:${run.runId}:${value.name}`, value.name, value.value, mission.title),
             fileAnchor(event.currentTarget))}>{summary(value.value, 180) || '(empty)'}{'nodeId' in value && value.picks?.length ? ' · picked' : ''}</button>
             {'nodeId' in value && value.picks?.length ? <span>{runOutputPickLines(value).join(' · ')}</span> : null}</>
@@ -210,7 +211,7 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
           <>
             <p className="flow-line"><span className="flow-label">Decider</span>{deciderWords(step.deciders.filter(decider => decider !== 'judge' || step.judges.length > 0))}{step.deciders.includes('judge') && !step.judges.length ? ' · No judge chain wired' : ''}</p>
             <p className="flow-text">{summary(step.node.criterion) || <span className="placeholder">No criterion yet.</span>}</p>
-            {run && verdict && <GateReason key={`${run.runId}:${step.id}:${verdict.seq}`} run={run} gateId={step.id} />}
+            {run && verdict && <GateReason key={`${run.runId}:${step.id}:${verdict.seq}`} run={run} gateId={step.id} verdict={verdict} />}
             <Routes label="Pass" targets={step.pass} onOpenNode={onOpenNode} />
             <Routes label="Fail" targets={step.fail} onOpenNode={onOpenNode} />
             <FileChips files={step.node.files} context={title} />
@@ -257,16 +258,8 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
   )
 }
 
-function GateReason({ run, gateId }: { run: FlowRun; gateId: string }) {
-  const [reason, setReason] = useState('')
-  useEffect(() => {
-    let current = true
-    void fetchNodeEvidence(run.runId, gateId).then(evidence => {
-      const verdict = evidence.evaluations?.flatMap(evaluation => evaluation.verdict ? [evaluation.verdict] : []).sort((a, b) => b.seq - a.seq)[0]
-      if (current) setReason(verdict?.reason.text || 'No verdict reason recorded')
-    }, () => { if (current) setReason('Verdict evidence unavailable') })
-    return () => { current = false }
-  }, [run.runId, gateId])
+function GateReason({ run, gateId, verdict }: { run: FlowRun; gateId: string; verdict: RunEvent }) {
+  const reason = typeof verdict.data?.reason === 'string' ? verdict.data.reason : ''
   return reason ? <p className="flow-line"><span className="flow-label">Verdict</span><button type="button" className="flow-link flow-verdict" onClick={() => run.onEvidence(gateId)}>{summary(reason)}</button></p> : null
 }
 

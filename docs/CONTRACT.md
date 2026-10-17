@@ -1016,11 +1016,11 @@ rest, including artifact files no output names. A chip opens the file in a
 floating file window, rendered by kind, with Open raw and Copy path (the
 artifact's absolute path on the daemon host); several can be open side by side.
 Node, note and file windows open in the free space nearest what opened them:
-Flow's gutters, or the canvas above and below the graph, shrinking to half
-their remembered size at most to fit. A window leaves its own card or Flow row,
-its neighbours, its next links and the title bars of open windows visible and
-clickable, and cascades when no free space is left. Menus opened from the run
-bar render above every window.
+they float over Flow just as they float over the canvas. Opening, closing or
+resizing a window never moves Flow's rows or changes its layout. Windows shrink
+to half their remembered size at most to fit, leave their opening control and
+other windows' title bars visible and clickable where space permits, and cascade
+when no free space is left. Menus opened from the run bar render above every window.
 
 A step that ran more than once shows "N attempts" among its card's run tools and
 in its Flow row, and its node window always shows the count. One click opens the

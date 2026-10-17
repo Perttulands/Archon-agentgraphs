@@ -77,6 +77,7 @@ type Event struct {
 	Verdict      string `json:"verdict,omitempty"`
 	SessionName  string `json:"sessionName,omitempty"`
 	Outcome      string `json:"outcome,omitempty"`
+	Reason       string `json:"reason,omitempty"`
 	Blocks       bool   `json:"blocks,omitempty"`
 	// EndIDs, on run_succeeded, run_picked and run_failed, are the End nodes the run's
 	// paths reached (archon-o7p.10).
@@ -645,6 +646,7 @@ func project(status *formations.RunStatusProjection, events []formations.RunEven
 		e.Verdict, _ = raw.Data["verdict"].(string)
 		e.SessionName, _ = raw.Data["sessionName"].(string)
 		e.Outcome, _ = raw.Data["outcome"].(string)
+		e.Reason, _ = raw.Data["reason"].(string)
 		e.Blocks, _ = raw.Data["blocks"].(bool)
 		switch raw.Type {
 		case formations.RunEventHumanAskDelivered, formations.RunEventHumanVerdictRecorded:

@@ -88,6 +88,7 @@ button.nwin-route:hover { color: var(--accent); text-decoration-color: var(--acc
 .nwin-state { font-weight: 700; }
 .nwin-state.state-blocked, .nwin-state.state-waiting { color: var(--window-orange); }
 .nwin-state.state-failed { color: var(--color-error); }
+.nwin-state.state-canceled { color: var(--text-secondary); }
 .nwin-state.state-done { color: var(--window-green); }
 /* End node outcome (archon-o7p.10): done in green, rejected in the error red. */
 .nwin-outcomes { display: flex; gap: 6px; }

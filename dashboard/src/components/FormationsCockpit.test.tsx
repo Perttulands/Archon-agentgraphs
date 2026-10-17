@@ -2926,6 +2926,25 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'test-board')
   })
 
+  it('keeps a canceled card and its OUT row muted even after an earlier output', async () => {
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01CANCEL')
+    installRunsMock([{ runId: 'run_01CANCEL', status: 'canceled', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4 }], {
+      run_01CANCEL: [
+        { runId: 'run_01CANCEL', seq: 1, type: 'node_output', nodeId: 'fmn_frame' },
+        { runId: 'run_01CANCEL', seq: 2, type: 'node_started', nodeId: 'fmn_frame', attempt: 2 },
+        { runId: 'run_01CANCEL', seq: 3, type: 'run_blocked', nodeId: 'fmn_frame' },
+        { runId: 'run_01CANCEL', seq: 4, type: 'run_canceled' },
+      ],
+    })
+    await renderCockpit()
+    expect(await screen.findByTestId('run-chip-fmn_frame')).toHaveTextContent('Canceled')
+    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('canceled')
+    const output = screen.getByTestId('output-status-fmn_frame')
+    expect(output).toHaveTextContent('Canceled')
+    expect(output).toHaveClass('idle')
+    expect(output).not.toHaveTextContent(/output ready/i)
+  })
+
   it('names where a blocked run stopped, rings that gate and locates it from the run bar', async () => {
     installRunsMock([{ runId: 'run_01BLOCK', status: 'blocked', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 3 }], {
       run_01BLOCK: [

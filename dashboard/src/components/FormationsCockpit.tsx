@@ -3163,7 +3163,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const state = nodeStates.get(nodeId)
     // Waiting for the operator is the most visible state on the canvas (archon-n7u.29).
     if (waitingGateIds.includes(nodeId) && activeRun && !activeRun.final) return <span className="run-chip waiting" data-testid={`run-chip-${nodeId}`}>waiting for you</span>
-    return state === 'blocked' || state === 'failed' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state}</span> : null
+    return state === 'blocked' || state === 'failed' || state === 'canceled' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state === 'canceled' ? 'Canceled' : state}</span> : null
   }
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
@@ -3452,7 +3452,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               return (
                 <div
                   key={mission.id}
-                  className={`missioncard${state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === mission.id ? ' located' : ''}${limitHover === mission.id ? ' limithover' : ''}${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
+                  className={`missioncard${state === 'blocked' || state === 'failed' || state === 'canceled' ? ` ${state}` : ''}${locatedNodeId === mission.id ? ' located' : ''}${limitHover === mission.id ? ' limithover' : ''}${noteByNode.has(mission.id) ? ' has-note' : ''}${draftClass(mission.id)}`}
                   data-node={mission.id}
                   data-testid={`mission-node-${mission.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -3484,7 +3484,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               return (
                 <div
                   key={formation.id}
-                  className={`formation type-${formation.type}${state === 'running' || state === 'blocked' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === formation.id ? ' located' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${limitHover === formation.id ? ' limithover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
+                  className={`formation type-${formation.type}${state === 'running' || state === 'blocked' || state === 'failed' || state === 'canceled' ? ` ${state}` : ''}${locatedNodeId === formation.id ? ' located' : ''}${judgeHover === formation.id ? ' judgehover' : ''}${limitHover === formation.id ? ' limithover' : ''}${needsYouNodeIds.has(formation.id) ? ' needs-you' : ''}${noteByNode.has(formation.id) ? ' has-note' : ''}${draftClass(formation.id)}`}
                   data-node={formation.id}
                   data-testid={`formation-node-${formation.id}`}
                   style={{ left: pos.x, top: pos.y }}
@@ -3713,7 +3713,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               return (
                 <div
                   key={end.id}
-                  className={`endcard end-${end.outcome}${state === 'done' || state === 'failed' ? ` ${state}` : ''}${locatedNodeId === end.id ? ' located' : ''}${noteByNode.has(end.id) ? ' has-note' : ''}${draftClass(end.id)}`}
+                  className={`endcard end-${end.outcome}${state === 'done' || state === 'failed' || state === 'canceled' ? ` ${state}` : ''}${locatedNodeId === end.id ? ' located' : ''}${noteByNode.has(end.id) ? ' has-note' : ''}${draftClass(end.id)}`}
                   data-node={end.id}
                   data-end={end.id}
                   data-testid={`end-node-${end.id}`}

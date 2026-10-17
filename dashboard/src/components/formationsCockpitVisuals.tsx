@@ -110,6 +110,8 @@ export function outputRowStatus(runSelected: boolean, state: NodeRunState | unde
       return { label: 'waiting', tone: 'review' }
     case 'blocked':
       return { label: 'blocked', tone: 'blocked' }
+    case 'canceled':
+      return { label: 'Canceled', tone: 'idle' }
     case 'failed':
       return { label: 'failed', tone: 'blocked' }
     case 'done':

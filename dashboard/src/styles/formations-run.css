@@ -48,3 +48,7 @@
 .fmx .answered-draft p{margin:0 0 8px;}
 .fmx .answered-draft blockquote{margin:8px 0;white-space:pre-wrap;max-height:120px;overflow:auto;}
 .fmx .answered-draft button{margin:8px 8px 0 0;}
+
+/* Cancellation is a stopped run, shown in a muted tone on every card. */
+.fmx .formation.canceled,.fmx .gatecard.canceled,.fmx .missioncard.canceled,.fmx .endcard.canceled{border-color:var(--ink2);box-shadow:0 0 0 1.5px var(--ink2);}
+.fmx .run-chip.canceled{border-color:var(--ink2);color:var(--ink2);}
