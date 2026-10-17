@@ -1,6 +1,6 @@
 # Run evidence API
 
-Accepted 2026-09-16. Implements the operator's decision in archon-3l7 (option B)
+Accepted 2026-09-16. Implements archon-3l7 (option B)
 through archon-3rq. Reaffirms the trust boundary of
 [ADR-0016](0016-daily-capability.md).
 

@@ -1,13 +1,10 @@
 # Human gates reach the operator by mission channel
 
-Accepted 2026-09-17 by the operator's decision archon-xex. Operator request under
-archon-3yd.10: a mission chooses how its human gates reach the operator, and the
-operator wants to answer the first real Wayfinding run in an agent's tmux
-session instead of by email. The operator chose to talk to the agents that asked
-(archon-xex option c), and allowed those agents to record a decision the operator
-has confirmed. The operator then ruled that typing into agents must never be
-blocked: "I want to be able to interact with agents normally in tmux even if
-they are working on a mission."
+Accepted 2026-09-17 (archon-xex option c, under archon-3yd.10). A mission
+chooses how its human gates reach the operator: by the notify command, or in
+the tmux sessions of the agents that asked, which may record a decision the
+operator has confirmed there. Typing into a working agent's session is never
+blocked, even while it works on a mission.
 
 Clarified 2026-09-17 in archon-epn and archon-n64.7: a complete, unambiguous
 operator verdict for the pending gate, with the exact response to record,
@@ -136,8 +133,8 @@ terminal was view-only, and the contract told operators not to type into seats.
   - The dispatch still fails loudly when the harness exits, the conversation
     is cleared or replaced (`/clear`, `/resume`), the model or effort changes,
     or the seat timeout expires.
-- What the operator tells a working agent may change its work; that is the
-  operator's call.
+- What the operator tells a working agent may change its work; Archon does
+  not judge it.
 - Agents still must not type into seats, except an orchestrated controller
   directing its bound workers.
 
@@ -159,8 +156,8 @@ which agent typed the command.
   formation.
 - Anyone who reaches the cockpit can type to any live seat, which runs with its
   harness's permissions. That is the trust CHROTE's own terminals on the
-  tailnet already carry, by the operator's decision that the tailnet needs no
-  further authentication.
+  tailnet already carry: the tailnet is the trust boundary and Archon adds no
+  authentication.
 - Choosing `session` means no email for human gates on that run. An operator
   away from the screen learns of a gate only when they return to the cockpit or
   CHROTE.

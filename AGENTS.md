@@ -1,43 +1,32 @@
 # Archon
 
 Archon builds and runs agent work graphs through the `archond` coordinator,
-`archon` CLI and Archon UI. Read [docs/CONTRACT.md](docs/CONTRACT.md) before changing
-runtime semantics, authoring, gates or operator instructions. Read
-[ADR-0016](docs/adr/0016-daily-capability.md) for daily-capability decisions;
-`docs/adr/` holds earlier decisions and `examples/` holds runnable templates.
-`docs/archive/` preserves historical targets, not the running contract.
+`archon` CLI and Archon UI. Its area docs are the one statement of each area's
+vision and goals; read the one you are changing and link to it rather than
+restating it:
 
-## Product philosophy
+- [docs/PRODUCT.md](docs/PRODUCT.md): what Archon is for, its philosophy
+  and its goals.
+- [docs/CONTRACT.md](docs/CONTRACT.md): the running contract. Read it before
+  changing runtime semantics, authoring, gates or operator instructions.
+- [docs/DESIGN.md](docs/DESIGN.md): the cockpit's design language.
 
-Archon makes chaining agents and gates easy and great; that is all it does
-([ADR-0021](docs/adr/0021-archon-only-chains-agents-and-gates.md)).
+Three rules hold for every change; PRODUCT.md gives the reasons:
 
-- No security rituals: sessions are tmux sessions with full access, as in
-  CHROTE. Never add sandboxing, file confinement, blast-radius limits or
-  authority checks; safety lives in the agents' own configuration.
-- No legacy and no backwards compatibility: keep only what is current. Land
-  renames and reshapes whole, migrate live data once, and delete the old path.
-  Add no deprecated aliases or compatibility shims.
-- The `archon` skill is a sensible current version, iterated later, with no
-  eval harness, tests or CI around it.
+- Add no sandboxing, file confinement, blast-radius limits or authority checks.
+- Land renames and reshapes whole: migrate live data once, delete the old path,
+  and add no deprecated aliases or compatibility shims.
+- Put no eval harness, tests or CI around the `archon` skill.
 
-Archon is agent-facing first. Agents author, run and chain missions; the UI
-exists so the operator and the agent share an understanding of what a mission
-is for and can iterate on it together. A mission carries everything a run
-needs (agents, chaining, gates, what a failed gate does, any limits) and works
-like a skill: it can be sent off inside other work and chained by agents. The
-driving agent oversees its run directly and pulls progress (`run follow`);
-Archon pushes nothing into outside sessions. Limits are an opt-in card, not a
-default. A persona is generic; mission-specific instructions go in the step
-brief, and model and effort stay visible on the mission. Rank work by whether
-it helps an agent build, understand, invoke or chain a mission without human
-configuration, and whether it helps the operator understand and steer it.
+`docs/adr/` records the rationale of past decisions, `examples/` holds runnable
+missions, and `docs/archive/` and `Perttus_vision_for_agent_orchestration/`
+are history, not instructions.
 
-Product direction (scope, the trust or visibility model, supported formation
-types, UX direction) belongs to the operator. Present such questions as `--type decision`
-Beads labelled `product-decision`, with options, evidence and a
-recommendation. Record platform shortcomings found during work as Beads
-labelled `platform-gap`, linked `discovered-from` the work that revealed them.
+Do not settle product direction (scope, the trust or visibility model,
+supported formation types, UX direction) inside the work; raise it as a
+`--type decision` Bead labelled `product-decision`, with options, evidence and a recommendation. Record
+platform shortcomings found during work as Beads labelled `platform-gap`,
+linked `discovered-from` the work that revealed them.
 
 ## Project map
 
@@ -48,7 +37,6 @@ labelled `platform-gap`, linked `discovered-from` the work that revealed them.
   `src/cmd/archond/` only calls it.
 - `src/cmd/archon/` owns the CLI.
 - `dashboard/` owns the Archon mission editor and Agents view.
-- `Perttus_vision_for_agent_orchestration/` retains vision and canvas references.
 
 ## Reuse CHROTE's proven code
 

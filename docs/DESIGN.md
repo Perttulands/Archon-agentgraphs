@@ -50,17 +50,17 @@ in parentheses appear only in JSON and TOML.
 - **Note**: a thread on the mission or on one node. It holds the operator's
   intent and the conversation about it. The operator writes notes and never
   has to write a brief.
-- **Brief**: what a formation's seats are told. The co-authoring agent writes it
+- **Brief**: what a formation's seats are told. The managing agent writes it
   from the notes; the operator may edit it.
-- **Question**: an agent's note entry that asks the operator something, on the
-  thing it concerns. **Answer**: the operator's reply to one question.
-- **The operator** is `human:ui` in data. **The agent**, in co-authoring, is
+- **Question**: what a human gate asks the operator (a request in data).
+  **Answer**: the operator's verdict at that gate, Approve or Send back, with
+  a response.
+- **The operator** is `human:ui` in data. **The agent** is the managing agent,
   the session the operator works with through the CLI; it is never a seat.
 
 ## Interaction grammar
 
-Settled. Each rule holds on every surface; archon-o7p.18.14 brings the
-cockpit in line where it does not yet.
+Each rule holds on every surface.
 
 - **Click** opens a card's node window beside the card, in the free space
   nearest it (CONTRACT, windows), and selects the card. A click on a wire
@@ -76,8 +76,7 @@ cockpit in line where it does not yet.
 - **A drop on a card resolves or explains.** A wire or agent dropped on a
   card goes to its obvious target (the card's free input, its first empty
   slot). When no target fits, a short reason appears at the drop point for the
-  toast's duration. Nothing is dropped silently. What a drop on empty canvas
-  creates is open (archon-o7p.18.7).
+  toast's duration. Nothing is dropped silently.
 - **Creating keeps every keystroke.** A create gesture puts the caret where
   typing goes, with any placeholder selected, so the first key typed after
   the gesture lands.
@@ -87,15 +86,13 @@ cockpit in line where it does not yet.
 - **Destructive actions** confirm in place: the control reads its own
   confirmation until a second press within three seconds.
 
-## Co-authoring
+## The agent and the operator
 
-The co-authoring arc (archon-o7p.18) decides these by the operator's picks.
-Until a pick lands, today's behaviour stands and the constraints apply.
+The operator steers a mission through its managing agent
+([PRODUCT.md](PRODUCT.md)); the cockpit shows what both see.
 
-| Rule | Decided by | Constraint until then |
-| --- | --- | --- |
-| How operator and agent entries and edits are marked as theirs | archon-o7p.18.13 | Note entries are already styled apart. A mark is a word or weight before it is a colour; a new colour is an addition to the colour rule. |
-| States of a question and its answer | archon-o7p.18.5 | His original words stay readable beside the agent's replies. Once the pick lands, a question is never a text prefix; until then prototypes use today's "QUESTION:" prefix. |
-| Draft versus built | archon-o7p.18.7 | Drafts save with blanks; only validation and admission reject gaps. |
-| A change since your last look: marked, found, cleared | archon-o7p.18.6 | Covers nodes off-screen and effects outside the mission. |
-| Motion for arrival and change | archon-o7p.18.13 | No layout shift: nothing the operator reads moves when something is added. Motion only confirms. |
+- Where an entry or edit is marked as the agent's, the mark is a word or weight
+  before it is a colour; a new colour is an addition to the colour rule.
+- Nothing the operator is reading moves when something is added; motion only
+  confirms.
+- Drafts save with blanks; only validation and admission reject gaps.

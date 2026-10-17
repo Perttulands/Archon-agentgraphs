@@ -6,7 +6,7 @@
 
 ## Status
 
-Accepted 2026-07-27 (owner ruling, Model A). Supersedes FORMATIONS.md's
+Accepted 2026-07-27 (Model A). Supersedes FORMATIONS.md's
 separate-correction-node pushback model and the `retry_control` port role it
 required; amends invariant 11's one-producer rule with the pushback exception.
 

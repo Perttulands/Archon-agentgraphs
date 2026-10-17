@@ -14,14 +14,9 @@ the run history on disk.
 ## What Archon is
 
 Archon makes chaining agents and gates easy and great. That is all it does.
-
-- Agents run in tmux sessions, just like CHROTE's, with full access to
-  everything. Archon adds no sandboxing, no file confinement and no security
-  rituals; safety lives in the configuration of the agents it runs.
-- Archon keeps only what is current: no legacy paths, no backwards
-  compatibility, no deprecated aliases.
-
-See [ADR-0021](docs/adr/0021-archon-only-chains-agents-and-gates.md).
+Agents run in ordinary tmux sessions with full access, and Archon keeps only
+what is current. [The product doc](docs/PRODUCT.md) states the philosophy and
+goals.
 
 ![Delivery mission with agent assignments, a review gate and attached notes](docs/images/workflow.png)
 

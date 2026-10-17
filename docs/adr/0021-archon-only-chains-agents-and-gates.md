@@ -1,6 +1,6 @@
 # Archon only chains agents and gates
 
-Accepted 2026-10-01 by Perttu. This is Archon's core product philosophy. It
+Accepted 2026-10-01. [PRODUCT.md](../PRODUCT.md) carries this philosophy. It
 supersedes [ADR-0018](0018-referenced-file-roots.md) (file-root confinement),
 the runtime-authority and certification parts of
 [ADR-0007](0007-formations-execution-authority.md) and

@@ -6,7 +6,7 @@
 
 ## Status
 
-Accepted 2026-07-26 — records owner rulings already deployed and proven on
+Accepted 2026-07-26 — records decisions already deployed and proven on
 2026-07-24. Supersedes the socket-topology rejection in ADR-0009 ("A
 Formations-only server or socket") and the FORMATIONS.md execution-environment
 rules it anchored: the fixed-`/tmp` dogfood restriction and the blanket
@@ -28,12 +28,12 @@ owned by the service user, silently reverting agents to the wrong identity
 ADR-0009 rejected "A Formations-only server or socket" as violating the
 same-pool contract, and FORMATIONS.md forbade the tmux executor from touching
 any socket outside fixed `/tmp` (dogfood) or any non-temporary/configured
-socket (production). Two owner rulings changed that contract:
+socket (production). Two decisions changed that contract:
 
 1. CHROTE supports ANY user; nothing may hardcode a username. The agent-user is
    configuration (`docs/superpowers/specs/2026-07-24-formations-config-agent-user.md`).
-2. The executor shares the cockpit tmux socket by owner ruling, and by owner
-   ruling also supports ANY configured socket — including a dedicated
+2. The executor shares the cockpit tmux socket, and also supports ANY
+   configured socket — including a dedicated
    Formations socket (recorded in `src/internal/formations/tmux_executor.go`,
    validate/ensureServer path).
 

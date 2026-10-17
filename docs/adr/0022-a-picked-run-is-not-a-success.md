@@ -1,6 +1,6 @@
 # A picked run is not a success
 
-Accepted 2026-10-16 by Perttu. Implements `archon-ofnp`. Supersedes the choice
+Accepted 2026-10-16. Implements `archon-ofnp`. Supersedes the choice
 made while grilling best of N (`archon-gihe`, question 30) that a pick leaves
 no mark downstream: a picked attempt went on exactly as a gate's pass would,
 and the run succeeded. The running contract is [CONTRACT.md](../CONTRACT.md).

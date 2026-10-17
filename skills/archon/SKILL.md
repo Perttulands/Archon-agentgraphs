@@ -15,10 +15,10 @@ current names only. It ships with that source.
 version` the daemon's too. When a build is older, a flag or behaviour named
 here may differ: read the command's `-h` and trust the binary.
 
-Archon makes chaining agents and gates easy and great, and that is all it
-does. Seats are ordinary tmux agent sessions with full access, as in CHROTE;
-Archon adds no sandbox or confinement, so safety comes from the agents' own
-harness settings. Archon keeps only what is current.
+Seats are ordinary tmux agent sessions with full access, as in CHROTE; Archon
+adds no sandbox or confinement, so safety comes from the agents' own harness
+settings. `docs/PRODUCT.md` in the Archon source or `$ARCHON_SHARE/docs/`
+states the product's philosophy and goals.
 
 ## Vocabulary
 
@@ -199,8 +199,8 @@ base for the cockpit or a seat. A file that does not exist yet is saved with a
 Each slot sets its own harness, model and effort, in the mission, where the
 operator can see them: `formation assign "$M" <formation> --slot <slot>
 --harness <h> --effort <e> [--model <m>] [--role <role>]`. `--effort` is
-required; a blank `--model` means the harness default. The operator may have
-saved characters, named staffings listed by `agent characters`:
+required; a blank `--model` means the harness default. Saved characters are
+named staffings listed by `agent characters`:
 `--character <id>` stamps one's role, harness, model and effort onto the slot,
 and any of those flags given beside it wins. `claude-code` takes
 `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`,

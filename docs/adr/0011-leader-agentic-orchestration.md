@@ -6,9 +6,9 @@
 
 ## Status
 
-Accepted 2026-07-26 (owner decision, Formations scope session). Supersedes the
-2026-06-11 owner correction on chrt-9hjn that required an Archon-mediated
-leader command protocol ("the leader should not get raw tmux control").
+Accepted 2026-07-26. Supersedes the 2026-06-11 correction on chrt-9hjn that
+required an Archon-mediated leader command protocol ("the leader should not get
+raw tmux control").
 
 ## Context
 
