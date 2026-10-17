@@ -3,6 +3,7 @@
 .fmx .gatecard.running:not(.needs-you){box-shadow:0 0 0 1.5px var(--terra),0 2px 8px rgba(0,0,0,.35);}
 /* Waiting for the operator is the most visible state (archon-n7u.29). */
 .fmx .gatecard.waiting:not(.needs-you){box-shadow:0 0 0 2.5px var(--gold),0 0 22px -4px color-mix(in srgb,var(--gold) 70%,transparent),0 2px 8px rgba(0,0,0,.35);}
+.fmx .run-chip.done{border-color:var(--sage);color:var(--sage);}
 .fmx .run-chip.waiting{border-color:var(--gold);background:var(--gold);color:var(--background);}
 .fmx .run-banner .badge.waiting_human{color:var(--background);background:var(--gold);font-weight:700;}
 .fmx .run-banner button.run-next-needs-you{flex-shrink:0;border-color:var(--gold);color:var(--gold);font-weight:700;}
@@ -52,3 +53,6 @@
 /* Cancellation is a stopped run, shown in a muted tone on every card. */
 .fmx .formation.canceled,.fmx .gatecard.canceled,.fmx .missioncard.canceled,.fmx .endcard.canceled{border-color:var(--ink2);box-shadow:0 0 0 1.5px var(--ink2);}
 .fmx .run-chip.canceled{border-color:var(--ink2);color:var(--ink2);}
+
+/* Keep status above the card, clear of the input row beneath its border. */
+.fmx [data-node]>.run-chip{top:auto;bottom:calc(100% + 3px);}

@@ -91,3 +91,8 @@
 
 .fmx .flow-value { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .fmx .flow-verdict { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Evidence names arrive after the ledger. Reserve one chip row so later
+   steps stay still; more files scroll across the same row. */
+.fmx .flow-produced { flex-wrap: nowrap; flex-shrink: 0; width: 100%; height: 40px; min-height: 40px; padding: 0 0 2px; overflow-x: auto; overflow-y: hidden; }
+.fmx .flow-produced .produced-chip { flex-shrink: 0; }

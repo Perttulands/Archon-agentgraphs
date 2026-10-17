@@ -24,11 +24,11 @@ test('Arrange followed immediately by Fit keeps the disconnected gate accessible
 })
 
 for (const width of [1920, 2560]) test(`TOML mission opens arranged and Fit is read-only at ${width}`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 1080 })
+  await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
   const fixture = await cockpitFixture(page, { noLayout: true })
   await page.goto('/')
   await expect(page.locator('[data-node="lim_cap"]')).toBeVisible()
-  await page.getByTitle('Fit', { exact: true }).click()
+  // First open must fit the whole unsaved arrangement without pressing Fit.
   await transitionsSettled(page)
   const cards = await page.locator('.world [data-node]').evaluateAll(elements => elements.map(el => {
     const rect = el.getBoundingClientRect()
@@ -59,6 +59,8 @@ for (const width of [1920, 2560]) test(`TOML mission opens arranged and Fit is r
   const chipBounds = await page.locator('[data-node="gate"] .gkind-formation').boundingBox()
   expect(titleBounds!.y + titleBounds!.height).toBeLessThanOrEqual(chipBounds!.y)
   expect(await title.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true)
+  await page.getByTitle('Fit', { exact: true }).click()
+  await transitionsSettled(page)
   expect(fixture.writes).toEqual([])
   expect(fixture.board().rev).toBe(1)
   await page.screenshot({ path: `/tmp/canvas-arranged-${width}.png` })

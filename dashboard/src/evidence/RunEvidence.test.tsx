@@ -159,6 +159,7 @@ describe('RunEvidence', () => {
     render(<RunEvidence runId="run_1" nodeId="gate_review" title="Review" state="done" onClose={() => {}} />)
 
     const verdict = await screen.findByTestId('node-gate-verdict')
+    expect(screen.getByTestId('node-evidence-state')).toHaveTextContent('PASS')
     expect(verdict).toHaveTextContent('verdict · pass · route pass')
     expect(verdict).toHaveTextContent('Judge and operator agree')
     const evaluation = screen.getByTestId('gate-evaluation-20')

@@ -102,6 +102,21 @@ describe('stepping and pairing', () => {
 })
 
 describe('attemptFileGroups and folderSummary', () => {
+  it('keeps output snapshots once across output and other files, without merging different paths or attempts', () => {
+    const kept = 'execution/1/outputs/out/mh/videos/body.mp4'
+    const other = ['execution/1/other/body.mp4', 'execution/2/mh/videos/body.mp4', 'execution/1/mh/report.txt']
+    const groups = attemptFileGroups(attempt(1, {
+      outputs: [{ portId: 'out', kind: 'folder', artifact: 'execution/1/outputs/out/mh', text: text('') }],
+      files: ['execution/1/mh/videos/body.mp4', kept, ...other].map(name => file(name)),
+    }))
+    expect(groups.outputs[0].files.map(entry => entry.name)).toEqual([kept])
+    expect(groups.others.map(entry => entry.name)).toEqual(other)
+    const unclaimed = attemptFileGroups(attempt(1, {
+      files: ['execution/1/mh/videos/body.mp4', kept, ...other].map(name => file(name)),
+    }))
+    expect(unclaimed.others.map(entry => entry.name)).toEqual([kept, ...other])
+  })
+
   it('gives each output its own files and keeps the rest apart', () => {
     const groups = attemptFileGroups(attempt(1, {
       outputs: [

@@ -8,6 +8,7 @@ import { problemHeadline } from '../components/runOutcome'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
+import { attemptsAnchor } from '../attempts/attemptsPlacement'
 import { artifactFileRequest, referencedFileRequest } from '../files/fileWindowModel'
 import Markdown from './Markdown'
 import TextLines, { prettyJson } from './TextLines'
@@ -79,7 +80,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
   // Escape closes an open document first, then the evidence dialog.
   const stack = useWindowStack()
-  const [anchor] = useState(() => document.activeElement ? fileAnchor(document.activeElement) : null)
+  const [anchor] = useState(() => document.activeElement ? attemptsAnchor(document.activeElement) : null)
   useEffect(() => {
     if (!openDocument) return
     const closeDocument = (event: KeyboardEvent) => {
@@ -124,6 +125,8 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   }, [anchor, files, runId, title])
 
   const failures = evidence?.problems || []
+  const gate = evidence?.kind === 'gate' || board?.gates?.some(gate => gate.id === nodeId)
+  const verdict = gate && (state === 'done' || state === 'failed') ? (state === 'done' ? 'PASS' : 'FAIL') : ''
 
   const openBrief = useCallback((seq: number, label: string) => {
     setDocumentError('')
@@ -139,7 +142,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
       <CitationContext.Provider value={{ runId, artifacts: [...(artifacts?.artifacts.map(file => file.name) || []), ...attemptSteps.flatMap(step => step.attempts.flatMap(attempt => attemptCitationScope(attempt).artifacts))], directories: [], paths: evidencePaths(evidence), open: openArtifact }}>
       <div data-testid="node-inspector" className="node-evidence">
         <dl className="node-evidence-identity">
-          <div><dt>State</dt><dd data-testid="node-evidence-state">{state || 'not started'}</dd></div>
+          <div><dt>{verdict ? 'Verdict' : 'State'}</dt><dd data-testid="node-evidence-state">{verdict || state || 'not started'}</dd></div>
         </dl>
         <EvidenceIds runId={runId} nodeId={nodeId} evidence={evidence} names={names} />
 

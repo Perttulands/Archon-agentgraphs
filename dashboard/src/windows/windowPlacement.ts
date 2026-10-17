@@ -42,16 +42,16 @@ import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
  * (see cockpitScene.ts).
  *
  * The window may open smaller than asked to fit free space, but never below
- * half its size on either side, nor below the kind's minimum. Scrollable
- * attempt strips may fit down to their minimum when the scene requires it. Its remembered
+ * half its size on either side, nor below the kind's minimum. Reading windows
+ * with anchorFirst use their explicit reading floor instead of the half-size rule. Their remembered
  * size is not changed. Placement is pure: the same scene always gives the same
  * rectangle.
  */
 
 export interface PlacementScene {
   workspace: Workspace
-  /** Scrollable strips can fit down to their minimum to keep surrounding evidence visible. */
-  fitToMinimum?: boolean
+  /** Evidence keeps its source clear before other nearby nodes. */
+  anchorFirst?: boolean
   /** What the window belongs to. Never covered when a placement can avoid it. */
   anchor?: WindowRect | null
   /**
@@ -231,8 +231,8 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
   const avoid = scene.workspace.avoid.filter(inReach)
   const full = clampFrameSize(size, minimum, bounds)
   const smallest = {
-    width: Math.min(full.width, Math.max(minimum.width, Math.ceil(full.width * (scene.fitToMinimum ? 0 : FIT_SHARE)))),
-    height: Math.min(full.height, Math.max(minimum.height, Math.ceil(full.height * (scene.fitToMinimum ? 0 : FIT_SHARE)))),
+    width: Math.min(full.width, Math.max(minimum.width, Math.ceil(full.width * (scene.anchorFirst ? 0 : FIT_SHARE)))),
+    height: Math.min(full.height, Math.max(minimum.height, Math.ceil(full.height * (scene.anchorFirst ? 0 : FIT_SHARE)))),
   }
   const reach = grow(bounds, ANCHOR_REACH)
   // An anchor scrolled out of view says nothing about where to open.
@@ -251,7 +251,7 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
 
   const must: Array<[WindowRect, number]> = [
     ...avoid.map(rect => [rect, MUST.avoid] as [WindowRect, number]),
-    ...(anchor ? [[grow(anchor, BREATHING.anchor), MUST.anchor] as [WindowRect, number]] : []),
+    ...(anchor ? [[grow(anchor, BREATHING.anchor), (scene.anchorFirst ? 1000 : MUST.anchor)] as [WindowRect, number]] : []),
     ...keepClear.map(rect => [grow(rect, BREATHING.keepClear), MUST.keepClear] as [WindowRect, number]),
     ...windows.map(rect => [titleStrip(rect), MUST.title] as [WindowRect, number]),
     ...(control ? windows.map(rect => [rect, CONTROL.window] as [WindowRect, number]) : []),
@@ -334,7 +334,11 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
     candidates.push(hold({ ...full, left: right(open) - full.width - CASCADE_OFFSET, top: open.top + TITLE_STRIP }))
   }
   // Fitted into free space: grown from each corner in each direction, down to the smallest readable size.
-  for (const obstacles of [hard, lenient]) {
+  const obstacleSets = [hard, lenient]
+  // A failed gate is optional when the reading floor cannot clear it. Still
+  // try the space beside the source rather than forcing overlap at full size.
+  if (scene.anchorFirst) obstacleSets.push([...(anchor ? [margin(anchor)] : []), ...windows.map(rect => margin(titleStrip(rect))), ...avoid])
+  for (const obstacles of obstacleSets) {
     for (const flip of [{ x: false, y: false }, { x: true, y: false }, { x: false, y: true }, { x: true, y: true }]) {
       const flippedBounds = mirror(bounds, flip)
       const flipped = obstacles.map(zone => mirror(zone, flip))

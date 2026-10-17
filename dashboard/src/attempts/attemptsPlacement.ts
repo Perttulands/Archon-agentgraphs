@@ -14,5 +14,8 @@ export function attemptsAnchor(control: Element, gateIds: readonly string[] = []
   const status = control.closest('.flow-status')
   if (!status) return place
   const box = measureElement(status, true)!
-  return { anchor: box, keepClear: [...place.keepClear, box], anchorKind: 'node' }
+  const row = control.closest('.flow-step, .flow-mission')
+  const verdicts = [...(row?.querySelectorAll('.flow-verdict') || [])]
+    .map(element => measureElement(element)).filter(box => box !== null)
+  return { anchor: box, keepClear: [...verdicts, ...gates], anchorKind: 'node' }
 }

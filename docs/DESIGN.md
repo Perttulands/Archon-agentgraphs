@@ -34,7 +34,12 @@ changes it; a variant that needs more proposes the addition in its set.
   open beside their source window. A single small model opens on the first click.
   Attempt media stays within its column; long file names wrap. Failed and
   stopped attempts put the reason in their column header. Attempts windows
-  leave the opening card or Flow status visible.
+  leave the opening card or Flow status and verdict visible. They open at least
+  560 px wide and 70% of the viewport high; run evidence keeps at least 640 px
+  of width and the same height floor. Other rows may be covered; a failed gate
+  stays clear when it fits at that floor. Cited image windows keep at least
+  640×560. Standalone thumbnails have no list bullets, and kept output copies
+  replace their working-path twins in Other files as in Produced.
 - The Flow view shows sequence, feeds and gating as a line; the canvas shows
   the graph.
 
@@ -102,7 +107,9 @@ The operator steers a mission through its managing agent
   before it is a colour; a new colour is an addition to the colour rule.
 - Nothing the operator is reading moves when something is added; motion only
   confirms. Reserve the run bar's row before a run is selected, including while
-  its data loads. Keep that row's height fixed as the run changes.
+  its data loads. Keep that row's height fixed as the run changes. Reserve the
+  produced-file row on Canvas and in Flow while evidence loads; extra Flow
+  chips scroll horizontally within that row.
 - Gate verdicts read **PASS** and **FAIL** on Canvas, in Flow and in attempts.
   Canvas or Flow is one browser preference across missions and runs. The canvas creation
   palette appears only on Canvas.

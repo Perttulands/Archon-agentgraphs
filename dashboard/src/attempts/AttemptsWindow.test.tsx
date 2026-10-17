@@ -76,13 +76,14 @@ describe('AttemptsWindow', () => {
         { name: 'draw/3/outputs/port_replay/replay/checkpoints/09.jpg', path: '/state/.archon/artifacts/run_1/draw/3/outputs/port_replay/replay/checkpoints/09.jpg', kind: 'image', size: 10, modifiedAt: '' },
         { name: 'draw/3/outputs/port_replay/replay/input-preflight.json', path: '/state/.archon/artifacts/run_1/draw/3/outputs/port_replay/replay/input-preflight.json', kind: 'json', size: 10, modifiedAt: '' },
       ],
-      verdicts: [{ gateId: 'review', evaluationSeq: 32, verdict, reason: text('Check replay/checkpoints/09.jpg'), evidence: [{ text: text('replay/input-preflight.json') }] }],
+      verdicts: [{ gateId: 'review', evaluationSeq: 32, verdict, reason: text('Check replay/checkpoints/09.jpg'), evidence: [{ text: text('replay/input-preflight.json') }, { text: text('replay/checkpoints/09.jpg') }] }],
     })]
     render(<Window />)
     const column = await screen.findByTestId('attempt-3')
-    const thumbnail = within(column).getByRole('button', { name: 'Open 09.jpg' })
+    const thumbnail = within(column).getAllByRole('button', { name: 'Open 09.jpg' })[0]
     expect(within(thumbnail).getByRole('img')).toHaveAttribute('src', '/api/runs/run_1/artifacts/draw/3/outputs/port_replay/replay/checkpoints/09.jpg')
     expect(within(column).getByRole('button', { name: 'draw/3/outputs/port_replay/replay/input-preflight.json' })).toBeInTheDocument()
+    expect(column.querySelector('.attempt-evidence-notes .citation-only .attempt-thumb')).toBeInTheDocument()
     if (verdict === 'fail') expect(column.querySelector('.attempt-head')).toHaveTextContent('Check replay/checkpoints/09.jpg')
   })
 

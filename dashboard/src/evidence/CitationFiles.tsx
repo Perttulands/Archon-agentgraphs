@@ -52,5 +52,7 @@ export function CitedEvidence({ text }: { text: string }) {
   const paths = citedPaths(text)
   const standalone = paths.length === 1 && paths[0] === text.trim()
   const resolved = standalone && context ? resolveCitation(paths[0], context.artifacts, context.paths, context.directories) : null
-  return <>{resolved ? null : text}<CitationFiles text={text} /></>
+  return resolved
+    ? <div className="citation-only"><CitationFiles text={text} /></div>
+    : <>{text}<CitationFiles text={text} /></>
 }

@@ -171,6 +171,12 @@ for (const width of [1920, 2560]) {
     await page.goto('/?mission=browser&run=run_browser')
     await expect(page.getByTestId('run-chip-gate')).toHaveText('fail')
     await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('Failed')
+    await page.getByTestId('inspect-node-gate').click()
+    await expect(page.getByTestId('node-evidence-state')).toHaveText('FAIL')
+    const evidenceBox = (await page.locator('.run-evidence').boundingBox())!
+    expect(evidenceBox.width).toBeGreaterThanOrEqual(640)
+    expect(evidenceBox.height).toBeGreaterThanOrEqual(Math.ceil((width === 1920 ? 1080 : 1440) * .7))
+    await page.keyboard.press('Escape')
     await page.getByRole('radio', { name: 'Flow', exact: true }).click()
     await expect(page.getByTestId('flow-step-gate').locator('.flow-state')).toHaveText('fail')
     await page.getByTestId('flow-step-execution').getByTestId('attempts-open-execution').click()
@@ -212,4 +218,48 @@ test('choosing another mission run keeps Flow and Canvas across reloads', async 
   await page.reload()
   await expect(page.getByRole('radio', { name: 'Canvas', exact: true })).toBeChecked()
   expect(fixture.writes).toEqual([])
+})
+
+for (const width of [1920, 2560]) test(`canceled step chip stays clear of its input header at ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
+  await cockpitFixture(page, { succeeded: true, canceled: true })
+  await page.goto('/?mission=browser&run=run_browser')
+  const chip = page.getByTestId('run-chip-execution')
+  await expect(chip).toHaveText('Canceled')
+  const chipBox = (await chip.boundingBox())!
+  const inputBox = (await page.locator('[data-node="execution"] .fio.in').boundingBox())!
+  expect(chipBox.y + chipBox.height).toBeLessThan(inputBox.y)
+})
+
+for (const width of [1920, 2560]) test(`passed gate shows PASS on canvas and evidence at ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
+  await cockpitFixture(page, { succeeded: true })
+  await page.goto('/?mission=browser&run=run_browser')
+  await expect(page.getByTestId('run-chip-gate')).toHaveText('pass')
+  await page.getByTestId('inspect-node-gate').click()
+  await expect(page.getByTestId('node-evidence-state')).toHaveText('PASS')
+})
+
+for (const width of [1920, 2560]) test(`Flow rows stay still while produced evidence loads at ${width}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
+  await cockpitFixture(page, { succeeded: true })
+  let releaseEvidence!: () => void
+  const held = new Promise<void>(resolve => { releaseEvidence = resolve })
+  await page.route('**/api/runs/run_browser/evidence/nodes/execution', async route => {
+    await held
+    await route.fallback()
+  })
+  await page.goto('/?mission=browser&run=run_browser')
+  await page.getByRole('radio', { name: 'Flow', exact: true }).click()
+  const output = page.getByTestId('flow-step-execution').getByTestId('produced-execution')
+  await expect(output).toBeAttached()
+  await expect(output.getByRole('button')).toHaveCount(0)
+  const positions = () => page.locator('[data-flow-node]').evaluateAll(rows => rows.map(row => {
+    const rect = row.getBoundingClientRect()
+    return { id: row.getAttribute('data-flow-node'), y: rect.y, height: rect.height }
+  }))
+  const before = await positions()
+  releaseEvidence()
+  await expect(output.getByRole('button').first()).toBeVisible()
+  expect(await positions()).toEqual(before)
 })

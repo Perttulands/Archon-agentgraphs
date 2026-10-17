@@ -105,3 +105,10 @@ export function clampFrameSize(size: FrameSize, minimum: FrameSize, bounds: Fram
     height: clampSide(size.height, minimum.height, bounds ? bounds.height : Number.POSITIVE_INFINITY),
   }
 }
+
+/** Reading windows keep room for evidence before preserving surrounding canvas content. */
+export function openingWindowMinimum(kind: FloatingWindowKind, viewport: FrameSize): FrameSize {
+  const minimum = FLOATING_WINDOW_MINIMUM[kind]
+  if (kind !== 'attempts' && kind !== 'evidence') return minimum
+  return { width: Math.max(560, minimum.width), height: Math.max(minimum.height, Math.ceil(viewport.height * .7)) }
+}

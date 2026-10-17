@@ -1037,10 +1037,12 @@ rest, grouped in run order by step and output with counts, outputs before other 
 A kept output copy replaces its working-path twin in the list; distinct paths
 and attempts remain distinct. A formation that recorded output reserves its
 produced-file row while evidence loads, keeping its card and open windows still.
+Flow reserves one fixed-height output-chip row too; extra chips scroll horizontally,
+so loading evidence cannot move later steps.
 Declared output chips open the producing step's attempts; other files open in a
 floating file window, rendered by kind, with Open raw and Copy path (the
 artifact's absolute path on the daemon host); several can be open side by side.
-Node, note, file and attempts windows float in the free space nearest what
+Node, note and file windows float in the free space nearest what
 opened them, over the canvas or over Flow, shrinking to half their remembered size at most to
 fit. A window leaves its own card or Flow row, its neighbours, its next links and
 the title bars of open windows visible and clickable where space allows, and
@@ -1061,7 +1063,14 @@ uses the same resolver in attempts, run evidence and gate evidence. It links
 only to a known artifact, resolving against the producing attempt directory
 and output folders, with cited reports disambiguating other matches.
 Scheme-bearing URLs are not file citations. Evidence
-windows keep a readable minimum of 640×600, even when that covers other cards.
+windows keep at least 640 px of width; attempts keep at least 560 px. Both
+open at no less than 70% of the viewport height. They keep their opening card,
+or their opening Flow status and verdict, clear; a failed gate stays visible
+when it fits at that floor. Other rows and the Input card may be covered before
+these windows shrink. Image file windows keep at least 640×560, decided before
+loading so the content does not move. Standalone evidence thumbnails have no
+orphan list markers. Attempts' Other files uses the same kept-copy rule as
+Produced: a kept output replaces its working-path twin, once.
 A folder searches its nested files and previews videos first, then twelve images, preferring verdict-cited images and names
 containing contact sheet or sheet, then at most three final images. It shows
 each model once as a tile with its name, size and Open file action before
@@ -1091,7 +1100,8 @@ drag pans them together, and Z or another click fits them again. While the run
 is live the window reads the attempts again as the run records them and follows
 a new attempt, unless the operator stepped back to an older one.
 
-A mission opens at a scale its card text can be read at: the whole graph when
+A mission with no saved positions opens with the whole graph fitted. With a
+saved layout, it opens at a scale its card text can be read at: the whole graph when
 that fits at 80% or more, else 80% from the graph's leading edge, and a run
 opens centred on the card it has reached. Fit always shows the whole graph.
 

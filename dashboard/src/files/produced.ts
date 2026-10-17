@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RunEvent } from '../components/formationsTypes'
+import { keptArtifacts } from './keptArtifacts'
 import { fetchNodeEvidence, fetchRunArtifacts, type NodeEvidence, type RunArtifactEntry } from '../evidence/runEvidenceApi'
 
 // What a run produced, read from the evidence routes (ADR-0017): each step's
@@ -86,13 +87,9 @@ export function summarizeProduced(
   const lead = final && sinks.length ? sinks : [work[0] || steps[0]].filter(Boolean)
   const primary = artifactsFirst(lead.flatMap(step => step.items))
   const claimed = new Set(steps.flatMap(step => step.items).map(item => item.artifact).filter(Boolean))
-  // Kept output copies supersede their working-path twin within the same
-  // attempt. Keep distinct attempts and distinct paths even with the same basename.
-  const copies = new Set(artifacts.filter(entry => /^[^/]+\/\d+\/outputs\/[^/]+\//.test(entry.name))
-    .map(entry => entry.name.replace(/^([^/]+\/\d+\/)outputs\/[^/]+\//, '$1')))
   const others = [
     ...steps.filter(step => !lead.includes(step)).flatMap(step => artifactsFirst(step.items)),
-    ...artifacts.filter(entry => !claimed.has(entry.name) && !copies.has(entry.name))
+    ...keptArtifacts(artifacts).filter(entry => !claimed.has(entry.name))
       .map((entry): ProducedItem => ({ key: `artifact:${entry.name}`, kind: 'artifact', artifact: entry.name, bytes: entry.size })),
   ]
   return { primary, others }

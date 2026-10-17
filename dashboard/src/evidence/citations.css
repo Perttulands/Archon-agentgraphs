@@ -5,3 +5,10 @@
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* Standalone file evidence is already a thumbnail or a file control. A list
+ * marker beside its bottom edge looks like an empty item below the picture. */
+.evidence-items > li:has(> .citation-only),
+.attempt-evidence-notes > li:has(> .citation-only) {
+  list-style: none;
+}

@@ -1,4 +1,5 @@
 import { mediaKind } from '../files/mediaUrls'
+import { keptArtifacts } from '../files/keptArtifacts'
 import { shortTime, spanLabel } from '../components/runList'
 import type { AttemptFile, AttemptOutput, AttemptVerdict, StepAttempt } from '../evidence/runEvidenceApi'
 
@@ -93,16 +94,17 @@ export interface OutputFiles {
  * rest the seat wrote into the attempt's directory.
  */
 export function attemptFileGroups(attempt: StepAttempt): { outputs: OutputFiles[]; others: AttemptFile[] } {
+  const kept = keptArtifacts(attempt.files)
   const claimed = new Set<string>()
   const outputs = attempt.outputs.map(output => {
     const artifact = output.artifact
     const files = !artifact ? []
-      : output.kind === 'folder' ? attempt.files.filter(file => file.name.startsWith(`${artifact}/`))
-        : attempt.files.filter(file => file.name === artifact)
+      : output.kind === 'folder' ? kept.filter(file => file.name.startsWith(`${artifact}/`))
+        : kept.filter(file => file.name === artifact)
     for (const file of files) claimed.add(file.name)
     return { output, files }
   })
-  return { outputs, others: attempt.files.filter(file => !claimed.has(file.name)) }
+  return { outputs, others: kept.filter(file => !claimed.has(file.name)) }
 }
 
 const IMAGE_PATH = /\.(png|jpe?g|gif|webp|avif|bmp)$/i

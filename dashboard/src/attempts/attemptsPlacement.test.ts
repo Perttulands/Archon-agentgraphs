@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { attemptsAnchor } from './attemptsPlacement'
 import { attemptsWindowSize } from './AttemptsWindow'
 import { placeOpeningWindow } from '../windows/windowPlacement'
-import { FLOATING_WINDOW_MINIMUM } from '../windows/floatingWindowSize'
+import { openingWindowMinimum } from '../windows/floatingWindowSize'
 import { rectsOverlap, type WindowRect } from '../windows/windowGeometry'
 
 function place(element: Element, box: WindowRect) {
@@ -12,7 +12,8 @@ function place(element: Element, box: WindowRect) {
 afterEach(() => { document.body.innerHTML = '' })
 
 describe('attempts opening placement', () => {
-  it('fits a scrollable strip beside the replay status and its gate verdict in a crowded Flow', () => {
+  it('keeps a readable strip beside the replay status, covering other Flow content before shrinking', () => {
+    const width = 1920, height = 1080
     const status = { left: 1393, top: 362, width: 240, height: 213 }
     const gateStatus = { left: 1393, top: 608, width: 240, height: 224 }
     const verdict = { left: 549, top: 719, width: 828, height: 18 }
@@ -25,13 +26,13 @@ describe('attempts opening placement', () => {
       { left: 547, top: 479, width: 72, height: 17 },
       { left: 627, top: 478, width: 217, height: 18 },
     ]
-    const window = placeOpeningWindow(attemptsWindowSize(3, { width: 1920, height: 1080 }), FLOATING_WINDOW_MINIMUM.attempts, {
+    const window = placeOpeningWindow(attemptsWindowSize(3, { width: 1920, height: 1080 }), openingWindowMinimum('attempts', { width, height }), {
       workspace: { bounds: { left: 268, top: 85, width: 1644, height: 987 }, avoid: [] },
-      fitToMinimum: true, anchor: status, keepClear: [...handles, status, gateStatus, verdict],
+      anchorFirst: true, anchor: status, keepClear: [gateStatus, verdict], landmarks: handles,
     })
-    for (const protectedBox of [...handles, status, gateStatus, verdict]) expect(rectsOverlap(window, protectedBox)).toBe(false)
-    expect(window.width).toBeGreaterThanOrEqual(420)
-    expect(window.height).toBeGreaterThanOrEqual(320)
+    for (const protectedBox of [status, gateStatus]) expect(rectsOverlap(window, protectedBox)).toBe(false)
+    expect(window.width).toBeGreaterThanOrEqual(560)
+    expect(window.height).toBeGreaterThanOrEqual(Math.ceil(height * .7))
   })
 
   it('leaves the whole Flow status visible, including state and produced files', () => {
@@ -41,14 +42,14 @@ describe('attempts opening placement', () => {
     place(document.querySelector('.flow-title')!, title)
     place(document.querySelector('.flow-status')!, status)
     place(document.querySelector('.attempts-open')!, { left: 1408, top: 405, width: 70, height: 18 })
-    expect(attemptsAnchor(document.querySelector('.attempts-open')!)).toEqual({ anchor: status, keepClear: [title, status], anchorKind: 'node' })
+    expect(attemptsAnchor(document.querySelector('.attempts-open')!)).toEqual({ anchor: status, keepClear: [], anchorKind: 'node' })
   })
 
   for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
     it(`fits beside its opening card at ${width}`, () => {
       const card = { left: width * .39, top: 254, width: 352, height: 342 }
       const bounds = { left: 268, top: 85, width: width - 276, height: height - 170 }
-      const window = placeOpeningWindow(attemptsWindowSize(3, { width, height }), FLOATING_WINDOW_MINIMUM.attempts, {
+      const window = placeOpeningWindow(attemptsWindowSize(3, { width, height }), openingWindowMinimum('attempts', { width, height }), {
         workspace: { bounds, avoid: [] }, anchor: card, keepClear: [card], landmarks: [card],
       })
       expect(rectsOverlap(window, card)).toBe(false)
@@ -56,14 +57,14 @@ describe('attempts opening placement', () => {
       expect(window.top).toBeGreaterThanOrEqual(bounds.top)
       expect(window.left + window.width).toBeLessThanOrEqual(bounds.left + bounds.width)
       expect(window.top + window.height).toBeLessThanOrEqual(bounds.top + bounds.height)
-      expect(window.width).toBeGreaterThanOrEqual(420)
-      expect(window.height).toBeGreaterThanOrEqual(320)
+      expect(window.width).toBeGreaterThanOrEqual(560)
+      expect(window.height).toBeGreaterThanOrEqual(Math.ceil(height * .7))
     })
 
     it(`keeps its opening Flow status readable at ${width}`, () => {
       const status = { left: (width + 260) / 2 + 303, top: 367, width: 240, height: 150 }
       const bounds = { left: 268, top: 85, width: width - 276, height: height - 100 }
-      const window = placeOpeningWindow(attemptsWindowSize(1, { width, height }), FLOATING_WINDOW_MINIMUM.attempts, {
+      const window = placeOpeningWindow(attemptsWindowSize(1, { width, height }), openingWindowMinimum('attempts', { width, height }), {
         workspace: { bounds, avoid: [] }, anchor: status, keepClear: [status],
       })
       expect(rectsOverlap(window, status)).toBe(false)

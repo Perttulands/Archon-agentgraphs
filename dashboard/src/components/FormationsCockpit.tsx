@@ -915,7 +915,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       }
       // A gate's pass and fail wires name where they go, beside the gate, unless they run into the next card.
       const label = (kind === 'pass' || kind === 'fail') && (loopIds.has(conn.id) || gateWireNeedsLabel(a, b))
-        ? { x: a.x + 12, y: a.y - 7, text: `${loopIds.has(conn.id) ? '↺' : '→'} ${titleOf(toNode)}`, anchor: 'start' as const }
+        ? { x: a.x + 24, y: a.y - 7, text: `${loopIds.has(conn.id) ? '↺' : '→'} ${titleOf(toNode)}`, anchor: 'start' as const }
         : undefined
       paths.push({ id: conn.id, d, kind, flowing, loop: loopIds.has(conn.id), label })
     }
@@ -2105,7 +2105,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       return
     }
     const frame = window.requestAnimationFrame(() => {
-      fitView()
+      fitView({ whole: !layout.nodes.length })
       fittedBoardRef.current = shown
     })
     return () => window.cancelAnimationFrame(frame)
@@ -3164,7 +3164,9 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const state = nodeStates.get(nodeId)
     // Waiting for the operator is the most visible state on the canvas (archon-n7u.29).
     if (waitingGateIds.includes(nodeId) && activeRun && !activeRun.final) return <span className="run-chip waiting" data-testid={`run-chip-${nodeId}`}>waiting for you</span>
-    return state === 'blocked' || state === 'failed' || state === 'canceled' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state === 'canceled' ? 'Canceled' : state === 'failed' && board?.gates?.some(gate => gate.id === nodeId) ? 'fail' : state}</span> : null
+    const gate = board?.gates?.some(gate => gate.id === nodeId)
+    if (gate && state === 'done') return <span className="run-chip done" data-testid={`run-chip-${nodeId}`}>pass</span>
+    return state === 'blocked' || state === 'failed' || state === 'canceled' ? <span className={`run-chip ${state}`} data-testid={`run-chip-${nodeId}`}>{state === 'canceled' ? 'Canceled' : state === 'failed' && gate ? 'fail' : state}</span> : null
   }
   // The pending human gate's answer panel: in a floating window over the canvas, or in the gate's row in Flow.
   const answerKey = activeRun && pendingHumanGate ? `${activeRun.runId}:${pendingHumanGate.requestedSeq}` : ''
@@ -3230,7 +3232,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     version: runVersion,
     live: !activeRun.final,
     waitingGates: waitingGateIds,
-    gatesOf: nodeId => board?.connections.filter(edge => edge.from.split(':')[0] === nodeId && board.gates?.some(gate => gate.id === edge.to.split(':')[0])).map(edge => edge.to.split(':')[0]) || [],
+    gatesOf: nodeId => board?.connections.filter(edge => edge.from.split(':')[0] === nodeId && board.gates?.some(gate => gate.id === edge.to.split(':')[0] && nodeStates.get(gate.id) === 'failed')).map(edge => edge.to.split(':')[0]) || [],
     titleOf: nodeId => producedValue?.byNode.get(nodeId)?.definition?.title || (board ? nodeTitle(board, nodeId) : nodeId),
   } : null), [activeRun, board, nodeAttempts, producedValue, runVersion, waitingGateIds])
   const stepPick = useMemo<StepPick | null>(() => (pendingPick && pendingHumanGate && answerWindowOpen ? {

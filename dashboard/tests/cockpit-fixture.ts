@@ -204,7 +204,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; failedGate?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean; beforeAssignmentReply?: () => Promise<void> } = {}) {
+export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; tomlMission?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; canceled?: boolean; failedGate?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean; beforeAssignmentReply?: () => Promise<void> } = {}) {
   const currentBoard = structuredClone(board)
   // A CLI-authored mission has declarations but no saved canvas layout.
   if (options.declaredInputs) {
@@ -562,6 +562,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (path === '/api/agents/codex') return respond({ id: 'codex', displayName: 'Codex builder', kind: 'builder', summary: 'Builds the change.', tags: [], etag: 'codex-card' })
     if (path === '/api/runs/run_browser' && options.waitingHuman) return respond({ runId: 'run_browser', status: 'waiting_human', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: options.secondGate ? 4 : 3, cwd: runCwd,
       waitingGates: [{ gateId: 'loose', requestedSeq: 3 }, ...(options.secondGate ? [{ gateId: 'second', requestedSeq: 4 }] : [])] })
+    if (path === '/api/runs/run_browser' && options.canceled) return respond({ runId: 'run_browser', status: 'canceled', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 3 })
     if (path === '/api/runs/run_browser' && options.failedGate) return respond({ runId: 'run_browser', status: 'failed', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 5 })
     if (path === '/api/runs/run_browser' && options.succeeded) {
       // A picked run (succeeded with picked) carried Execution's failed first
@@ -642,6 +643,10 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }] },
         { verdict: 'fail', targets: [{ nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' }] }] } })
     if (path.endsWith('/events') && options.blockedAtJudge) return respond({ events: blockedAtJudgeEvents })
+    if (path.endsWith('/events') && options.canceled) return respond({ events: [
+      { seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
+      { seq: 3, type: 'run_canceled', nodeId: 'execution', reason: 'Stopped by the operator.' },
+    ] })
     if (path.endsWith('/events') && options.failedGate) return respond({ events: [...succeededEvents.slice(0, 3),
       { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail', reason: 'Review needs another attempt.' },
       { seq: 5, type: 'run_failed', nodeId: 'gate', gateId: 'gate' }] })

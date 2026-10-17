@@ -251,7 +251,7 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
               onLocate={point.kind === 'waiting' && run.onAnswer ? run.onAnswer
                 : nodeId => onOpenNode(nodeId, controlAnchor(document.querySelector(`[data-flow-node="${step.id}"] .flow-status [data-testid="run-point"]`) || document.body))} />
           ))}
-          <ProducedFiles nodeId={step.id} className="flow-produced" />
+          <ProducedFiles nodeId={step.id} className="flow-produced" reserveRow={step.kind === 'formation' && run.events.some(event => event.type === 'node_output' && event.nodeId === step.id)} />
         </div>
       ) : null}
     </li>

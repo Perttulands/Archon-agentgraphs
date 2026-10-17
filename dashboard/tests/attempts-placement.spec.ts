@@ -48,7 +48,19 @@ for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
       const protectedParts = view === 'Canvas' ? gate : gate.locator('.flow-status, .flow-verdict')
       await expect(gate).toContainText(/fail/i)
       if (view === 'Flow') await expect(gate.locator('.flow-verdict')).toBeVisible()
-      for (const part of await protectedParts.all()) expect(overlaps(opened, (await part.boundingBox())!)).toBe(false)
+      const sourceBox = (await source.boundingBox())!
+      const gateBoxes = await Promise.all((await protectedParts.all()).map(async part => (await part.boundingBox())!))
+      // The reading floor replaces the old rule that shrank to clear every gate.
+      // Check whether any floor-sized rectangle could leave source and gate clear.
+      const obstacles = [sourceBox, ...gateBoxes]
+      const xs = [268, ...obstacles.flatMap(box => [box.x - 560, box.x + box.width])]
+      const floorHeight = Math.ceil(height * .7)
+      const ys = [85, ...obstacles.flatMap(box => [box.y - floorHeight, box.y + box.height])]
+      const gateFits = xs.some(x => ys.some(y => x >= 268 && x + 560 <= width - 8 && y >= 85 && y + floorHeight <= height - 8
+        && obstacles.every(box => !overlaps({ x, y, width: 560, height: floorHeight }, box))))
+      if (gateFits) for (const box of gateBoxes) expect(overlaps(opened, box)).toBe(false)
+      expect(opened.width).toBeGreaterThanOrEqual(560)
+      expect(opened.height).toBeGreaterThanOrEqual(Math.ceil(height * .7))
       expect(opened.x).toBeGreaterThanOrEqual(0)
       expect(opened.y).toBeGreaterThanOrEqual(0)
       expect(opened.x + opened.width).toBeLessThanOrEqual(width)
