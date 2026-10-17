@@ -1,3 +1,4 @@
+import { cockpitFixture, flowInputs } from './cockpit-fixture'
 import { expect, test } from '@playwright/test'
 import { scouting, scoutingFixture } from './scouting-fixture'
 
@@ -121,4 +122,35 @@ test('Flow labels fan-out siblings as parallel with a shared step number', async
     await expect(row.locator('.flow-number')).toHaveText('1 ∥')
     await expect(row).toContainText('Parallel with')
   }
+})
+
+
+test('Flow reads declared values without a saved layout and keeps rows still when a window opens', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  const fixture = await cockpitFixture(page, { succeeded: true, declaredInputs: true })
+  await page.goto('/?mission=browser&run=run_browser')
+  await page.getByRole('radio', { name: 'Flow', exact: true }).click()
+  const flow = page.getByTestId('flow-view')
+  const inputs = flow.getByLabel('Inputs', { exact: true })
+  await expect(inputs).toContainText('subject · text · required')
+  await expect(inputs).toContainText('facts · file · required')
+  await expect(inputs).toContainText('previous · folder · optional · not supplied')
+  await expect(inputs).not.toContainText('Keep the final detail.')
+  const row = page.getByTestId('flow-step-execution')
+  const before = await row.boundingBox()
+  await inputs.getByRole('button').first().click()
+  await expect(page.getByRole('dialog', { name: 'file subject', exact: true })).toContainText(flowInputs[0].value)
+  expect(await row.boundingBox()).toEqual(before)
+  await page.keyboard.press('Escape')
+  expect(await row.boundingBox()).toEqual(before)
+  const outputs = flow.getByLabel('Outputs', { exact: true })
+  await expect(outputs).toContainText('summary · text · required')
+  await outputs.getByRole('button').click()
+  await expect(page.getByRole('dialog', { name: 'file summary', exact: true })).toContainText('All tests pass.')
+  await page.keyboard.press('Escape')
+  const reason = flow.getByRole('button', { name: 'The reviewed implementation passes all checks.' })
+  await expect(reason).toBeVisible()
+  await reason.click()
+  await expect(page.getByRole('dialog', { name: /Review gate/ })).toBeVisible()
+  expect(fixture.writes).toEqual([])
 })

@@ -1,21 +1,24 @@
 import { NodeProblems, type NodeFindings } from '../components/formationsDrafts'
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { noteAuthor } from '../components/NoteThread'
 import RunPoint from '../components/RunPoint'
 import { endPathWords, endTitleSuffix } from '../components/endNode'
 import { limitSummary, limitsCovering } from '../components/limitCard'
 import type { NodeRunState, RunPoint as RunPointModel } from '../components/formationsRunState'
-import type { AgentProjection, BoardDocument, FormationNode, MissionNode, NoteEntry } from '../components/formationsTypes'
+import type { AgentProjection, BoardDocument, FormationNode, MissionNode, MissionInput, NoteEntry, RunInput, RunOutput, RunEvent } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { ProducedFiles } from '../files/ProducedFiles'
 import { AttemptsButton } from '../attempts/AttemptsWindows'
-import { referencedFileRequest } from '../files/fileWindowModel'
+import { textValueRequest, referencedFileRequest } from '../files/fileWindowModel'
 import { useFileProblems } from '../files/referencedFiles'
 import { humanChannelLabel, humanChannelOf } from '../humanChannel/humanChannel'
 import { staffingSentence } from '../nodeWindow/staffing'
 import { roleNamer } from '../staffing/staffingModel'
 import type { WindowRect } from '../windows/windowGeometry'
 import { buildFlow, type FlowStep, type FlowTarget, type GateDecider } from './flowModel'
+import { missionRunInputs } from '../components/missionInputs'
+import { runOutputRequest, runOutputPickLines } from '../files/RunOutputs'
+import { fetchNodeEvidence } from '../evidence/runEvidenceApi'
 import './flow.css'
 
 /**
@@ -28,6 +31,11 @@ import './flow.css'
 
 export interface FlowRun {
   runId: string
+  inputCardId: string
+  inputs?: RunInput[]
+  outputs?: RunOutput[]
+  events: RunEvent[]
+  onEvidence: (nodeId: string) => void
   states: ReadonlyMap<string, NodeRunState>
   attempts: ReadonlyMap<string, number>
   /** Every gate waiting and step running or stopped now (archon-o7p.11). */
@@ -43,6 +51,7 @@ const STATE_WORDS: Record<NodeRunState, string> = {
   blocked: 'blocked',
   waiting: 'waiting for you',
   failed: 'failed',
+  canceled: 'canceled',
 }
 
 const DECIDER_WORDS: Record<GateDecider, string> = { you: 'you', judge: 'a judge', code: 'a code check' }
@@ -119,7 +128,7 @@ export default function FlowView({ board, agents, notes, run, findings = new Map
                 <button type="button" className="flow-action" disabled={!onStartMission} onClick={() => onStartMission?.(section.mission!)}>Start mission</button>
               </div>
               <p className="flow-text">{summary(section.mission.goal, 480) || <span className="placeholder">No goal yet.</span>}</p>
-              <p className="flow-line"><span className="flow-label">Input</span>{section.mission.inputHint ? summary(section.mission.inputHint, 320) : 'The brief you give when you start the mission.'}</p>
+              <MissionValues mission={section.mission} run={run?.inputCardId === section.mission.id ? run : null} />
               <p className="flow-line flow-channel"><span className="flow-label">Human gates</span>{humanChannelLabel(humanChannelOf(section.mission))}</p>
               <LimitLines board={board} nodeId={section.mission.id} onOpenNode={onOpenNode} />
               <FileChips files={section.mission.files} context={section.mission.title} />
@@ -138,6 +147,30 @@ export default function FlowView({ board, agents, notes, run, findings = new Map
   )
 }
 
+function MissionValues({ mission, run }: { mission: MissionNode; run: FlowRun | null }) {
+  const files = useFileWindows()
+  const values = (label: string, declarations: MissionInput[], supplied: (RunInput | RunOutput)[] = []) => (
+    <div className="flow-line" aria-label={label}>
+      <span className="flow-label">{label}</span>
+      {declarations.map(declaration => {
+        const value = supplied.find(value => value.name === declaration.name)
+        return <div key={declaration.name} className="flow-value">
+          <strong>{declaration.name}</strong> · {declaration.kind || 'text'} · {declaration.required ? 'required' : 'optional'}
+          {value && run ? <> · <button type="button" className="flow-link" onClick={event => files?.open(
+            'nodeId' in value ? runOutputRequest(run.runId, value)
+              : textValueRequest(`run-input:${run.runId}:${value.name}`, value.name, value.value, mission.title),
+            fileAnchor(event.currentTarget))}>{summary(value.value, 180) || '(empty)'}{'nodeId' in value && value.picks?.length ? ' · picked' : ''}</button>
+            {'nodeId' in value && value.picks?.length ? <span>{runOutputPickLines(value).join(' · ')}</span> : null}</>
+            : run ? <span> · {label === 'Inputs' ? 'not supplied' : 'not produced'}</span>
+              : declaration.description ? <span> · {summary(declaration.description)}</span> : null}
+        </div>
+      })}
+      {!declarations.length && 'None declared'}
+    </div>
+  )
+  return <>{values('Inputs', missionRunInputs(mission), run?.inputs)}{values('Outputs', mission.outputs || [], run?.outputs)}</>
+}
+
 function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onOpenNode, onOpenNotes }: {
   board: BoardDocument
   step: FlowStep
@@ -152,6 +185,7 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
   const judgeIds = step.kind === 'gate' ? step.judges.map(judge => judge.id) : []
   const blockedJudge = run && judgeIds.find(id => ['blocked', 'failed', 'waiting'].includes(run.states.get(id) || ''))
   const state = run ? run.states.get(blockedJudge || step.id) ?? '' : undefined
+  const verdict = step.kind === 'gate' ? run?.events.filter(event => event.type === 'gate_verdict' && (event.gateId || event.nodeId) === step.id).sort((a, b) => b.seq - a.seq)[0] : undefined
   const title = step.node.title || (step.kind === 'gate' ? 'Gate' : 'Untitled step')
   return (
     <li className={`flow-step flow-${step.kind}${state ? ` state-${state}` : ''}`} data-flow-node={step.id} data-testid={`flow-step-${step.id}`}>
@@ -176,6 +210,7 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
           <>
             <p className="flow-line"><span className="flow-label">Decider</span>{deciderWords(step.deciders.filter(decider => decider !== 'judge' || step.judges.length > 0))}{step.deciders.includes('judge') && !step.judges.length ? ' · No judge chain wired' : ''}</p>
             <p className="flow-text">{summary(step.node.criterion) || <span className="placeholder">No criterion yet.</span>}</p>
+            {run && verdict && <GateReason key={`${run.runId}:${step.id}:${verdict.seq}`} run={run} gateId={step.id} />}
             <Routes label="Pass" targets={step.pass} onOpenNode={onOpenNode} />
             <Routes label="Fail" targets={step.fail} onOpenNode={onOpenNode} />
             <FileChips files={step.node.files} context={title} />
@@ -220,6 +255,19 @@ function FlowRow({ board, step, run, notes, findings, answerPanel, staffing, onO
       ) : null}
     </li>
   )
+}
+
+function GateReason({ run, gateId }: { run: FlowRun; gateId: string }) {
+  const [reason, setReason] = useState('')
+  useEffect(() => {
+    let current = true
+    void fetchNodeEvidence(run.runId, gateId).then(evidence => {
+      const verdict = evidence.evaluations?.flatMap(evaluation => evaluation.verdict ? [evaluation.verdict] : []).sort((a, b) => b.seq - a.seq)[0]
+      if (current) setReason(verdict?.reason.text || 'No verdict reason recorded')
+    }, () => { if (current) setReason('Verdict evidence unavailable') })
+    return () => { current = false }
+  }, [run.runId, gateId])
+  return reason ? <p className="flow-line"><span className="flow-label">Verdict</span><button type="button" className="flow-link flow-verdict" onClick={() => run.onEvidence(gateId)}>{summary(reason)}</button></p> : null
 }
 
 function Routes({ label, targets, onOpenNode }: { label: string; targets: FlowTarget[]; onOpenNode: (nodeId: string, anchor?: WindowRect) => void }) {

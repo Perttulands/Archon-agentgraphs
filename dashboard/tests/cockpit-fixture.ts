@@ -71,6 +71,7 @@ const blockedAtJudgeEvents = [
 
 // The run succeeded: Execution returned its result as text, and Peer review, the
 // last step, wrote review.md. A worker log is in the artifacts too.
+export const flowInputs = [{ name: 'subject', kind: 'text', value: 'A character seen from behind and in conversation. '.repeat(12) + 'Keep the final detail.' }, { name: 'facts', kind: 'file', value: '/workspace/identity.md' }]
 const succeededEvents = [
   { seq: 1, type: 'run_started' },
   { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
@@ -121,6 +122,11 @@ function runOutputs(current: typeof board) {
 const snapshotText = (name: string): string | undefined => ({ 'review.md': reviewMarkdown, 'index.html': '<h1>Site</h1>' } as Record<string, string>)[name]
 export const reviewMarkdown = '# Peer review\n\nVerdict: **revise**. The design and the implementation disagree on retries.\n\n- Keep the retry budget\n- Log the second failure'
 const succeededEvidence: Record<string, unknown> = {
+  '/api/runs/run_browser/evidence/nodes/gate': { evidence: { runId: 'run_browser', nodeId: 'gate', kind: 'gate',
+    definition: { title: 'Review gate', outgoing: [] }, evaluations: [
+      { seq: 2, kinds: ['human'], criterion: evidenceText('Review'), kindResults: [], verdict: { seq: 3, verdict: 'fail', reason: evidenceText('Earlier checks failed.'), evidence: [] } },
+      { seq: 3, kinds: ['human'], criterion: evidenceText('Review'), kindResults: [], verdict: { seq: 4, verdict: 'pass', reason: evidenceText('The reviewed implementation passes all checks.'), evidence: [] } },
+    ] } },
   '/api/runs/run_browser/evidence/nodes/execution': { evidence: { runId: 'run_browser', nodeId: 'execution', kind: 'formation',
     definition: { title: 'Execution', outputs: [{ id: 'out', label: 'Result' }], outgoing: [{ id: 'review', from: 'execution:out', to: 'gate:in' }] },
     attempts: [{ attempt: 1, inputs: [], dispatches: [],
@@ -198,8 +204,17 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { noLayout?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
+  // A CLI-authored mission has declarations but no saved canvas layout.
+  if (options.declaredInputs) {
+    currentBoard.inputCards[0].inputs = [
+      { name: 'subject', kind: 'text', required: true },
+      { name: 'facts', kind: 'file', required: true },
+      { name: 'previous', kind: 'folder' },
+    ]
+    currentBoard.inputCards[0].outputs = [{ name: 'summary', kind: 'text', from: 'execution:out', required: true }]
+  }
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
     currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', harness: 'claude-code', model: 'opus', effort: 'low', controller: false }
@@ -262,8 +277,7 @@ export async function cockpitFixture(page: Page, options: { noLayout?: boolean; 
     currentBoard.formations = [...currentBoard.formations, ...newRow.map(id => ({ id, type: 'solo', title: 'New formation', ...ports, slots: [{ id: 'agent', label: 'Agent', controller: false }] }))]
   }
   const boardState = () => currentBoard
-  let nodes = positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
-  if (options.noLayout) nodes = []
+  let nodes = options.noLayout || options.declaredInputs ? [] : positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
   if (options.newRow) nodes = [...nodes, ...newRow.map((id, index) => ({ id, x: 448 + index * 336, y: 896 }))]
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
@@ -540,7 +554,7 @@ export async function cockpitFixture(page: Page, options: { noLayout?: boolean; 
       // A picked run (succeeded with picked) carried Execution's failed first
       // attempt on through its gate, so every output came through that pick.
       const outputs = runOutputs(currentBoard).map(output => options.picked ? { ...output, picks: [pickedExecution] } : output)
-      return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(outputs.length ? { outputs } : {}) })
+      return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(options.declaredInputs ? { inputs: flowInputs } : {}), ...(outputs.length ? { outputs } : {}) })
     }
     // The file routes read a succeeded run's output snapshots by absolute path.
     if (options.succeeded && path === '/api/files/directory') {

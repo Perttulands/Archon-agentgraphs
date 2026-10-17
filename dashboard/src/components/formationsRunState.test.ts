@@ -200,6 +200,17 @@ describe('formations run-state helpers', () => {
     expect(runPointPhrase(point!, 'Rejected')).toBe('failed at Rejected')
   })
 
+  it('cancels unfinished branches after an executor block, preserving completed work', () => {
+    const events: RunEvent[] = [
+      { runId: 'r', seq: 1, type: 'node_output', nodeId: 'clean' },
+      { runId: 'r', seq: 2, type: 'node_started', nodeId: 'rig', attempt: 4 },
+      { runId: 'r', seq: 3, type: 'human_input_requested', gateId: 'review' },
+      { runId: 'r', seq: 4, type: 'run_blocked', nodeId: 'rig', data: { reason: 'context canceled' } },
+      { runId: 'r', seq: 5, type: 'run_canceled' },
+    ]
+    expect(Object.fromEntries(projectNodeStates(events))).toEqual({ clean: 'done', rig: 'canceled', review: 'canceled' })
+  })
+
   it('names the gate or node a canceled run stopped', () => {
     const atGate: RunEvent[] = [
       { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_draft', attempt: 1 },

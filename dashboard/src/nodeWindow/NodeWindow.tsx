@@ -95,6 +95,7 @@ const RUN_STATE_WORDS: Record<NodeRunState, string> = {
   blocked: 'Blocked',
   waiting: 'Waiting for a decision',
   failed: 'Failed',
+  canceled: 'Canceled',
 }
 
 type Located =

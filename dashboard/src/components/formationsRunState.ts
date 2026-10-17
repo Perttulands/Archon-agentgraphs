@@ -85,7 +85,7 @@ export function activeRunStorageKey(slug: string): string {
   return `archon.activeRun.${slug}`
 }
 
-export type NodeRunState = '' | 'running' | 'done' | 'blocked' | 'waiting' | 'failed'
+export type NodeRunState = '' | 'running' | 'done' | 'blocked' | 'waiting' | 'failed' | 'canceled'
 
 interface RunProjection {
   states: Map<string, NodeRunState>
@@ -118,6 +118,12 @@ function projectRun(events: RunEvent[]): RunProjection {
       for (const gateId of answeredWhileBlocked) set(gateId, 'running', event.seq)
       answeredWhileBlocked.clear()
       blocked = false
+      continue
+    }
+    if (event.type === 'run_canceled') {
+      for (const [nodeId, state] of states) {
+        if (state === 'running' || state === 'waiting' || state === 'blocked') set(nodeId, 'canceled', event.seq)
+      }
       continue
     }
     if (event.type === 'run_blocked') blocked = true
@@ -271,7 +277,7 @@ export function runCurrentPoints(events: RunEvent[], run: RunStatusProjection | 
     }
     case 'canceled': {
       // A cancel names no node: it stopped the gate waiting for an answer, else the node in flight.
-      const nodeId = openHumanGateIds(sorted.filter(event => event.type !== 'run_canceled'))[0] || latest('running') || latest('blocked')
+      const nodeId = openHumanGateIds(sorted.filter(event => event.type !== 'run_canceled'))[0] || latest('canceled')
       return [{ kind: 'canceled', nodeId, gate: gates.has(nodeId) }]
     }
     default:

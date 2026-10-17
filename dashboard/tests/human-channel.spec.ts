@@ -136,7 +136,9 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   // Talk again raises the open windows instead of opening more; the Flow row offers the same.
   await panel.getByRole('button', { name: 'Talk with Question peers' }).click()
   await expect(page.locator('[data-window-id^="talk:"]')).toHaveCount(2)
+  const beforeFlow = await Promise.all([planner.boundingBox(), codex.boundingBox()])
   await page.getByRole('radio', { name: 'Flow' }).click()
+  expect(await Promise.all([planner.boundingBox(), codex.boundingBox()])).toEqual(beforeFlow)
   const row = page.getByTestId(`flow-step-${answerGate.id}`)
   await expect(row.getByRole('button', { name: 'Talk with Question peers' })).toBeVisible()
   await expect(page.locator('[data-window-id^="talk:"]')).toHaveCount(2)
@@ -150,12 +152,7 @@ test('Talk with the asked formation opens each peer seat beside the answer panel
   await expect(planner.locator('.peek-foot')).toContainText('Type to talk · select to copy')
   await expect(page.getByRole('button', { name: 'Talk with Question peers' })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Canvas' }).click()
-  // Flow docked both windows into one column, one over the other (archon-ey9i); move the upper one aside.
-  const upper = (await codex.boundingBox())!
-  await page.mouse.move(upper.x + 220, upper.y + 14)
-  await page.mouse.down()
-  await page.mouse.move(upper.x - 420, upper.y + 14, { steps: 8 })
-  await page.mouse.up()
+  expect(await Promise.all([planner.boundingBox(), codex.boundingBox()])).toEqual(beforeFlow)
   await planner.locator('.terminal-surface-host').click()
   await page.keyboard.type('thanks')
   await expect.poll(() => fixture.typed(21)).toContain('thanks')
