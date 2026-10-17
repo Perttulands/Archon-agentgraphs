@@ -156,7 +156,7 @@ function FolderOutput({ runId, output, files, truncated, context }: {
   const summary = folderSummary(files)
   const thumbs = summary.images.slice(0, FOLDER_THUMBS)
   const rows = [...summary.rest, ...summary.images.slice(FOLDER_THUMBS)].slice(0, FOLDER_ROWS)
-  const more = summary.count - thumbs.length - rows.length
+  const more = summary.count - thumbs.length - summary.videos.length - summary.models.length - rows.length
   const counted = `${summary.count} file${summary.count === 1 ? '' : 's'}${truncated ? ' listed' : ''}${summary.bytes ? ` · ${formatBytes(summary.bytes)}` : ''}`
   return (
     <div className="attempt-folder">
@@ -173,6 +173,12 @@ function FolderOutput({ runId, output, files, truncated, context }: {
           ))}
         </div>
       ) : null}
+      {[...summary.videos, ...summary.models].map(file => (
+        <div key={file.name}>
+          <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} />
+          <FileChip request={artifactFileRequest(runId, file.name, context)} label={nameWithin(folder, file.name)} detail={formatBytes(file.size)} />
+        </div>
+      ))}
       {rows.length ? (
         <ul className="attempt-listing">
           {rows.map(file => (
@@ -181,7 +187,6 @@ function FolderOutput({ runId, output, files, truncated, context }: {
                 <span className="attempt-listing-name">{nameWithin(folder, file.name)}</span>
                 <span className="attempt-listing-size">{formatBytes(file.size)}</span>
               </button>
-              {mediaKind(file.name) === 'video' ? <MediaPreview kind="video" src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} /> : null}
             </li>
           ))}
         </ul>
@@ -372,7 +377,7 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
         ) : null}
         {attempt.filesTruncated ? (
           <p className="attempt-quiet">
-            {attempt.filesOmitted ? `${attempt.filesOmitted} more files not listed. ` : 'Folders beyond 16 levels are not listed. '}
+            {attempt.filesOmitted ? `at least ${attempt.filesOmitted} more files not listed. ` : 'Folders beyond 16 levels are not listed. '}
             {attempt.directory ? <button type="button" className="evidence-link" onClick={event => open(folderFileRequest(attempt.directory!.path, context), event.currentTarget)}>Browse all files</button> : null}
           </p>
         ) : null}

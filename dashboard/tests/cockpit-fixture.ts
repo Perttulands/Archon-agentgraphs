@@ -95,11 +95,14 @@ export const mediaAttemptFixture = {
   attempt: 1, status: 'done', startedSeq: 2,
   outputs: [
     { portId: 'video', label: 'Turntable', kind: 'file', fileKind: 'video', artifact: 'execution/1/turntable.mp4', text: { text: '', bytes: 0 } },
-    { portId: 'model', label: 'Mesh', kind: 'file', fileKind: 'model', artifact: 'execution/1/triangle.gltf', text: { text: '', bytes: 0 } },
+    { portId: 'folder', label: 'Output folder', kind: 'folder', artifact: 'execution/1', path: `${runArtifacts}/execution/1`, text: { text: '', bytes: 0 } },
   ],
   verdicts: [{ gateId: 'gate', gateTitle: 'Review gate', evaluationSeq: 4, verdict: 'pass', reason: evidenceText('Watched the turntable.'),
     evidence: [{ kind: 'formation', text: evidenceText(`${runArtifacts}/execution/1/judge videos/review.webm`) }] }],
-  files: [],
+  files: [
+    ...Array.from({ length: 180 }, (_, i) => ({ name: `execution/1/cache-${i}.txt`, path: `${runArtifacts}/execution/1/cache-${i}.txt`, kind: 'text', size: 1, modifiedAt: '' })),
+    ...['folder-turntable.mp4', 'triangle.gltf'].map(name => ({ name: `execution/1/${name}`, path: `${runArtifacts}/execution/1/${name}`, kind: name.endsWith('.mp4') ? 'video' : 'model', size: 300, modifiedAt: '' })),
+  ],
 }
 const OUTPUT_NAME = /^[a-z][a-z0-9_]{0,63}$/
 /**

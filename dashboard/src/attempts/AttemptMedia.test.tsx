@@ -17,7 +17,7 @@ it('shows an output movie and the judge movie in the attempt without opening ano
   }
   render(<AttemptColumn attempt={attempt} marks={{ focused: true, settled: false }} onFocus={() => {}}
     view={{ runId: 'run_1', stepTitle: 'Draw', waitingGates: new Set(), zoom: null, onZoom: () => {}, compare: false, now: new Date() }} />)
-  expect(screen.getByText('8215 more files not listed.')).toBeVisible()
+  expect(screen.getByText('at least 8215 more files not listed.')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Browse all files' })).toBeVisible()
   const output = within(screen.getByTestId('attempt-1-output-movie')).getByLabelText('turntable.mp4')
   const judge = within(screen.getByTestId('attempt-1-verdict-review')).getByLabelText('review.webm')
@@ -28,4 +28,22 @@ it('shows an output movie and the judge movie in the attempt without opening ano
     expect(video).toHaveAttribute('controls')
     expect(video).not.toHaveAttribute('autoplay')
   }
+})
+
+it('previews folder videos beyond the first eight rows', () => {
+  const files = [...Array.from({ length: 180 }, (_, i) => `cache-${i}.txt`), 'turntable.mp4', 'review.webm']
+    .map(name => ({ name: `draw/1/${name}`, path: `/work/draw/1/${name}`, kind: 'binary', size: 1, modifiedAt: '' }))
+  const attempt: StepAttempt = {
+    attempt: 1, status: 'done', startedSeq: 2, files, verdicts: [],
+    outputs: [{ portId: 'folder', kind: 'folder', artifact: 'draw/1', text: { text: '', bytes: 0 } }],
+  }
+  const { container } = render(<AttemptColumn attempt={attempt} marks={{ focused: true, settled: false }} onFocus={() => {}}
+    view={{ runId: 'run_1', stepTitle: 'Draw', waitingGates: new Set(), zoom: null, onZoom: () => {}, compare: false, now: new Date() }} />)
+  for (const name of ['turntable.mp4', 'review.webm']) {
+    const video = screen.getByLabelText(name)
+    expect(video).toHaveAttribute('controls')
+    expect(video.compareDocumentPosition(container.querySelector('.attempt-listing')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  }
+  expect(container.querySelectorAll('.attempt-listing li')).toHaveLength(8)
+  expect(screen.getByText('and 172 more listed files')).toBeVisible()
 })

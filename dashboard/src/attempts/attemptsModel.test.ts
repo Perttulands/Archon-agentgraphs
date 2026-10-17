@@ -124,7 +124,8 @@ describe('attemptFileGroups and folderSummary', () => {
     const summary = folderSummary([file('m/a.glb', 'binary', 100), file('m/a.png', 'image', 20), file('m/b.glb', 'binary', 100)])
     expect(summary).toMatchObject({ count: 3, bytes: 220 })
     expect(summary.images.map(entry => entry.name)).toEqual(['m/a.png'])
-    expect(summary.rest.map(entry => entry.name)).toEqual(['m/a.glb', 'm/b.glb'])
+    expect(summary.models.map(entry => entry.name)).toEqual(['m/a.glb', 'm/b.glb'])
+    expect(summary.rest).toEqual([])
   })
 })
 

@@ -8,6 +8,7 @@ import (
 // Keep a representative of every declared file or folder before filling the
 // remaining budget with output files and finally the seat's other artifacts.
 // Folder chips open the complete directory, including entries not listed here.
+// The omitted count is a lower bound: the walk may have stopped at its cap.
 func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput) ([]RunArtifactEntry, int) {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	groups := make([][]RunArtifactEntry, len(outputs)+1)

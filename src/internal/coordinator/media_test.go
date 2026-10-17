@@ -22,6 +22,17 @@ func TestMediaRawRoutesStreamRanges(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
+	textPath := filepath.Join(dir, "report.txt")
+	if err := os.WriteFile(textPath, []byte("report"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []string{"/api/files/raw?path=" + url.QueryEscape(textPath), "/api/runs/" + id + "/artifacts/report.txt"} {
+		w := getEvidence(c, route)
+		if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Security-Policy"), "img-src 'self'") || strings.Contains(w.Header().Get("Content-Security-Policy"), "media-src") {
+			t.Fatalf("non-media CSP: %d %v", w.Code, w.Header())
+		}
+	}
+
 	size := int64(formations.EvidenceArtifactRawMaxBytes + 1024)
 	for ext, contentType := range map[string]string{
 		"mp4": "video/mp4", "webm": "video/webm",
@@ -58,7 +69,7 @@ func TestMediaRawRoutesStreamRanges(t *testing.T) {
 						t.Fatal(w.Header())
 					}
 					if ext == "mp4" || ext == "webm" {
-						if !strings.Contains(w.Header().Get("Content-Security-Policy"), "media-src 'self'") {
+						if !strings.Contains(w.Header().Get("Content-Security-Policy"), "media-src 'self'") || strings.Contains(w.Header().Get("Content-Security-Policy"), "img-src") {
 							t.Fatal(w.Header())
 						}
 					}

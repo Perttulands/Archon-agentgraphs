@@ -1,3 +1,4 @@
+import { mediaKind } from '../files/mediaUrls'
 import { shortTime, spanLabel } from '../components/runList'
 import type { AttemptFile, AttemptOutput, AttemptVerdict, StepAttempt } from '../evidence/runEvidenceApi'
 
@@ -124,6 +125,8 @@ export function nameWithin(folder: string, name: string): string {
 export interface FolderSummary {
   count: number
   bytes: number
+  videos: AttemptFile[]
+  models: AttemptFile[]
   images: AttemptFile[]
   rest: AttemptFile[]
 }
@@ -135,7 +138,9 @@ export function folderSummary(files: readonly AttemptFile[]): FolderSummary {
     count: files.length,
     bytes: files.reduce((sum, file) => sum + file.size, 0),
     images,
-    rest: files.filter(file => file.kind !== 'image'),
+    videos: files.filter(file => mediaKind(file.name) === 'video'),
+    models: files.filter(file => mediaKind(file.name) === 'model'),
+    rest: files.filter(file => file.kind !== 'image' && !mediaKind(file.name)),
   }
 }
 

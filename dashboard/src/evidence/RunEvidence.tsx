@@ -167,7 +167,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
               ))}
             </ul>
           )}
-          {artifacts?.truncated ? <p className="evidence-note">{artifacts.omitted ? `${artifacts.omitted} more files not listed. ` : ''}Outputs are listed first. Open an output folder to browse all its files. Listings go up to 16 folders deep.</p> : null}
+          {artifacts?.omitted ? <p className="evidence-note">at least {artifacts.omitted} more files not listed.</p> : null}
         </section>
       </div>
     </div>

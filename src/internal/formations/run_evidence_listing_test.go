@@ -116,3 +116,35 @@ func TestEvidenceArtifactsKeepNestedDeclaredOutputs(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactWalkStopsAcrossSiblingDirectories(t *testing.T) {
+	root, shared := t.TempDir(), t.TempDir()
+	for i := 0; i < 1000; i++ {
+		if err := os.WriteFile(filepath.Join(shared, fmt.Sprint(i)), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Each alias lists another 1,000 files without requiring 51,000 disk files.
+	for i := 0; i < 51; i++ {
+		if err := os.Symlink(shared, filepath.Join(root, fmt.Sprintf("%02d", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	directory, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directory.Close()
+	entries := []RunArtifactEntry{}
+	truncated := false
+	if err := listRunArtifactsAt(directory, "", 1, &entries, &truncated); err != nil {
+		t.Fatal(err)
+	}
+	if !truncated || len(entries) != EvidenceArtifactWalkMax {
+		t.Fatalf("walk: %d entries truncated=%v", len(entries), truncated)
+	}
+	selected, omitted := selectEvidenceArtifacts(entries, nil)
+	if len(selected) != EvidenceArtifactListMax || omitted != EvidenceArtifactWalkMax-EvidenceArtifactListMax {
+		t.Fatalf("list: %d entries, lower bound %d omitted", len(selected), omitted)
+	}
+}

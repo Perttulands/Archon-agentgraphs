@@ -90,8 +90,18 @@ func (s *Store) ListRunArtifacts(runID string) ([]RunArtifactEntry, bool, int, e
 	return entries, truncated || omitted > 0, omitted, nil
 }
 
+// Stop traversal across all sibling directories once the listing budget is spent.
+const EvidenceArtifactWalkMax = 50_000
+
+var errArtifactWalkLimit = errors.New("artifact walk limit reached")
+
 func listRunArtifactsAt(directory *os.File, prefix string, depth int, entries *[]RunArtifactEntry, truncated *bool) error {
-	return listRunArtifactsWithAncestors(directory, prefix, depth, entries, truncated, nil)
+	err := listRunArtifactsWithAncestors(directory, prefix, depth, entries, truncated, nil)
+	if errors.Is(err, errArtifactWalkLimit) {
+		*truncated = true
+		return nil
+	}
+	return err
 }
 
 func listRunArtifactsWithAncestors(directory *os.File, prefix string, depth int, entries *[]RunArtifactEntry, truncated *bool, ancestors []os.FileInfo) error {
@@ -147,6 +157,9 @@ func listRunArtifactsWithAncestors(directory *os.File, prefix string, depth int,
 			Size:       info.Size(),
 			ModifiedAt: info.ModTime().UTC().Format(time.RFC3339),
 		})
+		if len(*entries) >= EvidenceArtifactWalkMax {
+			return errArtifactWalkLimit
+		}
 	}
 	return nil
 }

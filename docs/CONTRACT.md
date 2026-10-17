@@ -1030,7 +1030,8 @@ right: the attempt's outcome and time, each gate's verdict with its reason and
 evidence (image evidence such as a judge's crops as thumbnails), then what each
 output produced: images large enough to judge, text and Markdown rendered, and
 other files as chips that open the file window. A folder previews its first
-twelve images, lists eight more files and counts the rest. The attempt the loop
+twelve images, previews videos and 3D models before eight other files, and counts
+the rest. The attempt the loop
 settled on, the picked one or else the latest that passed, is marked green.
 The arrow keys, Home, End or an attempt's number step between attempts; C puts
 two of them side by side in frames of one size: the focused attempt and the one
@@ -2013,10 +2014,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   returns 404.
 - `/api/runs/{runId}/evidence/artifacts` returns `data.artifacts`
   (`name`, `size`, `modifiedAt`), relative to
-  `<state-dir>/.archon/artifacts/<runId>`. Accepted output files and folders
-  come first, with at least one file per nonempty output folder, then other
+  `<state-dir>/.archon/artifacts/<runId>`. Among files reached by the bounded
+  walk, accepted output files and folders come first, with at least one file per nonempty output folder, then other
   files in name order. The list holds 500 files (or more when needed for
-  one representative per output), with `data.omitted` counting unlisted files
+  one representative per output), with `data.omitted` a lower bound on unlisted files
   and `data.truncated` when files are omitted or exceed 16 directory levels.
   Directory cycles are skipped. A run without artifacts lists none.
 - `/api/runs/{runId}/evidence/attempts` returns `data.attempts`, `{runId, steps}`:
@@ -2043,7 +2044,9 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `verdicts`), and `files`,
   the regular files in its directory (`name`, `path`, `size`, `modifiedAt`,
   `kind`), ordered like the run artifact list with declared outputs first,
-  `filesOmitted` counting unlisted files and `filesTruncated` past its limits.
+  `filesOmitted` a lower bound on unlisted files and `filesTruncated` past its limits.
+  Artifact walks stop at 50,000 files per listing; omitted counts are lower bounds
+  displayed as "at least N more".
   Output folders open complete directory listings, with navigable subfolders.
   Bytes come
   from `/api/runs/{runId}/artifacts/{name...}` by a file's `name` or an
@@ -2075,8 +2078,8 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
   `Cache-Control: no-store`, and support ranges. The file window is a reader,
   so HTML is served as text and nothing a file contains runs in the cockpit.
-  Video responses add `media-src 'self'` to their CSP. Native video controls
-  open in file windows and attempt evidence. GLB/glTF previews load the 3D
+  Video responses replace `img-src 'self'` with `media-src 'self'` in their CSP.
+  Native video controls open in file windows and attempt evidence. GLB/glTF previews load the 3D
   viewer on demand; relative glTF buffers and textures resolve beside the model.
   Unsupported formats such as FBX remain downloadable.
 - `/api/runs/{runId}/gates/{gateId}/request` is the evidence API's

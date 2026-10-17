@@ -136,7 +136,7 @@ func writeRunAttempts(stdout io.Writer, evidence *formations.RunAttemptsEvidence
 				fmt.Fprintf(stdout, "    file %s %d bytes %s\n", file.Name, file.Size, file.Kind)
 			}
 			if attempt.FilesTruncated {
-				fmt.Fprintln(stdout, "    more files are not listed")
+				fmt.Fprintf(stdout, "    at least %d more files not listed\n", attempt.FilesOmitted)
 			}
 		}
 	}

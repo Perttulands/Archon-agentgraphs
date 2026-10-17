@@ -121,7 +121,7 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
       <div className="model-viewer-stage" ref={stageRef} />
       {error ? <p role="alert">{error} <a href={src} download>Download</a></p>
         : status ? <p role="status">{status}</p>
-          : <div className="model-viewer-controls"><span>Drag to rotate · Scroll or pinch to zoom</span><button type="button" onClick={() => resetRef.current()}>Reset view</button></div>}
+          : <div className="model-viewer-controls"><button type="button" onClick={() => resetRef.current()}>Reset view</button></div>}
     </div>
   )
 }
