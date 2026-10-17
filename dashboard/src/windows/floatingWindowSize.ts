@@ -31,8 +31,8 @@ export const FLOATING_WINDOW_MINIMUM: Record<FloatingWindowKind, FrameSize> = {
   // A gate answer keeps its response box and its two decisions in view.
   answer: { width: 340, height: 260 },
   role: { width: 280, height: 160 },
-  // Evidence keeps its identity and a few lines of the record in view.
-  evidence: { width: 320, height: 200 },
+  // Evidence keeps report paths and verdicts readable even on a crowded canvas.
+  evidence: { width: 640, height: 600 },
   // Attempts keep one attempt's head and a look at its output in view.
   attempts: { width: 420, height: 320 },
 }

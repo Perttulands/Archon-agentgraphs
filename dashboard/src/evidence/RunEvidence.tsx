@@ -1,6 +1,6 @@
 import { useWindowStack } from '../windows/WindowManager'
 import MediaPreview from '../files/MediaPreview'
-import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
 import FloatingWindow from '../windows/FloatingWindow'
 import { mediaKind } from '../files/mediaUrls'
@@ -77,7 +77,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
   // Escape closes an open document first, then the evidence dialog.
   const stack = useWindowStack()
-  const anchor = useRef(document.activeElement ? fileAnchor(document.activeElement) : null)
+  const [anchor] = useState(() => document.activeElement ? fileAnchor(document.activeElement) : null)
   useEffect(() => {
     if (!openDocument) return
     const closeDocument = (event: KeyboardEvent) => {
@@ -114,12 +114,12 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
     setDocumentError('')
     const absolute = name.startsWith('/')
     if (files) {
-      files.open(absolute ? referencedFileRequest(name, title) : artifactFileRequest(runId, name, title), (source || document.activeElement) ? fileAnchor((source || document.activeElement)!) : anchor.current)
+      files.open(absolute ? referencedFileRequest(name, title) : artifactFileRequest(runId, name, title), (source || document.activeElement) ? fileAnchor((source || document.activeElement)!) : anchor)
       return
     }
     const preview = absolute ? fetchReferencedPreview(name) : fetchArtifactPreview(runId, name)
     preview.then(preview => setOpenDocument({ kind: 'artifact', preview }), reason => setDocumentError(`${name}: ${errorText(reason)}`))
-  }, [files, runId, title])
+  }, [anchor, files, runId, title])
 
   const failures = evidence?.problems || []
 
@@ -131,8 +131,8 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   return (
     <FloatingWindow id={`evidence:${nodeId}`} kind="evidence" label={`Run evidence · ${title}`}
       title={`Run evidence · ${title}`} className="run-evidence" defaultSize={{ width: 660, height: 640 }}
-      anchor={() => anchor.current?.anchor || null}
-      keepClear={() => anchor.current?.keepClear || []} anchorKind={anchor.current?.anchorKind}
+      anchor={() => anchor?.anchor || null}
+      keepClear={() => anchor?.keepClear || []} anchorKind={anchor?.anchorKind}
       onClose={onClose}>
       <CitationContext.Provider value={{ runId, artifacts: artifacts?.artifacts.map(file => file.name) || [], paths: evidencePaths(evidence), open: openArtifact }}>
       <div data-testid="node-inspector" className="node-evidence">

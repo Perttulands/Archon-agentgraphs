@@ -1045,7 +1045,9 @@ output produced: images large enough to judge, text and Markdown rendered, and
 other files as chips that open the file window. Run evidence uses the shared
 floating window, with Escape closing an open document before the window.
 Cited images appear as thumbnails in run evidence too; a relative citation
-resolves beside its cited report or against an unambiguous run artifact.
+links only when it matches a listed run artifact, using its cited report to
+disambiguate attempts. Scheme-bearing URLs are not file citations. Evidence
+windows keep a readable minimum of 640×600, even when that covers other cards.
 A folder searches its nested files and previews videos first, then twelve images, preferring verdict-cited images and names
 containing contact sheet or sheet, then at most three final images. It shows
 model tiles with names and sizes before eight other files,

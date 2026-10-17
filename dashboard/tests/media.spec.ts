@@ -101,8 +101,11 @@ test('a TOML mission output plays video in one window, and evidence floats and c
   const evidence = page.getByRole('dialog', { name: 'Run evidence · Execution' })
   await expect(evidence).toHaveAttribute('data-window-kind', 'evidence')
   const before = await evidence.boundingBox()
-  expect(before!.width).toBeGreaterThanOrEqual(320)
-  expect(before!.height).toBeGreaterThanOrEqual(320)
+  expect(before!.width).toBeGreaterThanOrEqual(640)
+  expect(before!.height).toBeGreaterThanOrEqual(600)
+  const origin = await node.boundingBox()
+  expect(before!.x + before!.width <= origin!.x || before!.x >= origin!.x + origin!.width ||
+    before!.y + before!.height <= origin!.y || before!.y >= origin!.y + origin!.height).toBe(true)
   const zoom = await page.locator('.zoomctl').boundingBox()
   expect(before!.x + before!.width <= zoom!.x || before!.x >= zoom!.x + zoom!.width ||
     before!.y + before!.height <= zoom!.y || before!.y >= zoom!.y + zoom!.height).toBe(true)

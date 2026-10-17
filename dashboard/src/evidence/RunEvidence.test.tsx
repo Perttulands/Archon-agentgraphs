@@ -298,7 +298,7 @@ describe('RunEvidence', () => {
 
   it('shows absolute and relative cited renders as thumbnails that open their file', async () => {
     const report = '/state/.archon/artifacts/run_1/judge/3/judge-report.md'
-    const image = '/state/.archon/artifacts/run_1/judge/3/renders/sh_face_hd.png'
+    const image = 'judge/3/renders/sh_face_hd.png'
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
       if (url.endsWith('/nodes/gate_images')) return respond({ evidence: {
@@ -306,20 +306,24 @@ describe('RunEvidence', () => {
           seq: 1, kinds: ['formation'], criterion: text('Check eyes'),
           kindResults: [{ seq: 2, kind: 'formation', verdict: 'fail', reason: text('Lids fail'), evidence: [
             { kind: 'formation', text: text(report) },
-            { kind: 'formation', text: text('See `renders/sh_face_hd.png` at 1.2 m.') },
+            { kind: 'formation', text: text('See `renders/sh_face_hd.png` and `/state/.archon/artifacts/run_1/judge/3/renders/sh_face_hd.png` at 1.2 m. https://docs/x.html scores 3/4.5; renders/missing.png is absent.') },
           ] }],
         }],
       } })
-      if (url === `/api/files/preview?path=${encodeURIComponent(image)}`) return respond({ file: { path: image, name: 'sh_face_hd.png', kind: 'image', size: 120 } })
+      if (url === '/api/runs/run_1/evidence/artifacts') return respond({ artifacts: [{ name: image, size: 120 }], truncated: false, omitted: 0 })
+      if (url === `/api/runs/run_1/evidence/artifacts/${image}`) return respond({ artifact: { name: image, kind: 'image', size: 120 } })
       return url in routes ? respond(routes[url]) : respond(null, 404)
     })
     vi.stubGlobal('fetch', fetch)
     render(<RunEvidence runId="run_1" nodeId="gate_images" title="Eyes" state="done" onClose={() => {}} />)
     const thumbnail = await screen.findByRole('button', { name: 'Open sh_face_hd.png' })
-    expect(within(thumbnail).getByRole('img')).toHaveAttribute('src', `/api/files/raw?path=${encodeURIComponent(image)}`)
+    expect(within(thumbnail).getByRole('img')).toHaveAttribute('src', artifactRawUrl('run_1', image))
+    expect(screen.queryByRole('button', { name: 'Open missing.png' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '//docs/x.html' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '3/4.5' })).not.toBeInTheDocument()
     fireEvent.click(thumbnail)
     expect(await screen.findByTestId('evidence-document')).toHaveTextContent('sh_face_hd.png')
-    expect(fetch).toHaveBeenCalledWith(`/api/files/preview?path=${encodeURIComponent(image)}`, expect.any(Object))
+    expect(fetch).toHaveBeenCalledWith(`/api/runs/run_1/evidence/artifacts/${image}`, expect.any(Object))
   })
 
   it('says when evidence is unavailable', async () => {
