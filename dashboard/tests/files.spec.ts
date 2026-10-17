@@ -119,7 +119,9 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   await expect(sketch.getByRole('link', { name: 'Download' })).toHaveCount(0)
   const besideWindow = gapBetween((await sketch.boundingBox())!, (await missionWindow.boundingBox())!)
   expect(besideWindow).toBeGreaterThanOrEqual(0)
-  expect(besideWindow).toBeLessThanOrEqual(240)
+  // Three windows already crowd this scene and the canvas dock stays clear, so the
+  // fourth lands in the nearest free space rather than right beside its source.
+  expect(besideWindow).toBeLessThanOrEqual(320)
   expect(fixture.writes).toEqual([])
 })
 
