@@ -1,3 +1,4 @@
+import golden from './testdata/arrange-golden.json'
 import { describe, expect, it } from 'vitest'
 import { arrangedLayoutNodes } from './formationsArrange'
 import { displayLayoutFor } from './formationsCanvas'
@@ -21,6 +22,23 @@ const board: BoardDocument = {
 }
 
 describe('display arrangement', () => {
+  it('matches the shared Go/TypeScript Arrange golden fixture', () => {
+    expect(arrangedLayoutNodes(golden.board as BoardDocument)).toEqual(golden.positions)
+  })
+
+  it('keeps computed cards clear of all saved and previously placed cards', () => {
+    // work computes to the saved finish position; the displaced work then
+    // occupies gate's computed column, so gate must also move.
+    const saved = new Map([['finish', { id: 'finish', x: 476, y: 112 }]])
+    const before = structuredClone(saved)
+    const resolved = displayLayoutFor(board, saved)
+    expect(resolved.get('finish')).toEqual(saved.get('finish'))
+    expect(resolved.get('work')).toEqual({ id: 'work', x: 812, y: 112 })
+    expect(resolved.get('gate')).toEqual({ id: 'gate', x: 1232, y: 112 })
+    expect(saved).toEqual(before)
+    expect(displayLayoutFor(board, saved)).toEqual(resolved)
+  })
+
   it('follows the path, stacking judges and limits with their owners without editing', () => {
     const before = structuredClone(board)
     const positions = arrangedLayoutNodes(board)

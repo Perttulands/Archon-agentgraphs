@@ -1252,7 +1252,8 @@ describe('FormationsCockpit reference parity', () => {
     expect(card).toHaveAttribute('data-node', 'tool_normalize')
     expect(card).toHaveAttribute('data-execution-state', 'unavailable')
     expect(screen.getByTestId('formations-world')).toContainElement(card)
-    expect(card).toHaveStyle({ left: '1316px', top: '112px' })
+    // The unsaved Tool clears the saved cards in this partial layout.
+    expect(card).toHaveStyle({ left: '1652px', top: '112px' })
     expect(card).toHaveTextContent('Normalize report')
     expect(card).toHaveTextContent('json.normalize@1')
     expect(card).toHaveTextContent('execution unavailable')

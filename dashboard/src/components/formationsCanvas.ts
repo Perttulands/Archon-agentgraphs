@@ -89,19 +89,24 @@ export function zoomTransform(current: ViewTransform, factor: number, cursor?: {
 
 export type LayoutItem = { id: string; index: number; kind: 'inputCard' | 'gate' | 'tool' | 'end' | 'limit' | FormationNode['type']; slots?: number }
 
-export function fallbackNodePosition(index: number): { x: number; y: number } {
-  return { x: 140 + index * 308, y: 168 + (index % 2) * 196 }
-}
-
 /** Resolve display positions without mutating authored geometry. */
 export function displayLayoutFor(board: BoardDocument, layoutByNode: Map<string, LayoutNode>): Map<string, LayoutNode> {
   const items = boardLayoutItems(board)
   const arranged = items.some(item => !layoutByNode.has(item.id))
     ? new Map(arrangedLayoutNodes(board).map(node => [node.id, node]))
     : new Map<string, LayoutNode>()
+  // Reserve all saved cards first, including those later in board order.
+  const occupied = items.flatMap(item => {
+    const saved = layoutByNode.get(item.id)
+    return saved ? [saved] : []
+  })
+  const hasSaved = occupied.length > 0
   const out = new Map<string, LayoutNode>()
   for (const item of items) {
-    const base = layoutByNode.get(item.id) || arranged.get(item.id)!
+    const saved = layoutByNode.get(item.id)
+    const computed = arranged.get(item.id)!
+    const base = saved || (hasSaved ? freeGridPosition(computed, occupied) : computed)
+    if (!saved) occupied.push({ id: item.id, ...base })
     out.set(item.id, { id: item.id, x: base.x, y: base.y })
   }
   return out

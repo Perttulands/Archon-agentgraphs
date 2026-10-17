@@ -60,7 +60,7 @@ import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './fo
 import { RunRevisionNote, RunWhen } from './RunList'
 import { pageTitle, runsOfLiveMissions } from './needsYou'
 import { chooseCurrentBoard, openableSlugs, rememberBoardOnDevice } from './currentBoard'
-import { END_ROOM, clampScale, displayLayoutFor, fallbackNodePosition, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
+import { END_ROOM, clampScale, displayLayoutFor, freeGridPosition, snapToGrid, zoomTransform } from './formationsCanvas'
 import { END_SVG, FORMATION_SVG, LIMIT_SVG, LOCK_SVG, ROLES_SVG, FormationSeats, GATE_SVG, PLAY_SVG, formationSummary, agentRole, agentState, byRoleName, inSlotsWords, initials, inputFeedLabel, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
 import { useEscapeKey } from './useEscapeKey'
 import MissionNavigator, { type ListedRun } from './MissionNavigator'
@@ -808,11 +808,10 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     return displayLayoutFor(board, layoutByNode)
   }, [board, layoutByNode])
 
-  const positionOf = useCallback((id: string, index: number): { x: number; y: number } => {
+  const positionOf = useCallback((id: string): { x: number; y: number } => {
     if (dragPos && dragPos.id === id) return { x: dragPos.x, y: dragPos.y }
-    const node = displayLayoutByNode.get(id)
-    if (node) return { x: node.x, y: node.y }
-    return fallbackNodePosition(index)
+    // Rendered cards and their drag handlers always belong to the current board.
+    return displayLayoutByNode.get(id)!
   }, [displayLayoutByNode, dragPos])
 
   const placementForNewNode = useCallback((x: number, y: number, room?: { width: number; height: number }) => (
@@ -2336,7 +2335,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     beginStaff(event, { payload: staffed ? { kind: 'slot', from: ref } : null, slot: { ref, part: staffed ? part : null, anchor: event.currentTarget } })
   }, [beginStaff, savedOf, staffingStore])
 
-  const beginNodeDrag = useCallback((event: ReactPointerEvent, id: string, index: number) => {
+  const beginNodeDrag = useCallback((event: ReactPointerEvent, id: string) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement
     if (target.closest('.port,.frun,.mrun,.note-pin')) return
@@ -2349,7 +2348,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     event.stopPropagation()
     setSelection({kind:'node',id})
     viewportRef.current?.focus({preventScroll:true})
-    const pos = positionOf(id, index)
+    const pos = positionOf(id)
     const drag: DragNode = { id, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: pos.x, originY: pos.y, moved: false }
     interactionOwner.begin({
       kind: 'node',
@@ -3456,8 +3455,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               </div>
             ) : null}
 
-            {(board?.inputCards || []).map((mission, index) => {
-              const pos = positionOf(mission.id, index)
+            {(board?.inputCards || []).map(mission => {
+              const pos = positionOf(mission.id)
               const state = nodeStates.get(mission.id)
               return (
                 <div
@@ -3466,7 +3465,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   data-node={mission.id}
                   data-testid={`mission-node-${mission.id}`}
                   style={{ left: pos.x, top: pos.y }}
-                  onPointerDown={event => beginNodeDrag(event, mission.id, index)}
+                  onPointerDown={event => beginNodeDrag(event, mission.id)}
                   onContextMenu={event => missionMenu(event, mission)}
                 >
                   {renderNotePin(mission.id, mission.title)}
@@ -3488,8 +3487,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               )
             })}
 
-            {(board?.formations || []).map((formation, index) => {
-              const pos = positionOf(formation.id, index + (board?.inputCards?.length || 0))
+            {(board?.formations || []).map(formation => {
+              const pos = positionOf(formation.id)
               const state = nodeStates.get(formation.id)
               return (
                 <div
@@ -3512,7 +3511,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                       <div
                         className={`fio in${portIndex === 0 ? ' brief' : ''}`}
                         key={port.id}
-                        onPointerDown={event => beginNodeDrag(event, formation.id, index)}
+                        onPointerDown={event => beginNodeDrag(event, formation.id)}
                         onContextMenu={event => inputRowMenu(event, formation, port.id, incoming)}
                       >
                         <span
@@ -3529,7 +3528,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                       </div>
                     )
                   })}
-                  <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>
+                  <div className="fhead" onPointerDown={event => beginNodeDrag(event, formation.id)}>
                     <div className="ft">
                       {stepNumber(formation.id)}{renderNodeTitle(formation.title, 'tt', 'Untitled formation', 'div')}
                       <div className={`tg${formation.brief?.goal?.trim() ? '' : ' placeholder'}`} title={formationSummary(formation)}>{formationSummary(formation)}</div>
@@ -3560,7 +3559,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   </div>
                   <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
-                  <div className="fbody" onPointerDown={event => beginNodeDrag(event, formation.id, index)}>{renderBody(formation)}</div>
+                  <div className="fbody" onPointerDown={event => beginNodeDrag(event, formation.id)}>{renderBody(formation)}</div>
                   <ProducedFiles nodeId={formation.id} />
                   {formation.outputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
@@ -3580,9 +3579,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               )
             })}
 
-            {(board?.gates || []).map((gate, index) => {
-              const nodeIndex = index + (board?.inputCards?.length || 0) + (board?.formations?.length || 0)
-              const pos = positionOf(gate.id, nodeIndex)
+            {(board?.gates || []).map(gate => {
+              const pos = positionOf(gate.id)
               const state = nodeStates.get(gate.id)
               const inputEndpoint = `${gate.id}:in`
               const incoming = (board?.connections || []).find(connection => connection.to === inputEndpoint)
@@ -3594,7 +3592,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   data-gate={gate.id}
                   data-testid={`gate-node-${gate.id}`}
                   style={{ left: pos.x, top: pos.y }}
-                  onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}
+                  onPointerDown={event => beginNodeDrag(event, gate.id)}
                   onContextMenu={event => gateMenu(event, gate)}
                 >
                   {renderNotePin(gate.id, gate.title || 'Gate')}
@@ -3617,8 +3615,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                     title="Judge with a formation — drag to attach, click to pick"
                     onPointerDown={event => beginJudgeDrag(event, gate)}
                   />
-                  <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{GATE_SVG}</span>
-                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id, nodeIndex)}>{stepNumber(gate.id)}{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'No criterion yet.'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
+                  <span className="gico" onPointerDown={event => beginNodeDrag(event, gate.id)}>{GATE_SVG}</span>
+                  <span className="gmeta" onPointerDown={event => beginNodeDrag(event, gate.id)}>{stepNumber(gate.id)}{renderNodeTitle(gate.title, 'gt', 'Gate', 'span')}<GateKindChips gateId={gate.id} kinds={gate.kinds} /><span className={`gs${gate.criterion ? '' : ' placeholder'}`}>{gate.criterion || 'No criterion yet.'}</span><ReferencedFiles nodeId={gate.id} files={nodeFileRefs(board, gate.id)} max={1} onMore={openReferencedFilesMenu} className="card-refs" /></span>
                   {nodeStates.has(gate.id) ? (
                     <button
                       type="button"
@@ -3638,12 +3636,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               )
             })}
 
-            {(board?.tools || []).map((tool, index) => {
-              const nodeIndex = index
-                + (board?.inputCards?.length || 0)
-                + (board?.formations?.length || 0)
-                + (board?.gates?.length || 0)
-              const pos = positionOf(tool.id, nodeIndex)
+            {(board?.tools || []).map(tool => {
+              const pos = positionOf(tool.id)
               return (
                 <div
                   key={tool.id}
@@ -3653,7 +3647,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   data-execution-state="unavailable"
                   data-testid={`tool-node-${tool.id}`}
                   style={{ left: pos.x, top: pos.y }}
-                  onPointerDown={event => beginNodeDrag(event, tool.id, nodeIndex)}
+                  onPointerDown={event => beginNodeDrag(event, tool.id)}
                 >
                   {renderNotePin(tool.id, tool.title)}
                   {renderDraftMarker(tool.id)}
@@ -3718,13 +3712,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               )
             })}
 
-            {(board?.ends || []).map((end, index) => {
-              const nodeIndex = index
-                + (board?.inputCards?.length || 0)
-                + (board?.formations?.length || 0)
-                + (board?.gates?.length || 0)
-                + (board?.tools?.length || 0)
-              const pos = positionOf(end.id, nodeIndex)
+            {(board?.ends || []).map(end => {
+              const pos = positionOf(end.id)
               const state = nodeStates.get(end.id)
               const inputEndpoint = `${end.id}:in`
               const incoming = (board?.connections || []).filter(connection => connection.to === inputEndpoint)
@@ -3739,7 +3728,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   data-testid={`end-node-${end.id}`}
                   title={endOutcomeMeaning(end.outcome)}
                   style={{ left: pos.x, top: pos.y }}
-                  onPointerDown={event => beginNodeDrag(event, end.id, nodeIndex)}
+                  onPointerDown={event => beginNodeDrag(event, end.id)}
                   onContextMenu={event => endMenu(event, end)}
                 >
                   {renderNotePin(end.id, end.title || 'End')}
@@ -3761,14 +3750,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                 </div>
               )
             })}
-            {(board?.limits || []).map((limit, index) => {
-              const nodeIndex = index
-                + (board?.inputCards?.length || 0)
-                + (board?.formations?.length || 0)
-                + (board?.gates?.length || 0)
-                + (board?.tools?.length || 0)
-                + (board?.ends?.length || 0)
-              const pos = positionOf(limit.id, nodeIndex)
+            {(board?.limits || []).map(limit => {
+              const pos = positionOf(limit.id)
               const covers = board ? limitCoversWords(board, limit) : ''
               const wired = Boolean(board && limit.target && [...(board.inputCards || []), ...board.formations].some(node => node.id === limit.target))
               return (
@@ -3780,7 +3763,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   data-testid={`limit-node-${limit.id}`}
                   title={board ? limitMeaning(board, limit) : undefined}
                   style={{ left: pos.x, top: pos.y }}
-                  onPointerDown={event => beginNodeDrag(event, limit.id, nodeIndex)}
+                  onPointerDown={event => beginNodeDrag(event, limit.id)}
                   onContextMenu={event => limitMenu(event, limit)}
                 >
                   {renderNotePin(limit.id, limit.title || 'Limit')}

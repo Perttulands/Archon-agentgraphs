@@ -1,8 +1,10 @@
 package formations
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -151,4 +153,22 @@ func TestArrangeLayoutFollowsDeliveryRunOrder(t *testing.T) {
 	_, _, byID := arrangeFixture(t, filepath.Join("..", "..", "..", "examples", "delivery.mission.toml"), "")
 	assertRunOrder(t, byID, []string{"mis_delivery", "fmn_plan", "fmn_beads", "gate_beads_review", "fmn_execution", "fmn_final_review", "end_delivered"})
 	assertJudgeBelow(t, byID, "gate_beads_review", "fmn_beads_reviewer")
+}
+
+// This fixture is also asserted by formationsArrange.test.ts in the dashboard.
+func TestArrangedLayoutGolden(t *testing.T) {
+	raw, err := os.ReadFile("../../../dashboard/src/components/testdata/arrange-golden.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Board     BoardDocument `json:"board"`
+		Positions []LayoutNode  `json:"positions"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if got := arrangedLayoutNodes(&fixture.Board); !reflect.DeepEqual(got, fixture.Positions) {
+		t.Fatalf("Arrange parity: got %+v, want %+v", got, fixture.Positions)
+	}
 }
