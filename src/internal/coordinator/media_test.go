@@ -36,7 +36,7 @@ func TestMediaRawRoutesStreamRanges(t *testing.T) {
 	size := int64(formations.EvidenceArtifactRawMaxBytes + 1024)
 	for ext, contentType := range map[string]string{
 		"mp4": "video/mp4", "webm": "video/webm",
-		"glb": "model/gltf-binary", "gltf": "model/gltf+json", "bin": "application/octet-stream",
+		"glb": "model/gltf-binary", "gltf": "model/gltf+json", "bin": "application/octet-stream", "fbx": "application/octet-stream",
 	} {
 		t.Run(ext, func(t *testing.T) {
 			name := "asset." + ext
@@ -65,7 +65,7 @@ func TestMediaRawRoutesStreamRanges(t *testing.T) {
 					if span == "bytes=2-5" && (w.Body.String() != "2345" || w.Header().Get("Content-Range") != fmt.Sprintf("bytes 2-5/%d", size)) {
 						t.Fatal(w.Header(), w.Body.String())
 					}
-					if ext != "bin" && !strings.HasPrefix(w.Header().Get("Content-Disposition"), "inline;") {
+					if ext != "bin" && ext != "fbx" && !strings.HasPrefix(w.Header().Get("Content-Disposition"), "inline;") {
 						t.Fatal(w.Header())
 					}
 					if ext == "mp4" || ext == "webm" {

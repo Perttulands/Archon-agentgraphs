@@ -1,10 +1,17 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { act, cleanup, fireEvent, render as testingRender, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BoardDocument } from '../components/formationsTypes'
 import RunEvidence from './RunEvidence'
 import { FileWindowsLayer, FileWindowsProvider } from '../files/FileWindows'
 import { WindowManagerProvider, useWindowManager } from '../windows/WindowManager'
 import { artifactRawUrl } from './runEvidenceApi'
+
+function Windows({ children }: { children: ReactNode }) {
+  const stack = useWindowManager()
+  return <WindowManagerProvider stack={stack}>{children}</WindowManagerProvider>
+}
+const render = (ui: ReactNode) => testingRender(ui, { wrapper: Windows })
 
 function respond(data: unknown, status = 200, message = 'run evidence not found') {
   return Promise.resolve({

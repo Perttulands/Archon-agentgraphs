@@ -27,3 +27,7 @@
 }
 .run-produced-group { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .run-produced-group-title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-secondary); }
+
+.run-produced-files { width: 100%; }
+.run-produced-files summary { cursor: pointer; color: var(--text-secondary); padding: 4px 0; font-size: 11px; }
+.run-produced-files[open] > .produced-chip { display: flex; margin: 4px 0 4px 10px; }

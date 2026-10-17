@@ -162,7 +162,13 @@ func (s *Store) ProjectRunAttempts(runID, nodeID string) (*RunAttemptsEvidence, 
 				continue
 			}
 			attempt.Directory = &AttemptDirectory{Name: name, Path: dir}
-			if attempt.Files, attempt.FilesTruncated, attempt.FilesOmitted, err = s.listAttemptFiles(runID, artifactsDir, step.NodeID, attempt.Attempt, attempt.Outputs); err != nil {
+			var cited []string
+			for _, verdict := range attempt.Verdicts {
+				for _, item := range verdict.Evidence {
+					cited = append(cited, item.Text.Text)
+				}
+			}
+			if attempt.Files, attempt.FilesTruncated, attempt.FilesOmitted, err = s.listAttemptFiles(runID, artifactsDir, step.NodeID, attempt.Attempt, attempt.Outputs, cited...); err != nil {
 				return nil, err
 			}
 		}
@@ -514,7 +520,7 @@ func classifyEvidenceFile(path string, size int64) string {
 
 // listAttemptFiles lists the regular files in an attempt's artifact directory,
 // named relative to the run's artifact directory.
-func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int, outputs []AttemptOutput) ([]AttemptFile, bool, int, error) {
+func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int, outputs []AttemptOutput, evidence ...string) ([]AttemptFile, bool, int, error) {
 	root, err := s.openRunArtifactsRoot(runID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -537,7 +543,7 @@ func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int
 	if err := listRunArtifactsAt(current, nodeID+"/"+strconv.Itoa(attempt)+"/", 3, &entries, &truncated); err != nil {
 		return nil, false, 0, err
 	}
-	entries, omitted := selectEvidenceArtifacts(entries, outputs)
+	entries, omitted := selectEvidenceArtifacts(entries, outputs, evidence...)
 	files := make([]AttemptFile, 0, len(entries))
 	for _, entry := range entries {
 		path := filepath.Join(artifactsDir, filepath.FromSlash(entry.Name))

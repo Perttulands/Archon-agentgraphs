@@ -1,6 +1,7 @@
 package formations
 
 import (
+	"path"
 	"sort"
 	"strings"
 )
@@ -9,7 +10,7 @@ import (
 // remaining budget with output files and finally the seat's other artifacts.
 // Folder chips open the complete directory, including entries not listed here.
 // The omitted count is a lower bound: the walk may have stopped at its cap.
-func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput) ([]RunArtifactEntry, int) {
+func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput, evidence ...string) ([]RunArtifactEntry, int) {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	groups := make([][]RunArtifactEntry, len(outputs)+1)
 	for _, entry := range entries {
@@ -36,7 +37,29 @@ func selectEvidenceArtifacts(entries []RunArtifactEntry, outputs []AttemptOutput
 			groups[i] = groups[i][1:]
 		}
 	}
+	priority := func(name string) int {
+		base := strings.ToLower(path.Base(name))
+		ext := path.Ext(base)
+		if _, image := evidenceImageTypes[ext]; image {
+			for _, cited := range evidence {
+				if strings.Contains(strings.ToLower(cited), base) {
+					return 0
+				}
+			}
+			if strings.Contains(base, "contact") || strings.Contains(base, "sheet") || strings.Contains(base, "final") {
+				return 1
+			}
+		}
+		switch ext {
+		case ".mp4", ".webm", ".glb", ".gltf", ".fbx":
+			return 1
+		}
+		return 2
+	}
 	for _, group := range groups {
+		// Keep reviewable media in large output folders before filling the cap
+		// with frames, textures and scratch files. Preserve lexical ties.
+		sort.SliceStable(group, func(i, j int) bool { return priority(group[i].Name) < priority(group[j].Name) })
 		remaining := max(0, EvidenceArtifactListMax-len(selected))
 		selected = append(selected, group[:min(len(group), remaining)]...)
 	}

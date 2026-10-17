@@ -1,3 +1,4 @@
+import { mediaKind } from './mediaUrls'
 import { fetchApi } from '../components/formationsApi'
 import {
   artifactRawUrl,
@@ -50,7 +51,7 @@ export function artifactFileRequest(runId: string, name: string, context?: strin
     context: context ? `${context} · ${name}` : name,
     load: async () => {
       const preview = await fetchArtifactPreview(runId, name)
-      return { kind: preview.kind, text: preview.text, path: preview.path }
+      return { kind: mediaKind(name) || preview.kind, text: preview.text, path: preview.path }
     },
     rawUrl: artifactRawUrl(runId, name),
     // Artifacts live under the daemon's state directory; the preview names the absolute path.
@@ -148,7 +149,7 @@ export function referencedFileRequest(ref: string, context?: string): FileReques
     load: async () => {
       const { data } = await fetchApi<{ file?: FilePreview }>(`/api/files/preview${filePath(ref)}`)
       if (!data.file) throw new Error('the daemon returned no file')
-      return { kind: data.file.kind, text: data.file.text }
+      return { kind: mediaKind(ref) || data.file.kind, text: data.file.text }
     },
     rawUrl: `/api/files/raw${filePath(ref)}`,
     path: ref,

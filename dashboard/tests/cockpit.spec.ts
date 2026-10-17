@@ -170,7 +170,7 @@ test('a ?mission=&run= link opens that mission and run and keeps the link', asyn
   expect(requests.filter(path => path.startsWith('/api/formations'))).toEqual([])
 })
 
-test('a finished run opens what it produced from the run bar and cards in file windows side by side', async ({ page }) => {
+test('reports and other files still open from cards and the produced menu in file windows side by side', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await cockpitFixture(page, { succeeded: true })
   await page.goto('/?mission=browser&run=run_browser')
@@ -178,15 +178,15 @@ test('a finished run opens what it produced from the run bar and cards in file w
   const produced = page.getByTestId('run-produced')
   await expect(produced.getByRole('button')).toHaveText(['▤review.md', '+3'])
   // A step's chips sit on its card; the run's final file is in the run bar.
-  await page.getByTestId('produced-execution').getByRole('button', { name: 'Result' }).click()
-  const result = page.getByRole('dialog', { name: 'file Result' })
-  await expect(result).toContainText('All tests pass.')
+  await page.getByTestId('produced-execution').getByRole('button', { name: 'report' }).click()
+  const result = page.getByRole('dialog', { name: 'file report' })
+  await expect(result).toContainText('Implemented the reviewed plan.')
 
-  await produced.getByRole('button', { name: 'review.md' }).click()
-  const review = page.getByRole('dialog', { name: 'file review.md' })
-  await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
-  await expect(review.locator('strong', { hasText: 'revise' })).toBeVisible()
-  await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/runs/run_browser/artifacts/review.md')
+  await produced.getByRole('button', { name: '3 more produced files' }).click()
+  await page.getByRole('menuitem', { name: 'worker.log' }).click()
+  const review = page.getByRole('dialog', { name: 'file worker.log' })
+  await expect(review).toContainText('worker finished')
+  await expect(review.getByRole('link', { name: 'Open raw' })).toHaveAttribute('href', '/api/runs/run_browser/artifacts/logs/worker.log')
   // Each window opens near where it was opened, clear of it and of the other: the card's chip by the card, the run bar's below the bar.
   const card = (await page.locator('[data-node="execution"]').boundingBox())!
   const opened = (await result.boundingBox())!
@@ -194,14 +194,14 @@ test('a finished run opens what it produced from the run bar and cards in file w
   // The gap between two boxes along the axis that separates them.
   const gap = (a: typeof card, b: typeof card) => Math.hypot(Math.max(0, b.x - (a.x + a.width), a.x - (b.x + b.width)), Math.max(0, b.y - (a.y + a.height), a.y - (b.y + b.height)))
   expect(apart(opened, card)).toBe(true)
-  const chip = (await page.getByTestId('produced-execution').getByRole('button', { name: 'Result' }).boundingBox())!
+  const chip = (await page.getByTestId('produced-execution').getByRole('button', { name: 'report' }).boundingBox())!
   expect(gap(opened, chip)).toBeLessThanOrEqual(240)
   const bar = (await produced.boundingBox())!
   const below = (await review.boundingBox())!
   expect(below.y).toBeGreaterThanOrEqual(bar.y + bar.height)
   expect(apart(below, opened)).toBe(true)
   // A run bar file opens where it lives: right below the bar, by its chip, over cards if need be but clear of the other window.
-  const reviewChip = (await produced.getByRole('button', { name: 'review.md' }).boundingBox())!
+  const reviewChip = (await produced.getByRole('button', { name: '3 more produced files' }).boundingBox())!
   expect(gap(below, reviewChip)).toBeLessThanOrEqual(240)
   const banner = (await page.getByTestId('run-banner').boundingBox())!
   expect(apart(below, banner)).toBe(true)
@@ -220,8 +220,8 @@ test('a finished run opens what it produced from the run bar and cards in file w
   const left = (await result.boundingBox())!
   const right = (await review.boundingBox())!
   expect(left.x + left.width).toBeLessThanOrEqual(right.x)
-  await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
-  await expect(result).toContainText('All tests pass.')
+  await expect(review).toContainText('worker finished')
+  await expect(result).toContainText('Implemented the reviewed plan.')
   for (const zone of [page.locator('.zoomctl'), page.locator('.zoomlevel')]) {
     const box = (await zone.boundingBox())!
     for (const rect of [left, right]) {
@@ -230,10 +230,9 @@ test('a finished run opens what it produced from the run bar and cards in file w
   }
   await page.screenshot({ path: test.info().outputPath('produced-file-windows.png') })
 
-  // The rest of what the run produced is one menu away.
-  await produced.getByRole('button', { name: '3 more produced files' }).click()
-  await page.getByRole('menuitem', { name: 'worker.log' }).click()
-  await expect(page.getByRole('dialog', { name: 'file worker.log' })).toContainText('worker finished')
+  // The declared output now opens the producing step's attempts.
+  await produced.getByRole('button', { name: 'review.md' }).click()
+  await expect(page.getByRole('dialog', { name: 'Attempts of Peer review' })).toContainText('Verdict: revise')
   await expect(page.getByRole('dialog')).toHaveCount(3)
 })
 

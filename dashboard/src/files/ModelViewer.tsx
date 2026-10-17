@@ -1,8 +1,9 @@
 // Adapted from CHROTE dashboard/src/components/ModelViewer.tsx.
 // Archon resolves glTF sidecars through its raw file routes and lazy-loads Three.js.
 import { useEffect, useRef, useState } from 'react'
-import { LoadingManager, Box3, HemisphereLight, DirectionalLight, Mesh, PerspectiveCamera, Scene, Sphere, Texture, Vector3, WebGLRenderer } from 'three'
+import { LoadingManager, Box3, HemisphereLight, DirectionalLight, Mesh, SkinnedMesh, PerspectiveCamera, Scene, Sphere, Texture, Vector3, WebGLRenderer } from 'three'
 import type { Object3D } from 'three'
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
@@ -14,6 +15,7 @@ function disposeModel(model: Object3D) {
   model.traverse(object => {
     if (!(object instanceof Mesh)) return
     object.geometry.dispose()
+    if (object instanceof SkinnedMesh) object.skeleton.dispose()
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
       for (const value of Object.values(material)) if (value instanceof Texture) textures.add(value)
       material.dispose()
@@ -83,16 +85,19 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
     observer.observe(stage)
     resize()
     const manager = new LoadingManager()
+    // FBX returns its geometry before external textures finish loading.
+    manager.onLoad = () => { if (!disposed) render() }
     manager.setURLModifier(resource => modelResourceUrl(src, resource))
-    const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder)
     void fetch(src, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(`File request failed (${response.status})`)
-        return loader.parseAsync(await response.arrayBuffer(), '')
+        const data = await response.arrayBuffer()
+        if (/\.fbx$/i.test(name)) return new FBXLoader(manager).parse(data, '')
+        return (await new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).parseAsync(data, '')).scene
       })
-      .then(gltf => {
-        if (disposed) { disposeModel(gltf.scene); return }
-        model = gltf.scene
+      .then(object => {
+        if (disposed) { disposeModel(object); return }
+        model = object
         const bounds = new Box3().setFromObject(model).getBoundingSphere(new Sphere())
         if (bounds.isEmpty()) throw new Error('The model contains no visible geometry')
         radius = Math.max(bounds.radius, 0.001)

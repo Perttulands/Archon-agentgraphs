@@ -547,7 +547,7 @@ func evidenceArtifactKind(name string, head []byte, partial bool) string {
 	if extension == ".mp4" || extension == ".webm" {
 		return "video"
 	}
-	if extension == ".glb" || extension == ".gltf" {
+	if extension == ".glb" || extension == ".gltf" || extension == ".fbx" {
 		return "model"
 	}
 	if _, ok := evidenceImageTypes[extension]; ok {
@@ -592,7 +592,7 @@ func evidenceStreamContent(name string, file *os.File, info os.FileInfo) *RunArt
 	contentType := map[string]string{
 		".mp4": "video/mp4", ".webm": "video/webm",
 		".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
-		".bin": "application/octet-stream",
+		".bin": "application/octet-stream", ".fbx": "application/octet-stream",
 	}[strings.ToLower(path.Ext(name))]
 	if contentType == "" {
 		return nil

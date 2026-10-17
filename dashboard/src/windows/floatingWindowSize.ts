@@ -11,7 +11,7 @@
  */
 
 /** Peek holds a seat terminal; the other kinds are reserved for node, note, file, gate answer, role and step attempts windows. */
-export type FloatingWindowKind = 'peek' | 'node' | 'note' | 'file' | 'answer' | 'role' | 'attempts'
+export type FloatingWindowKind = 'peek' | 'node' | 'note' | 'file' | 'answer' | 'role' | 'attempts' | 'evidence'
 
 export interface FrameSize {
   width: number
@@ -32,6 +32,7 @@ export const FLOATING_WINDOW_MINIMUM: Record<FloatingWindowKind, FrameSize> = {
   answer: { width: 340, height: 260 },
   role: { width: 280, height: 160 },
   // A step's attempts keep one attempt's head and a look at its output in view.
+  evidence: { width: 320, height: 200 },
   attempts: { width: 420, height: 320 },
 }
 

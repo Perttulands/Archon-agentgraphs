@@ -5,7 +5,7 @@ import './attemptsButton.css'
 
 const AttemptsWindow = lazy(() => import('./AttemptsWindow'))
 
-// The cockpit's attempts windows (archon-7963). A step that ran more than once
+// The cockpit's attempts windows (archon-7963). Every step that ran
 // shows <AttemptsButton nodeId={…} /> where it lives, on its card, its Flow row
 // and its window; a click opens its attempts. The layer draws the windows
 // inside the view's window stack, and a pending best-of-N pick opens its
@@ -40,6 +40,8 @@ interface AttemptsState {
 
 const AttemptsContext = createContext<AttemptsState | null>(null)
 
+export const useAttemptsWindows = () => useContext(AttemptsContext)
+
 export function AttemptsWindowsProvider({ run, stack, children }: { run: AttemptsRun | null; stack: WindowStack; children: ReactNode }) {
   const runId = run?.runId || ''
   // The windows belong to the run they were opened on.
@@ -57,8 +59,8 @@ export function AttemptsWindowsProvider({ run, stack, children }: { run: Attempt
   return <AttemptsContext.Provider value={value}>{children}</AttemptsContext.Provider>
 }
 
-/** "3 attempts" where a step lives; nothing until the step ran more than once, or ran at all with `always`. */
-export function AttemptsButton({ nodeId, className = 'finspect', always = false }: { nodeId: string; className?: string; always?: boolean }) {
+/** "3 attempts" where a step lives; available after the first attempt. */
+export function AttemptsButton({ nodeId, className = 'finspect', always = true }: { nodeId: string; className?: string; always?: boolean }) {
   const state = useContext(AttemptsContext)
   const count = state?.run?.counts.get(nodeId) || 0
   if (!state?.run || count < (always ? 1 : 2)) return null

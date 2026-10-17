@@ -120,6 +120,15 @@ describe('attemptFileGroups and folderSummary', () => {
     expect(groups.others.map(entry => entry.name)).toEqual(['execution/1/outputs/meshes-old/b.glb', 'execution/1/prompt.txt'])
   })
 
+  it('puts cited images and contact sheets ahead of the thumbnail cap, without dropping other files', () => {
+    const frames = Array.from({ length: 20 }, (_, i) => file(`frames/frame-${i}.png`, 'image', 1))
+    const images = [...frames, ...['contact-sheet.jpg', 'final.png', 'sheet.png', 'judge-crop.png'].map(name => file(`proof/${name}`, 'image', 1))]
+    const summary = folderSummary(images, ['Compare the face in /work/proof/judge-crop.png.'])
+    expect(summary.images.slice(0, 4).map(image => image.name)).toEqual(['proof/judge-crop.png', 'proof/contact-sheet.jpg', 'proof/final.png', 'proof/sheet.png'])
+    expect(summary.count).toBe(24)
+    expect(summary.images.slice(4)).toEqual(frames)
+  })
+
   it('counts a folder and parts its images from the rest', () => {
     const summary = folderSummary([file('m/a.glb', 'binary', 100), file('m/a.png', 'image', 20), file('m/b.glb', 'binary', 100)])
     expect(summary).toMatchObject({ count: 3, bytes: 220 })

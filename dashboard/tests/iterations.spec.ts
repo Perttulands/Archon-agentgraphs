@@ -201,8 +201,8 @@ test('Flow and the node window open the same attempts', async ({ page }) => {
 
 test('a step that ran once still shows its attempt from its node window', async ({ page }) => {
   await open(page, 'single')
-  // One attempt is no loop: the card offers nothing more.
-  await expect(page.getByTestId('formation-node-execution').getByTestId('attempts-open-execution')).toHaveCount(0)
+  // Even a single attempt is available directly on the card.
+  await expect(page.getByTestId('formation-node-execution').getByTestId('attempts-open-execution')).toHaveCount(1)
   await page.getByTestId('formation-node-execution').locator('.fhead .tt').click()
   const node = page.getByRole('dialog', { name: /Draw Ahti/ }).filter({ has: page.getByTestId('attempts-open-execution') })
   await node.getByTestId('attempts-open-execution').click()

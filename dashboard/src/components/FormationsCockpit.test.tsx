@@ -2667,11 +2667,11 @@ describe('FormationsCockpit reference parity', () => {
     await renderCockpit()
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/runs/run_legacy/events', expect.anything()))
     fireEvent.click(await screen.findByTestId('inspect-node-fmn_frame'))
-    const dialog = await screen.findByTestId('node-inspector')
+    const dialog = await screen.findByRole('dialog', { name: /Run evidence/ })
     expect(within(dialog).getByTestId('node-evidence-state')).toHaveTextContent('done')
     expect(await within(dialog).findByTestId('node-output-value')).toHaveTextContent('Framed the problem')
     expect(dialog).toHaveTextContent('slot_lead')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Close run evidence' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: /Close Run evidence/ }))
     await waitFor(() => expect(screen.queryByTestId('node-inspector')).toBeNull())
   })
 
@@ -2698,7 +2698,7 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.getByTestId('gate-node-gate_review')).toHaveClass('needs-you'))
 
     fireEvent.click(item)
-    expect(await screen.findByTestId('node-inspector')).toHaveTextContent('Run evidence · Review')
+    expect(await screen.findByRole('dialog', { name: 'Run evidence · Review' })).toBeInTheDocument()
   })
 
   it('shows the run state of a node in its window with a way into its evidence', async () => {
@@ -2715,7 +2715,7 @@ describe('FormationsCockpit reference parity', () => {
     const open = within(run).getByRole('button', { name: 'Open run evidence' })
     open.focus()
     fireEvent.click(open)
-    expect(await screen.findByTestId('node-inspector')).toHaveTextContent('Run evidence · Review')
+    expect(await screen.findByRole('dialog', { name: 'Run evidence · Review' })).toBeInTheDocument()
     // Escape closes the evidence above the window before the window itself.
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByTestId('node-inspector')).toBeNull())
@@ -2973,7 +2973,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByRole('dialog', { name: 'Gate · Review' })).toBeInTheDocument()
   })
 
-  it('shows what a finished run produced and opens it in a file window', async () => {
+  it('shows what a finished run produced and opens its attempts', async () => {
     window.history.replaceState(null, '', '/?mission=test-board&run=run_01DONE')
     installRunsMock([{ runId: 'run_01DONE', status: 'succeeded', final: true, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 6 }], {
       run_01DONE: [
@@ -2996,6 +2996,7 @@ describe('FormationsCockpit reference parity', () => {
       '/api/runs/run_01DONE/evidence/nodes/fmn_frame': output('fmn_frame', 2, 'port_frame_out', '# Frame\n\nThe **problem**', 'frame.md'),
       '/api/runs/run_01DONE/evidence/nodes/fmn_judge': output('fmn_judge', 4, 'port_judge_out', 'verdict pass'),
       '/api/runs/run_01DONE/evidence/artifacts': { artifacts: [{ name: 'frame.md', size: 24, modifiedAt: '' }], truncated: false },
+      '/api/runs/run_01DONE/evidence/attempts?node=fmn_frame': { attempts: { runId: 'run_01DONE', steps: [{ nodeId: 'fmn_frame', title: 'Frame', outputs: [], attempts: [{ attempt: 1, status: 'done', outputs: [{ portId: 'port_frame_out', kind: 'text', text: text('# Frame\n\nThe **problem**') }], verdicts: [], files: [] }] }] } },
       '/api/runs/run_01DONE/evidence/artifacts/frame.md': { artifact: { name: 'frame.md', size: 24, modifiedAt: '', kind: 'markdown', text: text('# Frame\n\nThe **problem**') } },
     }
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input) in evidence
@@ -3009,9 +3010,9 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(screen.getByTestId('produced-fmn_judge')).getByRole('button', { name: 'Output' })).toBeInTheDocument()
 
     fireEvent.click(within(produced).getByRole('button', { name: 'frame.md' }))
-    const file = await screen.findByRole('dialog', { name: 'file frame.md' })
+    const file = await screen.findByRole('dialog', { name: 'Attempts of Frame' })
     expect(await within(file).findByRole('heading', { name: 'Frame' })).toBeInTheDocument()
-    expect(file).toHaveTextContent('Frame · frame.md')
+    expect(file).toHaveTextContent('The problem')
 
     // The step's node window carries the same chips.
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
@@ -3037,6 +3038,8 @@ describe('FormationsCockpit reference parity', () => {
     const base = globalThis.fetch
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      const attemptNode = url.split('/evidence/attempts?node=')[1]
+      if (attemptNode) return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ success: true, data: { attempts: { runId: 'run_01HISTORY', steps: [{ nodeId: attemptNode, title: 'Frame', outputs: [], attempts: [{ attempt: 1, status: 'done', outputs: [{ portId: 'port_frame_out', kind: 'text', text: { text: 'The recorded deliverable', bytes: 24 } }], verdicts: [], files: [] }] }] } } }) } as unknown as Response)
       const nodeId = url.split('/evidence/nodes/')[1]
       if (!nodeId && !url.endsWith('/evidence/artifacts')) return base(input, init)
       const original = makeBoard().formations.find(node => node.id === nodeId)
@@ -3056,7 +3059,7 @@ describe('FormationsCockpit reference parity', () => {
     const chip = within(produced).getByRole('button', { name: 'Output' })
     expect(chip).toHaveAttribute('title', expect.stringContaining('from Frame'))
     fireEvent.click(chip)
-    const report = await screen.findByRole('dialog', { name: 'file Output' })
+    const report = await screen.findByRole('dialog', { name: 'Attempts of Frame' })
     expect(await within(report).findByText('The recorded deliverable')).toBeInTheDocument()
     expect(report).toHaveTextContent('Frame')
     if (edit === 'deletion') expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull()

@@ -86,8 +86,11 @@ for (const entry of ['list', 'link'] as const) {
     await expect(page.getByTestId('flow-view').getByRole('button', { name: 'Start mission', exact: true })).toBeDisabled()
     await page.screenshot({ path: test.info().outputPath('frozen-flow.png') })
 
-    // A produced file is one click from the run, and Copy path gives its absolute path.
+    // An output opens its attempt; its file offers Copy path for the snapshot.
     await banner.getByRole('button', { name: 'review.md' }).click()
+    const attempts = page.getByRole('dialog', { name: 'Attempts of Peer review' })
+    await expect(attempts.getByRole('heading', { name: 'Peer review' })).toBeVisible()
+    await attempts.getByRole('button', { name: 'review.md', exact: true }).click()
     const review = page.getByRole('dialog', { name: /review\.md/ })
     await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
     await review.getByRole('button', { name: 'Copy path' }).click()

@@ -144,16 +144,17 @@ function ImageOutput({ src, name, group, view, request, detail, testId }: {
   )
 }
 
-function FolderOutput({ runId, output, files, truncated, context }: {
+function FolderOutput({ runId, output, files, truncated, context, evidence }: {
   runId: string
   output: AttemptOutput
   files: AttemptFile[]
   truncated: boolean
+  evidence: string[]
   context: string
 }) {
   const open = useOpen()
   const folder = output.artifact || output.path || ''
-  const summary = folderSummary(files)
+  const summary = folderSummary(files, evidence)
   const thumbs = summary.images.slice(0, FOLDER_THUMBS)
   const rows = [...summary.rest, ...summary.images.slice(FOLDER_THUMBS)].slice(0, FOLDER_ROWS)
   const more = summary.count - thumbs.length - summary.videos.length - summary.models.length - rows.length
@@ -209,7 +210,7 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
   const note = outputNote(output)
   let body: ReactNode
   if (output.kind === 'folder' || output.fileKind === 'folder') {
-    body = <FolderOutput runId={view.runId} output={output} files={files} truncated={Boolean(attempt.filesTruncated)} context={context} />
+    body = <FolderOutput runId={view.runId} output={output} files={files} truncated={Boolean(attempt.filesTruncated)} context={context} evidence={attempt.verdicts.flatMap(verdict => verdict.evidence.map(item => item.text.text))} />
   } else if (output.kind === 'file' && (output.artifact || output.path)) {
     const path = output.artifact || output.path || ''
     const name = baseName(path)

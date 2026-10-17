@@ -132,8 +132,14 @@ export interface FolderSummary {
 }
 
 /** A folder's files: how many and how big, its images to preview and the rest to list. */
-export function folderSummary(files: readonly AttemptFile[]): FolderSummary {
-  const images = files.filter(file => file.kind === 'image')
+export function folderSummary(files: readonly AttemptFile[], evidence: readonly string[] = []): FolderSummary {
+  const priority = (name: string) => {
+    const base = baseName(name).toLowerCase()
+    if (evidence.some(text => text.toLowerCase().includes(base))) return 0
+    if (/(contact[ _-]?sheet|contact|final|sheet)/i.test(base)) return 1
+    return 2
+  }
+  const images = files.filter(file => file.kind === 'image').sort((a, b) => priority(a.name) - priority(b.name))
   return {
     count: files.length,
     bytes: files.reduce((sum, file) => sum + file.size, 0),

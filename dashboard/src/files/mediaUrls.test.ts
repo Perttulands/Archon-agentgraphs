@@ -24,6 +24,6 @@ describe('model sidecar URLs', () => {
 
 it('recognizes supported media case insensitively while leaving other downloads alone', () => {
   for (const path of ['turntable.mp4', 'turntable.WEBM']) expect(mediaKind(path)).toBe('video')
-  for (const path of ['scene.glb', 'scene.GLTF']) expect(mediaKind(path)).toBe('model')
-  for (const path of ['scene.fbx', 'movie.mp4.txt', 'photo.png']) expect(mediaKind(path)).toBeNull()
+  for (const path of ['scene.glb', 'scene.GLTF', 'scene.fbx', 'rig.FBX']) expect(mediaKind(path)).toBe('model')
+  for (const path of ['movie.mp4.txt', 'photo.png']) expect(mediaKind(path)).toBeNull()
 })

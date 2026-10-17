@@ -124,9 +124,10 @@ test('the run bar\'s produced menu opens above a file window, and the next file 
   await page.goto('/?mission=browser&run=run_browser')
 
   const produced = page.getByTestId('run-produced')
-  await produced.getByRole('button', { name: 'review.md' }).click()
-  const review = page.getByRole('dialog', { name: 'file review.md' })
-  await expect(review.getByRole('heading', { name: 'Peer review' })).toBeVisible()
+  await produced.getByRole('button', { name: '3 more produced files' }).click()
+  await page.getByRole('menuitem', { name: 'report' }).click()
+  const review = page.getByRole('dialog', { name: 'file report' })
+  await expect(review).toContainText('Implemented the reviewed plan.')
 
   // The file window opens just below the run bar, where the menu drops; the menu still wins.
   await produced.getByRole('button', { name: '3 more produced files' }).click()

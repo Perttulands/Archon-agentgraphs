@@ -13,6 +13,6 @@ export function modelResourceUrl(src: string, resource: string): string {
 
 export function mediaKind(path: string): 'video' | 'model' | null {
   if (/\.(mp4|webm)$/i.test(path)) return 'video'
-  if (/\.(glb|gltf)$/i.test(path)) return 'model'
+  if (/\.(glb|gltf|fbx)$/i.test(path)) return 'model'
   return null
 }

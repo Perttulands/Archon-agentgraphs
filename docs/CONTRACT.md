@@ -1012,7 +1012,8 @@ card lists its latest output as chips: artifact files its ports name, the text
 of ports that name no file, and the seat's report when it adds something. The
 run bar's Produced list leads with a finished run's final steps (those whose
 outputs feed nothing), or a running run's latest step, and a menu holds the
-rest, including artifact files no output names. A chip opens the file in a
+rest, grouped by step and output with counts, outputs before other files.
+Declared output chips open the producing step’s attempts; other files open in a
 floating file window, rendered by kind, with Open raw and Copy path (the
 artifact's absolute path on the daemon host); several can be open side by side.
 Node, note and file windows float in the free space nearest what opened them,
@@ -1022,16 +1023,20 @@ the title bars of open windows visible and clickable where space allows, and
 cascades when no free space is left. Opening, closing or resizing a window never
 moves Flow's rows. Menus opened from the run bar render above every window.
 
-A step that ran more than once shows "N attempts" among its card's run tools and
+A step that ran at least once shows "N attempts" among its card's run tools and
 in its Flow row, and its node window always shows the count. One click opens the
 step's attempts window (archon-7963), read from the attempts route below. It
 lays every attempt out oldest first, one column each, so the loop reads left to
 right: the attempt's outcome and time, each gate's verdict with its reason and
 evidence (image evidence such as a judge's crops as thumbnails), then what each
 output produced: images large enough to judge, text and Markdown rendered, and
-other files as chips that open the file window. A folder previews its first
-twelve images, previews videos and 3D models before eight other files, and counts
-the rest. The attempt the loop
+other files as chips that open the file window. Node and run-bar outputs open
+this window directly, including single attempts. Run evidence uses the shared
+floating window, with Escape closing an open document before the window.
+A folder previews twelve images, preferring verdict-cited images and names
+containing contact sheet, final or sheet. It previews videos and 3D models
+before eight other files, and counts the rest. Cited images, contact sheets and previewable media are preferred
+before filling a folder’s file-list cap. The attempt the loop
 settled on, the picked one or else the latest that passed, is marked green.
 The arrow keys, Home, End or an attempt's number step between attempts; C puts
 two of them side by side in frames of one size: the focused attempt and the one
@@ -2074,16 +2079,16 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   and redacted, PNG, JPEG, GIF and WebP keep their image type, a `pdf` is an
   inline `application/pdf`. MP4 and WebM are inline `video/mp4` and
   `video/webm`; GLB and glTF are inline `model/gltf-binary` and
-  `model/gltf+json`. Models and their binary sidecars remain byte-exact.
+  `model/gltf+json`. Models, including FBX, and their binary sidecars stream byte-exact without the buffered read cap.
   Other binary content is an `application/octet-stream`
   attachment. Responses carry
   `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
   `Cache-Control: no-store`, and support ranges. The file window is a reader,
   so HTML is served as text and nothing a file contains runs in the cockpit.
   Video responses replace `img-src 'self'` with `media-src 'self'` in their CSP.
-  Native video controls open in file windows and attempt evidence. GLB/glTF previews load the 3D
+  Native video controls open in file windows and attempt evidence. GLB/glTF/FBX previews load the 3D
   viewer on demand; relative glTF buffers and textures resolve beside the model.
-  Unsupported formats such as FBX remain downloadable.
+  FBX uses the same viewer controls; unsupported formats remain downloadable.
 - `/api/runs/{runId}/gates/{gateId}/request` is the evidence API's
   view of a human request still waiting for an answer. For the gate's latest
   request, while it is pending, it returns `gateId`, `requestedSeq`, the frozen

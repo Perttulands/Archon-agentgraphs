@@ -1,3 +1,4 @@
+import { useAttemptsWindows } from '../attempts/AttemptsWindows'
 import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { EvidenceNames } from '../evidence/evidenceNames'
@@ -9,7 +10,7 @@ import './produced.css'
 
 // Chips for what a run produced. A card, a node window or a Flow row shows a
 // step's chips with <ProducedFiles nodeId={…} />, and the run bar shows the
-// run's with <RunProduced />; each chip opens its file in a file window.
+// run's with <RunProduced />. Outputs open attempts; other files open a file window.
 
 export interface RunProducedValue {
   runId: string
@@ -45,6 +46,7 @@ function ProducedChip({ item, value, onOpened, role, openedFrom }: {
   openedFrom?: () => Element | null
 }) {
   const files = useFileWindows()
+  const attempts = useAttemptsWindows()
   const label = producedLabel(item, value.names)
   const step = item.nodeId ? value.names.node(item.nodeId) : ''
   const what = item.artifact ? item.artifact : `${label} output`
@@ -58,7 +60,8 @@ function ProducedChip({ item, value, onOpened, role, openedFrom }: {
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
-        files?.open(producedRequest(value.runId, item, value.names), fileAnchor(openedFrom?.() || event.currentTarget))
+        if (item.nodeId && item.portId && attempts?.run?.runId === value.runId) attempts.open(item.nodeId)
+        else files?.open(producedRequest(value.runId, item, value.names), fileAnchor(openedFrom?.() || event.currentTarget))
         onOpened?.()
       }}
     >
@@ -114,10 +117,10 @@ export function RunProduced() {
   // arrow keys move between its items, Escape and Tab return to the + button.
   const open = Boolean(menu)
   useEffect(() => {
-    if (open) menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true })
+    if (open) menuRef.current?.querySelector<HTMLElement>('summary:not([tabindex="-1"]), [role="menuitem"]')?.focus({ preventScroll: true })
   }, [open])
   const menuKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [])]
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('summary:not([tabindex="-1"]), [role="menuitem"]') || [])].filter(item => item.tagName === 'SUMMARY' || !item.closest('details:not([open])'))
     const at = items.indexOf(document.activeElement as HTMLElement)
     const step = { ArrowDown: 1, ArrowUp: -1 }[event.key]
     if (step) {
@@ -140,12 +143,25 @@ export function RunProduced() {
   const rest = [...lead.slice(RUN_BAR_CHIPS), ...(primary.length ? others : [])]
   if (shown.length === 0) return null
 
-  const groups: Array<{ title: string; items: ProducedItem[] }> = []
+  const groups = new Map<string, { title: string; outputs: ProducedItem[]; files: Map<string, ProducedItem[]>; count: number }>()
   for (const item of rest) {
-    const title = item.nodeId ? value.names.node(item.nodeId) : 'Other files'
-    const group = groups.find(entry => entry.title === title)
-    if (group) group.items.push(item)
-    else groups.push({ title, items: [item] })
+    const parts = item.artifact?.split('/') || []
+    const nodeId = item.nodeId || (/^\d+$/.test(parts[1] || '') && value.byNode.has(parts[0]) ? parts[0] : '')
+    const key = nodeId || 'other'
+    let group = groups.get(key)
+    if (!group) {
+      group = { title: nodeId ? value.names.node(nodeId) : 'Other files', outputs: [], files: new Map(), count: 0 }
+      groups.set(key, group)
+    }
+    group.count++
+    if (item.portId || item.kind === 'output') group.outputs.push(item)
+    else {
+      const port = parts[2] === 'outputs' ? parts[3] : ''
+      const label = port && nodeId ? value.names.port(nodeId, port) : 'Files'
+      const bucket = group.files.get(label) || []
+      bucket.push(item)
+      group.files.set(label, bucket)
+    }
   }
 
   return (
@@ -170,10 +186,16 @@ export function RunProduced() {
           the menu is drawn at the page's top level to open above every window. */}
       {menu ? createPortal((
         <div ref={menuRef} className="run-produced-menu" role="menu" aria-label="Everything this run produced" style={{ left: menu.left, top: menu.top }} onKeyDown={menuKeys}>
-          {groups.map(group => (
-            <div className="run-produced-group" key={group.title}>
-              <div className="run-produced-group-title">{group.title}</div>
-              {group.items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
+          {[...groups].map(([key, group]) => (
+            <div className="run-produced-group" key={key}>
+              <div className="run-produced-group-title">{group.title} · {group.count}</div>
+              {group.outputs.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
+              {[...group.files].map(([label, items]) => (
+                <details key={label} open={items.length <= 8} className="run-produced-files">
+                  <summary tabIndex={items.length <= 8 ? -1 : 0}>{label} · {items.length}</summary>
+                  {items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
+                </details>
+              ))}
             </div>
           ))}
         </div>

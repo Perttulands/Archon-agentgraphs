@@ -37,7 +37,7 @@ test('a port kind and a mission output bound to it lead to a run output that ope
   await expect(output).toHaveText('▤reportreview.md')
   await expect(output).toHaveAttribute('title', `report · file · ${runArtifacts}/peer/1/review.md`)
   await output.click()
-  const file = page.getByRole('dialog', { name: 'file review.md' })
+  const file = page.getByRole('dialog', { name: 'Attempts of Peer review' })
   await expect(file.getByRole('heading', { name: 'Peer review' })).toBeVisible()
 })
 
@@ -56,7 +56,7 @@ test('a picked run reads as picked, and its outputs carry the verdict that faile
   await expect(output).toHaveAttribute('title', `summary · text · Implemented the reviewed plan.\n\nAll tests pass.\npicked: Execution attempt 1, which Review gate judged fail: ${pickedExecution.verdict.reason}\n  - ${pickedExecution.verdict.findings[0]}`)
 })
 
-test('a folder output opens as its listing, whose files open in their own windows', async ({ page }) => {
+test('a folder output opens its attempt directly, with folder browsing still available', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.addInitScript(() => localStorage.clear())
   const fixture = await cockpitFixture(page, { succeeded: true })
@@ -64,6 +64,9 @@ test('a folder output opens as its listing, whose files open in their own window
   card.outputs = [{ name: 'site', kind: 'folder', from: 'execution:out' }]
   await page.goto('/?mission=browser&run=run_browser')
   await page.getByTestId('run-output-site').click()
+  const attempts = page.getByRole('dialog', { name: 'Attempts of Execution' })
+  await expect(page.locator('[data-window-kind]')).toHaveCount(1)
+  await attempts.getByRole('button', { name: /^site\// }).click()
   const listing = page.getByRole('dialog', { name: 'file site/' })
   await listing.getByRole('link', { name: 'assets/' }).click()
   const nested = page.getByRole('dialog', { name: 'file assets/' })

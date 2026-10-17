@@ -148,3 +148,27 @@ func TestArtifactWalkStopsAcrossSiblingDirectories(t *testing.T) {
 		t.Fatalf("list: %d entries, lower bound %d omitted", len(selected), omitted)
 	}
 }
+
+func TestEvidenceArtifactsKeepReviewMediaBeforeFolderCap(t *testing.T) {
+	entries := []RunArtifactEntry{}
+	for i := 0; i < 600; i++ {
+		entries = append(entries, RunArtifactEntry{Name: fmt.Sprintf("output/frame-%04d.png", i)})
+	}
+	names := []string{"output/z-contact-sheet.jpg", "output/z-final.png", "output/z-cited.png", "output/turntable.mp4", "output/rig.fbx"}
+	for _, name := range names {
+		entries = append(entries, RunArtifactEntry{Name: name})
+	}
+	selected, omitted := selectEvidenceArtifacts(entries, []AttemptOutput{{Artifact: "output", Kind: "folder"}}, "See /work/output/z-cited.png")
+	seen := map[string]bool{}
+	for _, entry := range selected {
+		seen[entry.Name] = true
+	}
+	for _, name := range names {
+		if !seen[name] {
+			t.Fatalf("review media omitted: %s", name)
+		}
+	}
+	if len(selected) != EvidenceArtifactListMax || omitted != len(entries)-len(selected) {
+		t.Fatalf("count %d omitted %d", len(selected), omitted)
+	}
+}

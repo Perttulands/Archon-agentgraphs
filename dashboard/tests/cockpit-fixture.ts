@@ -102,7 +102,7 @@ export const mediaAttemptFixture = {
     evidence: [{ kind: 'formation', text: evidenceText(`${runArtifacts}/execution/1/judge videos/review.webm`) }] }],
   files: [
     ...Array.from({ length: 180 }, (_, i) => ({ name: `execution/1/cache-${i}.txt`, path: `${runArtifacts}/execution/1/cache-${i}.txt`, kind: 'text', size: 1, modifiedAt: '' })),
-    ...['folder-turntable.mp4', 'triangle.gltf'].map(name => ({ name: `execution/1/${name}`, path: `${runArtifacts}/execution/1/${name}`, kind: name.endsWith('.mp4') ? 'video' : 'model', size: 300, modifiedAt: '' })),
+    ...['folder-turntable.mp4', 'triangle.gltf', 'triangle.fbx'].map(name => ({ name: `execution/1/${name}`, path: `${runArtifacts}/execution/1/${name}`, kind: name.endsWith('.mp4') ? 'video' : 'model', size: 300, modifiedAt: '' })),
   ],
 }
 const OUTPUT_NAME = /^[a-z][a-z0-9_]{0,63}$/
@@ -204,7 +204,7 @@ function limitFindings(current: typeof board) {
 
 type Role = { id: string; displayName: string; kind: string; summary?: string }
 
-export async function cockpitFixture(page: Page, options: { noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
+export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean; noLayout?: boolean; declaredInputs?: boolean; far?: boolean; run?: boolean; blockedAtJudge?: boolean; blockedAtLimit?: boolean; blockedAtTime?: boolean; succeeded?: boolean; picked?: boolean; themeFailure?: boolean; waitingHuman?: boolean; secondGate?: boolean; join?: boolean; extraAgents?: number; vanillaWorker?: boolean; emptyWorker?: boolean; roles?: Role[]; characters?: Array<Record<string, unknown>>; workers?: Array<Record<string, unknown>>; newRow?: boolean } = {}) {
   const currentBoard = structuredClone(board)
   // A CLI-authored mission has declarations but no saved canvas layout.
   if (options.declaredInputs) {
@@ -215,6 +215,7 @@ export async function cockpitFixture(page: Page, options: { noLayout?: boolean; 
     ]
     currentBoard.inputCards[0].outputs = [{ name: 'summary', kind: 'text', from: 'execution:out', required: true }]
   }
+  if (options.tomlStyle) currentBoard.inputCards[0].inputs = [{ name: 'body', kind: 'folder', required: true, description: 'Approved body' }]
   if (options.vanillaWorker) {
     // A slot with no role is a vanilla agent; this one runs a model the catalog names.
     currentBoard.formations[0].slots[1] = { id: 'worker', label: 'Worker 1', harness: 'claude-code', model: 'opus', effort: 'low', controller: false }
@@ -277,7 +278,7 @@ export async function cockpitFixture(page: Page, options: { noLayout?: boolean; 
     currentBoard.formations = [...currentBoard.formations, ...newRow.map(id => ({ id, type: 'solo', title: 'New formation', ...ports, slots: [{ id: 'agent', label: 'Agent', controller: false }] }))]
   }
   const boardState = () => currentBoard
-  let nodes = options.noLayout || options.declaredInputs ? [] : positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
+  let nodes = options.noLayout || options.declaredInputs || options.tomlStyle ? [] : positions.map(p => ({ ...p, x: p.x + (options.far ? 1800 : 0) }))
   if (options.newRow) nodes = [...nodes, ...newRow.map((id, index) => ({ id, x: 448 + index * 336, y: 896 }))]
   if (options.join) nodes = [{ id: 'a', x: 100, y: 80 }, { id: 'b', x: 100, y: 350 }, { id: 'c', x: 100, y: 620 }, { id: 'sink', x: 650, y: 350 }]
   if (options.waitingHuman) nodes = [...nodes, { id: 'end_done', x: 504, y: 672 }, { id: 'end_rejected', x: 504, y: 784 }]
@@ -555,6 +556,22 @@ export async function cockpitFixture(page: Page, options: { noLayout?: boolean; 
       // attempt on through its gate, so every output came through that pick.
       const outputs = runOutputs(currentBoard).map(output => options.picked ? { ...output, picks: [pickedExecution] } : output)
       return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(options.declaredInputs ? { inputs: flowInputs } : {}), ...(outputs.length ? { outputs } : {}) })
+    }
+    if (options.succeeded && path === '/api/runs/run_browser/evidence/attempts') {
+      const nodeId = url.searchParams.get('node') || 'execution'
+      const formation = currentBoard.formations.find(step => step.id === nodeId)!
+      const declared = runOutputs(currentBoard).filter(output => output.nodeId === nodeId)
+      if (!declared.length) declared.push({ name: 'Result', kind: nodeId === 'peer' ? 'file' : 'text', value: nodeId === 'peer' ? `${runArtifacts}/review.md` : 'Implemented the reviewed plan.\n\nAll tests pass.', nodeId, portId: 'out', attempt: 1 })
+      return respond({ attempts: { runId: 'run_browser', steps: [{ nodeId, title: formation.title, outputs: formation.outputs,
+        attempts: [{ attempt: 1, status: 'done', outputs: declared.map(output => ({
+          portId: output.portId, label: output.name, kind: output.kind,
+          text: evidenceText(output.kind === 'text' ? output.value : ''),
+          ...(output.kind === 'text' ? {} : { path: output.value, artifact: output.value.slice(runArtifacts.length + 1), fileKind: output.kind === 'folder' ? 'folder' : 'markdown' }),
+        })), verdicts: [], files: [] }],
+      }] } })
+    }
+    if (options.succeeded && path.startsWith('/api/runs/run_browser/evidence/artifacts/') && path.endsWith('/review.md')) {
+      return respond({ artifact: { name: path.split('/evidence/artifacts/')[1], kind: 'markdown', text: evidenceText(reviewMarkdown) } })
     }
     // The file routes read a succeeded run's output snapshots by absolute path.
     if (options.succeeded && path === '/api/files/directory') {

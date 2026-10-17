@@ -95,6 +95,21 @@ describe('produced files', () => {
     localStorage.clear()
   })
 
+  it('groups a large artifact inventory by step and output, with counts and outputs first', () => {
+    const step: NodeProduced = { nodeId: 'fmn_mesh', seq: 100, items: [
+      { key: 'mesh', nodeId: 'fmn_mesh', portId: 'port_mesh', kind: 'artifact', artifact: 'fmn_mesh/1/outputs/port_mesh/mesh', bytes: 0 },
+    ] }
+    const artifacts = Array.from({ length: 500 }, (_, i) => ({ name: `fmn_mesh/1/outputs/port_mesh/mesh/frame-${i}.png`, size: 10, modifiedAt: '' }))
+    render(<Cockpit produced={[...produced, step]} final artifacts={artifacts} />)
+    fireEvent.click(screen.getByRole('button', { name: /more produced files/ }))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getByText('fmn_mesh · 501')).toBeInTheDocument()
+    const summary = within(menu).getByText('port_mesh · 500')
+    expect(summary.closest('details')).not.toHaveAttribute('open')
+    fireEvent.click(summary)
+    expect(within(menu).getByTestId('produced-chip-artifact:fmn_mesh/1/outputs/port_mesh/mesh/frame-499.png')).toBeVisible()
+  })
+
   it('shows chips from evidence on each step and a finished run leads Produced with its final review', () => {
     render(<Cockpit produced={produced} final />)
     const final = within(screen.getByTestId('card-final'))
@@ -108,8 +123,8 @@ describe('produced files', () => {
     const menu = screen.getByRole('menu', { name: 'Everything this run produced' })
     // Drawn at the page's top level, outside the run bar's stacking layer, so it opens above file windows.
     expect(menu.parentElement).toBe(document.body)
-    expect(within(menu).getByText('Plan')).toBeInTheDocument()
-    expect(within(menu).getByText('Other files')).toBeInTheDocument()
+    expect(within(menu).getByText('Plan · 1')).toBeInTheDocument()
+    expect(within(menu).getByText('Other files · 1')).toBeInTheDocument()
     const items = within(menu).getAllByRole('menuitem')
     expect(items.map(item => item.textContent)).toEqual(['¶report', '▤worker.log'])
     // Drawn at the end of the page, the menu takes focus as it opens; arrow keys move through it.

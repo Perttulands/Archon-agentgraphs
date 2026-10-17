@@ -1,7 +1,9 @@
+import { useWindowStack } from '../windows/WindowManager'
 import MediaPreview from '../files/MediaPreview'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
-import { useEscapeKey } from '../components/useEscapeKey'
+import FloatingWindow from '../windows/FloatingWindow'
+import { mediaKind } from '../files/mediaUrls'
 import { problemHeadline } from '../components/runOutcome'
 import type { BoardDocument } from '../components/formationsTypes'
 import { evidenceNamesForBoard, type EvidenceNames } from './evidenceNames'
@@ -64,7 +66,18 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const [artifactRetry, setArtifactRetry] = useState(0)
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
   // Escape closes an open document first, then the evidence dialog.
-  useEscapeKey(true, () => (openDocument ? setOpenDocument(null) : onClose()))
+  const stack = useWindowStack()
+  const anchor = useRef(document.activeElement)
+  useEffect(() => {
+    if (!openDocument) return
+    const closeDocument = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || stack.order[stack.order.length - 1] !== `evidence:${nodeId}`) return
+      event.preventDefault()
+      setOpenDocument(null)
+    }
+    window.addEventListener('keydown', closeDocument, true)
+    return () => window.removeEventListener('keydown', closeDocument, true)
+  }, [nodeId, openDocument, stack.order])
   const [documentError, setDocumentError] = useState('')
 
   useEffect(() => {
@@ -106,18 +119,11 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   }, [runId])
 
   return (
-    <div
-      className="pop node-inspector run-evidence"
-      role="dialog"
-      aria-label={`Run evidence · ${title}`}
-      data-testid="node-inspector"
-      onPointerDown={event => event.stopPropagation()}
-    >
-      <div className="pop-head">
-        <span className="pt">Run evidence · {title}</span>
-        <button className="x" type="button" aria-label="Close run evidence" onClick={onClose}>x</button>
-      </div>
-      <div className="pop-body node-evidence">
+    <FloatingWindow id={`evidence:${nodeId}`} kind="evidence" label={`Run evidence · ${title}`}
+      title={`Run evidence · ${title}`} className="run-evidence" defaultSize={{ width: 660, height: 640 }}
+      anchor={() => anchor.current?.getBoundingClientRect() || null}
+      onClose={onClose}>
+      <div data-testid="node-inspector" className="node-evidence">
         <dl className="node-evidence-identity">
           <div><dt>State</dt><dd data-testid="node-evidence-state">{state || 'not started'}</dd></div>
         </dl>
@@ -170,7 +176,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
           {artifacts?.omitted ? <p className="evidence-note">At least {artifacts.omitted} more files not listed.</p> : null}
         </section>
       </div>
-    </div>
+    </FloatingWindow>
   )
 }
 
@@ -476,7 +482,8 @@ function DocumentView({ runId, document, onOpenArtifact, onClose }: {
 }
 
 function ArtifactBody({ runId, preview, onOpenArtifact }: { runId: string; preview: RunArtifactPreview; onOpenArtifact: (name: string) => void }) {
-  if (preview.kind === 'video' || preview.kind === 'model') return <MediaPreview kind={preview.kind} src={artifactRawUrl(runId, preview.name)} name={preview.name} />
+  const media = mediaKind(preview.name) || (preview.kind === 'video' || preview.kind === 'model' ? preview.kind : null)
+  if (media) return <MediaPreview kind={media} src={artifactRawUrl(runId, preview.name)} name={preview.name} />
   if (preview.kind === 'image') return <img className="evidence-image" src={artifactRawUrl(runId, preview.name)} alt={preview.name} />
   if (preview.kind === 'pdf') return <p className="evidence-note">PDF. Open it raw to read it.</p>
   if (preview.kind === 'binary' || !preview.text) return <p className="evidence-note">Binary file. Open it raw to download.</p>

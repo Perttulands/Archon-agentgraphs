@@ -1,11 +1,12 @@
+import { useAttemptsWindows } from '../attempts/AttemptsWindows'
 import type { RunOutput } from '../components/formationsTypes'
 import { fileAnchor, useFileWindows } from './FileWindows'
 import { folderFileRequest, referencedFileRequest, textValueRequest, type FileRequest } from './fileWindowModel'
 import './produced.css'
 
 // What a succeeded or picked run delivered, as its mission's outputs declare:
-// each opens in a file window on click. A file opens as itself, a folder as
-// its listing, and a text value as its full text. An output that came through
+// each opens its producing step’s attempts on click, with inline previews.
+// Outside the cockpit, it opens in the file viewer. An output that came through
 // a pick is failed work a spent limit carried on (ADR-0022): its chip says
 // picked, and its tooltip gives the verdict that failed the picked attempt.
 
@@ -39,6 +40,7 @@ export function runOutputRequest(runId: string, output: RunOutput): FileRequest 
 
 export default function RunOutputs({ runId, outputs, titleOf }: { runId: string; outputs: RunOutput[] | undefined; titleOf?: (nodeId: string) => string }) {
   const files = useFileWindows()
+  const attempts = useAttemptsWindows()
   if (!outputs?.length || !files) return null
   return (
     <span className="run-produced run-outputs" data-testid="run-outputs" data-file-anchor>
@@ -53,7 +55,8 @@ export default function RunOutputs({ runId, outputs, titleOf }: { runId: string;
           onPointerDown={event => event.stopPropagation()}
           onClick={event => {
             event.stopPropagation()
-            files.open(runOutputRequest(runId, output), fileAnchor(event.currentTarget))
+            if (attempts?.run?.runId === runId && output.nodeId) attempts.open(output.nodeId)
+            else files.open(runOutputRequest(runId, output), fileAnchor(event.currentTarget))
           }}
         >
           <span className="produced-glyph" aria-hidden="true">{GLYPH[output.kind]}</span>

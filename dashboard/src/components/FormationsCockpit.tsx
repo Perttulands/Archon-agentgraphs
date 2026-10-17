@@ -3229,8 +3229,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     version: runVersion,
     live: !activeRun.final,
     waitingGates: waitingGateIds,
-    titleOf: nodeId => (board ? nodeTitle(board, nodeId) : nodeId),
-  } : null), [activeRun, board, nodeAttempts, runVersion, waitingGateIds])
+    titleOf: nodeId => producedValue?.byNode.get(nodeId)?.definition?.title || (board ? nodeTitle(board, nodeId) : nodeId),
+  } : null), [activeRun, board, nodeAttempts, producedValue, runVersion, waitingGateIds])
   const stepPick = useMemo<StepPick | null>(() => (pendingPick && pendingHumanGate && answerWindowOpen ? {
     nodeId: pendingPick.nodeId,
     gateId: pendingHumanGate.gateId,
@@ -3281,8 +3281,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     openNode: openNodeWindow,
     openNotes: openNoteWindow,
     inspectEvidence: nodeId => {
-      // The evidence dialog sits above the window; keyboard focus leaves the window so Escape closes the dialog first.
-      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      // Keep the opener as its placement anchor and focus-return target.
       setInspectedNodeId(nodeId)
     },
   }), [attachJudge, changeFormationType, detachJudge, openNodeWindow, openNoteWindow, openStaffing, renameNode, saveBrief, setEndOutcome, setGateFiles, setLimit, updateGateFields, updateMissionFields, stampCharacter, slotRefOf, resumeActiveRun])
@@ -3917,7 +3916,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
       </div>
 
-      <WindowManagerProvider stack={windows}>
         {board ? noteWindows.map(target => (
           <NoteWindow
             readOnly={historical}
@@ -3987,7 +3985,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         ) : null}
         <AttemptsWindowsLayer pick={stepPick} />
         <FileWindowsLayer />
-      </WindowManagerProvider>
 
       {characterEditor ? (
         <CharacterEditorDialog
@@ -4224,12 +4221,14 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     </div>
   )
   return (
-    <FileWindowsProvider key={selectedSlug} stack={windows}>
-      <FileProblemsContext.Provider value={referencedFileProblems}>
-        <RunProducedProvider value={producedValue}>
-          <AttemptsWindowsProvider run={attemptsRun} stack={windows}>{cockpit}</AttemptsWindowsProvider>
-        </RunProducedProvider>
-      </FileProblemsContext.Provider>
-    </FileWindowsProvider>
+    <WindowManagerProvider stack={windows}>
+      <FileWindowsProvider key={selectedSlug} stack={windows}>
+        <FileProblemsContext.Provider value={referencedFileProblems}>
+          <RunProducedProvider value={producedValue}>
+            <AttemptsWindowsProvider run={attemptsRun} stack={windows}>{cockpit}</AttemptsWindowsProvider>
+          </RunProducedProvider>
+        </FileProblemsContext.Provider>
+      </FileWindowsProvider>
+    </WindowManagerProvider>
   )
 }
