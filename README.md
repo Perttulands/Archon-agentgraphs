@@ -112,8 +112,8 @@ Install tmux and the Claude Code or Codex CLI required by your chosen personas,
 and authenticate those CLIs. Start the daemon with `--executor tmux` and your
 absolute paths for `--socket`, `--tmux-bin`, `--codex-transcripts` and
 `--claude-transcripts`. The daemon creates seats on demand when a formation
-runs. See the [operator procedure](docs/CONTRACT.md#operator-procedure) for
-configuration, Limit cards, approvals and recovery.
+runs. See [configuration](docs/CONTRACT.md#daemon-configuration) and the
+[Archon skill](skills/archon/SKILL.md) for Limit cards, approvals and recovery.
 
 The delivery example also expects Beads and the shared skills named in its
 briefs. Those tools and skills are not bundled here; only Archon's own skill is. Read and adapt the

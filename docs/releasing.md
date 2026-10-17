@@ -91,7 +91,7 @@ using its loaded binary until the operator restarts it.
 
 The installer creates no service and does not copy, migrate or remove runtime
 state. Supply the same `--state-dir` when restarting to retain missions and run
-history. Follow the [shutdown and recovery procedure](CONTRACT.md#operator-procedure)
+history. Follow the [shutdown and recovery procedure](../skills/archon/references/recovery.md#after-a-daemon-restart)
 before restarting a daemon that has active work.
 
 ## Publish

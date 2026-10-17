@@ -54,17 +54,27 @@ else decided first, or the gate has since evaluated a newer input.
 
 ## After a daemon restart
 
-The daemon restarts with the same state directory. At startup it recovers
-eligible completed native evidence and records a block naming any unresolved
-dispatch. At startup it neither adopts nor cleans up old seats. A seat the
-shutdown left working stays the run's: aborting the run, or resuming so the
-step runs again, ends it; seats kept on call for a human gate stay on call. A run that only waited on its gates survives waiting, each
-request with its original `requestedSeq`: read fresh status and decide that
-exact request. A run that was between steps is blocked; its gates still take
-verdicts. Then inspect `run list` and `run status` and resume as above.
+Read [Shutdown and recovery](../../../docs/CONTRACT.md#shutdown-and-recovery)
+before restarting a daemon with active work (`docs/CONTRACT.md` in the Archon
+source or `$ARCHON_SHARE/docs/CONTRACT.md` in an installed release).
+Restart with the same state directory and configuration. Abort runs explicitly
+first when seat cancellation is intended. Keep deployment and live restart
+verification in the owning host repository.
 
-Explicit recovery from a chosen transcript is a daemon restart with
-`--resume-run`, `--completed-transcript` and `--completed-brief` together. Before
-using it, read the Operator procedure in `docs/CONTRACT.md` of the Archon source,
-or `$ARCHON_SHARE/docs/CONTRACT.md` of an installed release
-(`<prefix>/lib/archon/current/share/archon`).
+After restart, inspect `run list` and `run status`. For waiting gates, use the
+current request's `requestedSeq`. For blocks, inspect the cause and resume as
+above. Preserve old seat identities for host-owner inspection.
+
+For explicit recovery from a chosen completed native transcript, keep the
+original artifacts intact and restart with all three flags:
+
+```bash
+archond <host-configuration-flags> --state-dir "$ARCHON_STATE" \
+  --resume-run "$ARCHON_RUN_ID" \
+  --completed-transcript /absolute/native-transcript \
+  --completed-brief /absolute/original-brief
+```
+
+Choose a blocked resumable run and its original brief and completed transcript;
+check them against the evidence requirements in the linked contract before
+restarting. Run runtime mutations through the daemon with `--server`.

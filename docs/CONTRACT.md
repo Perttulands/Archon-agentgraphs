@@ -1419,9 +1419,9 @@ canceled, including an abort of a waiting run (`run_final`). Ending waits up to
 paste waits on, and kills only that session, by immutable ID, through the
 guarded wrapper. Those cleanups are recorded before the final event. A blocked
 run's kept seats end just before the cancel or failure that ends it; the ledger
-accepts that `seat_cleanup` after `run_blocked` (see the restart procedure). A
-blocked run otherwise keeps its seats: a seat found gone while it is blocked is
-recorded after it resumes, and so are asks due while it was blocked.
+accepts that `seat_cleanup` after `run_blocked` (see
+[Shutdown and recovery](#shutdown-and-recovery)). A blocked run otherwise keeps
+its seats: a seat found gone while it is blocked is recorded after it resumes, and so are asks due while it was blocked.
 
 Daemon shutdown leaves kept seats running. At startup, and every 15 seconds
 while a run keeps seats or has open asks, the daemon checks each kept seat's
@@ -1446,30 +1446,16 @@ The cockpit can load a local UTF-8 file into its editable answer box; import
 failures leave the current draft intact. An unedited import retains all file
 text. Editing follows the browser textarea's normal newline behavior.
 
-## Operator procedure
+## Operation
 
-Read server URL and state directory from the host runbook or environment.
+For authoring, running and following missions, use the [Archon skill](../skills/archon/SKILL.md).
+
+### Daemon configuration
+
 `<archon-server>` must be an HTTP URL with a literal IP, no trailing slash,
-credentials, query or fragment. Host forwarding reaches the cockpit over the
-tailnet. Source, binary, UI, state, socket and transcript paths are host values,
-never mission constants. Set `ARCHON_SOURCE`, `ARCHON_BIN`, `ARCHON_STATE`, `ARCHON_LISTEN`,
-`ARCHON_SERVER`, `ARCHON_CWD`, `ARCHON_CHANGE` and `ARCHON_BEAD` accordingly. Keep runtime
-state outside the source checkout. Use Go, Node/npm, Bash, curl and jq.
-
-Build and launch a scratch lab daemon, leaving its terminal open:
-
-```bash
-umask 077
-mkdir -p "$ARCHON_BIN"
-cd "$ARCHON_SOURCE/src"
-go build -o "$ARCHON_BIN/archon" ./cmd/archon
-go build -o "$ARCHON_BIN/archond" ./cmd/archond
-cd "$ARCHON_SOURCE/dashboard"
-npm ci
-npm run build
-"$ARCHON_BIN/archond" --executor lab --state-dir "$ARCHON_STATE" \
-  --listen "$ARCHON_LISTEN" --ui-dir "$ARCHON_SOURCE/dashboard/dist"
-```
+credentials, query or fragment. Source, binary, UI, state, socket and transcript
+paths are host values, never mission constants.
+For build and launch commands, see [lab setup](../skills/archon/references/lab-and-examples.md#build-and-launch).
 
 For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
 `--codex-transcripts`, `--claude-transcripts` from host configuration.
@@ -1484,7 +1470,7 @@ installed daemons find `../share/archon/ui` beside their `bin` directory.
 Set `--ui-dir ''` to disable the cockpit, or an absolute path to select another
 build. These are daemon flags, not model settings. Set harness, model and effort on each slot.
 `--notify-command` and `--cockpit-url` configure needs-you notifications,
-described at the end of this section. The cockpit opens any file a mission,
+described in [Needs-you notifications](#needs-you-notifications). The cockpit opens any file a mission,
 brief or gate references by absolute path (see Referenced files).
 
 `GET /healthz` answers `{status, version, commit}`: `ok` and the running
@@ -1492,21 +1478,10 @@ build's version and source commit, which a deploy checks against the commit it
 admitted (archon-1ea). `archon --server <server> version` prints the CLI's build
 and the daemon's, and the cockpit's top bar shows the daemon's.
 
-In another terminal use the compiled Archon. Import means copying mission and
-notes TOML, or symlinking them; there is no import command:
+Import copies or symlinks mission and notes TOML; there is no import command.
+For the walkthrough, see [import an example mission](../skills/archon/references/lab-and-examples.md#import-an-example-mission).
 
-```bash
-export PATH="$ARCHON_BIN:$PATH"
-curl --noproxy '*' --fail --silent --show-error "$ARCHON_SERVER/healthz"
-mkdir -p "$ARCHON_STATE/.archon/missions" "$ARCHON_STATE/.archon/notes"
-cp "$ARCHON_SOURCE/examples/delivery.mission.toml" "$ARCHON_STATE/.archon/missions/"
-cp "$ARCHON_SOURCE/examples/delivery.notes.toml" "$ARCHON_STATE/.archon/notes/"
-archon --workspace "$ARCHON_STATE" mission list --json
-archon --workspace "$ARCHON_STATE" mission inspect delivery --json
-archon --workspace "$ARCHON_STATE" mission notes delivery --json
-archon --workspace "$ARCHON_STATE" mission validate delivery --json
-archon --workspace "$ARCHON_STATE" mission arrange delivery --json
-```
+### Authoring commands and editor behaviour
 
 Author through the cockpit, or with Archon's mission, formation, gate, tool and
 agent nouns offline (`--workspace`) or through the daemon (`--server`).
@@ -1515,16 +1490,11 @@ nouns, `archon <noun>`, `archon <noun> -h` and `archon <noun> help` list a
 noun's commands, and `archon <noun> <command> -h` prints the command's usage,
 what it does and its flags, offline and with `--server`. A noun's unknown
 command is named and its commands listed; a command that needs the daemon says
-so offline, and one that works only offline says so with `--server`. Preserve an operator's draft
-and notes, staff its slots, write executable briefs, wire exact port IDs, then
-validate and arrange. The `archon` skill gives agents the authoring, run and
-recovery recipe for this contract. Its source is `skills/archon/` in this
-repository, and a release installs it under `lib/archon/current/share/archon`
-(`ARCHON_SHARE`). Link it where Claude Code and Codex discover user-level skills,
-unless that directory already provides an `archon` skill (a shared catalog, for
-example), which stays unchanged: for each of `~/.claude/skills` and
-`~/.agents/skills`, `[ -e "$dir/archon/SKILL.md" ] || ln -sn
-"$ARCHON_SHARE/skills/archon" "$dir/archon"`. The README gives the full loop.
+so offline, and one that works only offline says so with `--server`.
+The skill ships under `share/archon/skills/archon/` in a release
+(`$ARCHON_SHARE/skills/archon`).
+For skill discovery setup, see [install the skill](../README.md#let-agents-drive-archon).
+
 Arrange (`mission arrange`, the cockpit's Arrange) rewrites only the layout. It
 lays columns along the run from the Input card (its out port, formation and
 Tool outputs, gate pass), ignores fail edges back to earlier steps and judge
@@ -1679,81 +1649,28 @@ error.
 rejected. The cockpit tags incomplete nodes as drafts and highlights the nodes
 a rejected start names.
 
-For the delivery template the following starts a run; a Limit card on the
-mission caps its loops when it needs one. Its one input, `change`,
-describes the work to deliver; in a lab run it carries the synthetic verdict
-described above.
-
-```bash
-ARCHON_START=$(archon --server "$ARCHON_SERVER" mission run delivery \
-  --input change="$ARCHON_CHANGE" --bead "$ARCHON_BEAD" --json)
-ARCHON_RUN_ID=$(printf '%s\n' "$ARCHON_START" | jq -er '.data.runId')
-archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json
-archon --server "$ARCHON_SERVER" run logs "$ARCHON_RUN_ID" --json
-archon --server "$ARCHON_SERVER" run follow "$ARCHON_RUN_ID" --json
-archon --server "$ARCHON_SERVER" run wait "$ARCHON_RUN_ID" --until needs-you
-archon --server "$ARCHON_SERVER" run list --json
-```
+### Run inspection
 
 `run list` prints one line per run, newest first: its ID, mission, status,
 Bead (`-` when none), start and last change, tab-separated; `--json` prints
-each run's full projection. This allocates a workspace automatically. Add `--cwd "$ARCHON_CWD"` to work in
-an existing project.
+each run's full projection. Starting a run without `--cwd` allocates a workspace
+automatically; `--cwd` selects an existing project.
 
-To chain a mission that declares outputs into the next, read the succeeded
-run's `outputs` and pass a value as the next run's input; `run attempts` shows
-what every attempt produced and how it was judged. A `picked` run's outputs
-are failed work: feed one only into a mission that opens with a repair step
-whose gate checks its `picks` findings, or stop the chain and report:
+For launch, follow, output chaining, abort and verdict commands, see [run a mission](../skills/archon/SKILL.md#run-a-mission).
 
-```bash
-ARCHON_REPORT=$(archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json |
-  jq -er '.data.outputs[] | select(.name == "report") | .value')
-archon --server "$ARCHON_SERVER" mission run publish --input report="$ARCHON_REPORT" --json
-archon --server "$ARCHON_SERVER" run attempts "$ARCHON_RUN_ID" --node "$ARCHON_NODE_ID"
-```
+### Shutdown and recovery
 
-For a session gate, inspect the asking seats before typing:
+For restart, resume and redispatch steps, see [recover a run](../skills/archon/references/recovery.md).
 
-```bash
-archon --server "$ARCHON_SERVER" run gates "$ARCHON_RUN_ID"
-archon --server "$ARCHON_SERVER" gate request "$ARCHON_RUN_ID" "$ARCHON_GATE_ID"
-archon --server "$ARCHON_SERVER" run seats "$ARCHON_RUN_ID"
-tmux -S "$ARCHON_TMUX_SOCKET" list-panes -a -F '#{session_name} #{pane_id}'
-```
-
-To stop a selected non-final run, set `ARCHON_RUN_ID` to its ID:
-
-```bash
-archon --server "$ARCHON_SERVER" run abort "$ARCHON_RUN_ID" --reason "Operator stopped this run" --json
-```
-
-For a graph with a human gate, inspect fresh status. Set `ARCHON_GATE_ID` to the
-pending gate and `ARCHON_RESPONSE` to the operator's answer. Choose exactly one verdict command, only when authorized to
-decide that gate:
-
-```bash
-ARCHON_STATUS=$(archon --server "$ARCHON_SERVER" run status "$ARCHON_RUN_ID" --json)
-ARCHON_REQUESTED_SEQ=$(printf '%s\n' "$ARCHON_STATUS" | jq -er --arg gate "$ARCHON_GATE_ID" \
-  '.data.waitingGates[] | select(.gateId == $gate) | .requestedSeq')
-archon --server "$ARCHON_SERVER" gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" \
-  --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
-```
-
-For rejection, substitute this command for approval:
-
-```bash
-archon --server "$ARCHON_SERVER" gate reject "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" \
-  --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
-```
-
-Restart the daemon with the same state directory and configuration. Before
-listening it scans non-final ledgers, recovers eligible completed native evidence
+On restart with the same state directory and configuration, before
+listening the daemon scans non-final ledgers, recovers eligible completed native evidence
 or records a block naming unresolved dispatches. It never adopts or cleans up
 old seats, except that it verifies seats kept on call and keeps managing them
 (see [Human gates on the session
 channel](#human-gates-on-the-session-channel)). Preserve those identities for
-host-owner inspection. SIGTERM fences new commands and downstream dispatch
+host-owner inspection. A seat shutdown left working remains associated with
+the run: aborting the run, or resuming so the step runs again, ends it.
+SIGTERM fences new commands and downstream dispatch
 immediately. Active turns have five
 seconds to finish, then the daemon cancels observation and detaches from its
 seats without ending them. HTTP draining and execution share a ten-second total
@@ -1787,27 +1704,16 @@ deadline and retains that lock until the worker or process exits. The host's
 service watchdog is an outer limit, not the normal shutdown mechanism; keep
 deployment and live restart verification in the owning host repository.
 
-Inspect list/status after restart. For a resumable block whose cause is resolved:
-
-```bash
-archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --reason "Recovery evidence inspected" --json
-```
-
 A run that only waits on its gates survives restart waiting, with each
-request's original `requestedSeq`; approve or reject using the same exact
-request sequence after restart. A run that was between steps, with work still
+request's original `requestedSeq`; verdicts after restart still name that exact
+request sequence. A run that was between steps, with work still
 owed, a recorded verdict not yet routed, or a gate that received a newer input
 than the one it asked about, is blocked at startup ("coordinator restarted
 between steps; resume to continue"), and resuming continues it while its gates
 keep waiting.
 
-When a seat died mid-turn and its completed evidence cannot be found, abandon
-the open dispatch and run the node again as a fresh bounded attempt:
-
-```bash
-archon --server "$ARCHON_SERVER" run resume "$ARCHON_RUN_ID" --mode redispatch --reason "Seat lost; run the node again" --json
-```
-
+`run resume --mode redispatch` abandons an open dispatch without completed
+evidence and runs the node again as a new attempt.
 The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
 the node's next attempt is one more round for a Limit card that covers it. A failed reattach never
 finishes the run: it records `dispatch_reattach_failed` with the reason and
@@ -1822,10 +1728,9 @@ An unresolved dispatch can block again. For explicitly selected completed native
 evidence, restart with `--resume-run`, `--completed-transcript` and
 `--completed-brief` together, naming the blocked resumable run, absolute native
 transcript and original brief. Validation checks the original digest, pointer,
-cwd, session, model/effort and completed turn before continuation. Keep original
-artifacts intact. Do not run offline runtime mutations alongside the daemon:
-an offline `mission run`, `formation run`, `run resume`, `run abort` and `gate
-approve|reject` start, continue or stop a run as the daemon's worker does, so
+cwd, session, model/effort and completed turn before continuation.
+An offline `mission run`, `formation run`, `run resume`, `run abort` and
+`gate approve|reject` start, continue or stop a run as the daemon's worker does, so
 each takes the state directory's coordinator lock and refuses while a daemon
 owns it ("a daemon owns this state directory: run this through it with
 --server").
@@ -1871,20 +1776,7 @@ only non-final runs. A final outcome is sent only for a run that finished while
 this daemon process was running, so enabling notifications never mails old
 results.
 
-A placeholder host command that reads the JSON and hands the message to a
-host sender:
-
-```sh
-#!/bin/sh
-set -eu
-notification=$(cat)
-subject=$(printf '%s' "$notification" | jq -r '.subject')
-printf '%s' "$notification" | jq -r '.body' |
-  "$NOTIFY_SENDER" --to "$NOTIFY_TO" --subject "$subject"
-```
-
-`NOTIFY_SENDER` and `NOTIFY_TO` stand for host configuration. Keep the real
-script, sender and address with the host deployment.
+For a host command example, see [configure notifications](../skills/archon/references/lab-and-examples.md#configure-notifications).
 
 ## HTTP contract
 

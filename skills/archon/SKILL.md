@@ -76,7 +76,9 @@ Keep runtime state outside any checkout.
 
 ## Author a mission
 
-Read before you write: the mission, its notes and the role roster.
+Read before you write: the mission, its notes and the role roster. Preserve
+the existing draft and notes as you staff slots, write executable briefs and
+wire exact port IDs.
 
 ```bash
 archon --server "$ARCHON_SERVER" mission list --json
@@ -256,9 +258,9 @@ Gate and Tool inputs stay single-feed.
 - **Formation** needs a judge: create a solo judge formation, then `gate judge
   "$M" "$GATE" --chain "$JUDGE"` wires both ends. `--detach` removes it; a
   judge-only gate then becomes a human gate.
-- **Human** waits for an explicit operator verdict. There is no default verdict.
-  It holds up only its own path: other branches keep running while it waits,
-  and several human gates can wait at once.
+- **Human** waits for an explicit operator verdict, with no default verdict,
+  and holds up only its own path: other branches keep running and several human
+  gates can wait at once. See [Decide a human gate](#decide-a-human-gate).
 
 Wire work into the gate and route both verdicts:
 
@@ -377,9 +379,8 @@ on) or open the seat; `run wait --until any-change` reports each `seat_state`.
 
 ### Human channel
 
-`mission create|update --human-channel session` sends a human gate's question
-into the seats of the formation whose work it judges, instead of the notify
-command. Set it only when the operator asks. Read
+Set `mission create|update --human-channel session` only when the operator asks to
+answer gates through the asking seats. Read
 [references/human-gates.md](references/human-gates.md) when you drive or relay
 a session-channel gate.
 
@@ -399,7 +400,8 @@ name nodes no path from the Input card reaches (`unreachable_node`); wire a
 route into them or delete them. A rejected `mission run` prints the same findings (HTTP 422
 `RUN_ADMISSION_FAILED`) and records no run.
 
-To import an example mission or smoke-test routing on a lab daemon, read
+To build and launch a lab daemon, import examples, configure
+notifications or smoke-test routing, read
 [references/lab-and-examples.md](references/lab-and-examples.md).
 
 ## Run a mission
@@ -519,19 +521,16 @@ are working inside a seat, read [references/seat-output.md](references/seat-outp
 
 ## Decide a human gate
 
+Read [Human verdicts](../../docs/CONTRACT.md#human-verdicts) for the rules and
+[Run evidence](../../docs/CONTRACT.md#run-evidence) for the request and
+route-preview fields (`docs/CONTRACT.md` in the Archon source or
+`$ARCHON_SHARE/docs/CONTRACT.md` in an installed release).
 Decide only with the operator's authority. A `run wait` that exited 3 already
 printed both commands with the current `--requested-seq`. Otherwise read fresh
-status, then take
-`ARCHON_GATE_ID` and `ARCHON_REQUESTED_SEQ` from the same `.data.waitingGates`
-entry. `run gates "$ARCHON_RUN_ID"` lists them; `gate request "$ARCHON_RUN_ID"
-"$ARCHON_GATE_ID"` shows the question, the input and where each verdict leads:
-the targets (an End node target means "this path ends (done)" or "(rejected)",
-`endsRun` says the run then ends, and `runFails` that it fails, now or once its other work ends), the
-attempt each would start and, only when a Limit card covers it, the step's
-`rounds` (`used`, `max`), the mission's `missionRounds` and `roundsNeeded`
-(a pick's judges included), and a `limit` entry when taking the route would
-find a card spent, so the run blocks until you grant one more, or with
-`picksBest` the step's best judged attempt is picked instead.
+status and take `ARCHON_GATE_ID` and `ARCHON_REQUESTED_SEQ` from the same
+`.data.waitingGates` entry. Use `run gates "$ARCHON_RUN_ID"` to list them and
+`gate request "$ARCHON_RUN_ID" "$ARCHON_GATE_ID"` to inspect the question,
+input and routes before answering.
 
 ```bash
 archon $S gate approve "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCHON_REQUESTED_SEQ" --response "$ARCHON_RESPONSE" --json
@@ -539,22 +538,20 @@ archon $S gate reject  "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --requested-seq "$ARCH
 ```
 
 Run exactly one. On approve, a nonempty response travels with the gate's input
-to the next step; on reject it becomes the feedback reason. `--response-file
-<utf8-file>` records a long answer verbatim. The daemon records the verdict at
-once and the run routes it between steps; nothing blocks or resumes. A blocked
-run takes a verdict too, and routes it once resumed.
+to the next step; on reject it becomes the feedback reason.
+Use `--response-file <utf8-file>` for a long answer supplied
+as a file. For a session-channel relay, follow
+[human-gates.md](references/human-gates.md).
 
-A gate whose step's best card is spent asks for a pick instead: its
-`waitingGates` entry carries `pick` (`nodeId`, `candidates` and any judge's
-`recommendation`), and `gate request` shows the candidates side by side.
-`run attempts "$ARCHON_RUN_ID" --node <step>` shows each in full. Pick one
-candidate; it goes on through the pass route:
+When `gate request` asks for a best-attempt pick, inspect its candidates and
+any judge recommendation. Use `run attempts "$ARCHON_RUN_ID" --node <step>`
+to read each in full, then pick one candidate:
 
 ```bash
 archon $S gate pick "$ARCHON_RUN_ID" "$ARCHON_GATE_ID" --attempt 2 --requested-seq "$ARCHON_REQUESTED_SEQ" --reason "Tightest draft" --json
 ```
 
-A verdict on a pending pick, or a pick on a pending verdict, answers 409.
+For pick rules, read [Picking the best attempt](../../docs/CONTRACT.md#picking-the-best-attempt).
 
 ## Stop and recover
 

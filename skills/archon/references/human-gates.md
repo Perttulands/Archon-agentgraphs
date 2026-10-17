@@ -3,33 +3,26 @@
 Read with the main [Archon skill](../SKILL.md). This covers missions set to
 `--human-channel session` and seats that relay an operator's decision.
 
-## Where the ask goes
-
-A run keeps the channel its mission had at admission. On `notify` (the default)
-every human-gate ask goes to the daemon's `--notify-command`, one message per
-ask with the exact approve and reject commands. Never run the notify command or
+Read the contract's [session-channel rules](../../../docs/CONTRACT.md#human-gates-on-the-session-channel)
+and [human verdicts](../../../docs/CONTRACT.md#human-verdicts) before relaying a
+decision (`docs/CONTRACT.md` in the Archon source or
+`$ARCHON_SHARE/docs/CONTRACT.md` in an installed release).
+Leave notification delivery to the daemon; never run the notify command or
 resend a message yourself.
 
-On `session` the ask goes to the **asking formation**: the nearest formation
-behind the gate's input, followed back through gates. That formation's seats
-stay alive after it finishes (`seat_cleanup` outcome `kept_on_call`): every seat
-of a solo or peer formation, the controller of an orchestrated one. Each
-receives a brief pointer at `<state-dir>/briefs/gate-<run>-<seq>-<slot>.md`.
-Escalations, blocks and final outcomes still use the notify command. When no
-kept seat can take the ask, it falls back once to the notify command
-(`human_ask_fallback` with `lab_executor`, `no_asking_formation`,
-`no_receivable_seat`, `asked_seats_gone` or `delivery_uncertain`).
-
 ## Find the asking seat
+
+Use `$ARCHON_TMUX_SOCKET` (the daemon's `--socket`) to find the tmux pane.
 
 ```bash
 archon --server "$ARCHON_SERVER" run gates "$ARCHON_RUN_ID"
 archon --server "$ARCHON_SERVER" gate request "$ARCHON_RUN_ID" "$ARCHON_GATE_ID"
 archon --server "$ARCHON_SERVER" run seats "$ARCHON_RUN_ID"
+tmux -S "$ARCHON_TMUX_SOCKET" list-panes -a -F '#{session_name} #{pane_id}'
 ```
 
 Match a gate's `askedSeats[].createdSeq` to a seat's `createdSeq`; its
-`sessionName` is the tmux session the operator talks to. These three print text,
+`sessionName` is the tmux session the operator talks to. The `archon` commands print text,
 or the daemon envelope with `--json`.
 
 ## Relay a decision from a seat
@@ -50,12 +43,8 @@ archon --server "$ARCHON_SERVER" gate approve "$RUN" "$GATE" --requested-seq "$S
 archon --server "$ARCHON_SERVER" gate reject  "$RUN" "$GATE" --requested-seq "$SEQ" --relayed-by "$SLOT" --response "$RESPONSE"
 ```
 
-The record keeps `decidedBy: human:operator` and stores your slot in
-`relayedBy`. For a long answer the operator names a UTF-8 file; use
+For a long answer supplied as a UTF-8 file, use
 `--response-file FILE` in place of `--response`, never both. After a 503 while
 the daemon restarts, run the same command again a few seconds later; after a
 409 `human gate request is no longer pending`, tell the operator that another
 seat or the cockpit decided first.
-
-Kept seats end when their ask is answered, when their formation starts a new
-attempt, or when the run finishes.
