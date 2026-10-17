@@ -1,9 +1,7 @@
 package coordinator
 
 import (
-	"bytes"
 	"errors"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -83,12 +81,12 @@ func (c *Coordinator) missionEvidence(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Coordinator) artifactList(w http.ResponseWriter, r *http.Request) {
-	artifacts, truncated, err := c.store.ListRunArtifacts(r.PathValue("runId"))
+	artifacts, truncated, omitted, err := c.store.ListRunArtifacts(r.PathValue("runId"))
 	if err != nil {
 		evidenceFailure(w, err)
 		return
 	}
-	reply(w, http.StatusOK, map[string]any{"artifacts": artifacts, "truncated": truncated})
+	reply(w, http.StatusOK, map[string]any{"artifacts": artifacts, "truncated": truncated, "omitted": omitted})
 }
 
 func (c *Coordinator) artifactPreview(w http.ResponseWriter, r *http.Request) {
@@ -101,8 +99,8 @@ func (c *Coordinator) artifactPreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // artifactRaw serves an artifact for a browser tab. The file window is a
-// reader, so it never serves active content: text is plain, only known image
-// types keep their type, and the sandbox policy applies to anything a browser
+// reader: text is plain, known image, video and model types keep their type,
+// and the sandbox policy applies to anything a browser
 // would still render.
 func (c *Coordinator) artifactRaw(w http.ResponseWriter, r *http.Request) {
 	content, err := c.store.ReadRunArtifact(r.PathValue("runId"), r.PathValue("name"))
@@ -110,17 +108,7 @@ func (c *Coordinator) artifactRaw(w http.ResponseWriter, r *http.Request) {
 		evidenceFailure(w, err)
 		return
 	}
-	disposition := "inline"
-	if content.ContentType == "application/octet-stream" {
-		disposition = "attachment"
-	}
-	header := w.Header()
-	header.Set("Content-Type", content.ContentType)
-	header.Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": content.Name}))
-	header.Set("X-Content-Type-Options", "nosniff")
-	header.Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'")
-	header.Set("Cache-Control", "no-store")
-	http.ServeContent(w, r, "", content.ModifiedAt, bytes.NewReader(content.Body))
+	serveFileContent(w, r, content)
 }
 
 func evidenceFailure(w http.ResponseWriter, err error) {

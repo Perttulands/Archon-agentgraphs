@@ -1,3 +1,5 @@
+import MediaPreview from '../files/MediaPreview'
+import { mediaKind } from '../files/mediaUrls'
 import { useEffect, useState, type ReactNode } from 'react'
 import Markdown from '../evidence/Markdown'
 import { prettyJson } from '../evidence/TextLines'
@@ -155,7 +157,7 @@ function FolderOutput({ runId, output, files, truncated, context }: {
   const thumbs = summary.images.slice(0, FOLDER_THUMBS)
   const rows = [...summary.rest, ...summary.images.slice(FOLDER_THUMBS)].slice(0, FOLDER_ROWS)
   const more = summary.count - thumbs.length - rows.length
-  const counted = `${summary.count} file${summary.count === 1 ? '' : 's'}${summary.bytes ? ` · ${formatBytes(summary.bytes)}` : ''}`
+  const counted = `${summary.count} file${summary.count === 1 ? '' : 's'}${truncated ? ' listed' : ''}${summary.bytes ? ` · ${formatBytes(summary.bytes)}` : ''}`
   return (
     <div className="attempt-folder">
       {output.path ? (
@@ -179,13 +181,12 @@ function FolderOutput({ runId, output, files, truncated, context }: {
                 <span className="attempt-listing-name">{nameWithin(folder, file.name)}</span>
                 <span className="attempt-listing-size">{formatBytes(file.size)}</span>
               </button>
+              {mediaKind(file.name) === 'video' ? <MediaPreview kind="video" src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} /> : null}
             </li>
           ))}
         </ul>
       ) : null}
-      {more > 0 || truncated ? (
-        <p className="attempt-quiet">{more > 0 ? `and ${more} more` : ''}{more > 0 && truncated ? '; ' : ''}{truncated ? 'the listing stops at the first 500 files of the attempt' : ''}</p>
-      ) : null}
+      {more > 0 ? <p className="attempt-quiet">and {more} more listed files</p> : null}
     </div>
   )
 }
@@ -209,7 +210,10 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
     const name = baseName(path)
     const request = output.artifact ? artifactFileRequest(view.runId, output.artifact, context) : referencedFileRequest(output.path || '', context)
     const detail = output.size ? formatBytes(output.size) : ''
-    if (output.fileKind === 'image' || (!output.fileKind && isImagePath(path))) {
+    const media = mediaKind(path)
+    if (media && request.rawUrl) {
+      body = <><MediaPreview kind={media} src={request.rawUrl} name={name} /><FileChip request={request} label={name} detail={detail} /></>
+    } else if (output.fileKind === 'image' || (!output.fileKind && isImagePath(path))) {
       const src = output.artifact ? artifactRawUrl(view.runId, output.artifact) : `/api/files/raw?path=${encodeURIComponent(output.path || '')}`
       body = <ImageOutput src={src} name={name} group={output.portId} view={view} request={request} detail={detail} testId={`${testId}-image`} />
     } else if (output.artifact && (output.fileKind === 'markdown' || output.fileKind === 'text' || output.fileKind === 'json')) {
@@ -237,9 +241,10 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
 function EvidenceItems({ items, omitted, context }: { items: EvidenceItem[]; omitted?: number; context: string }) {
   const open = useOpen()
   const paths = items.map(item => item.text.text.trim())
-  const isPath = (text: string) => text.startsWith('/') && !/\s/.test(text)
+  const isPath = (text: string) => text.startsWith('/') && !/[\r\n]/.test(text)
   const images = paths.filter(text => isPath(text) && isImagePath(text))
-  const files = paths.filter(text => isPath(text) && !isImagePath(text))
+  const media = paths.filter(text => isPath(text) && mediaKind(text))
+  const files = paths.filter(text => isPath(text) && !isImagePath(text) && !mediaKind(text))
   const notes = items.filter((_, index) => !isPath(paths[index]))
   if (!items.length) return null
   return (
@@ -254,6 +259,7 @@ function EvidenceItems({ items, omitted, context }: { items: EvidenceItem[]; omi
           ))}
         </div>
       ) : null}
+      {media.map(path => <MediaPreview key={path} kind={mediaKind(path)!} src={referencedFileRequest(path).rawUrl!} name={baseName(path)} />)}
       {files.length ? (
         <div className="attempt-chips">
           {files.map(path => <FileChip key={path} request={referencedFileRequest(path, context)} label={baseName(path)} />)}
@@ -293,7 +299,7 @@ export interface AttemptMarks {
 }
 
 // A shift-click on these does their own thing, not choose the attempt beside the focused one.
-const OWN_CLICKS = 'button, a, input, textarea, select'
+const OWN_CLICKS = 'button, a, input, textarea, select, video, canvas'
 
 export default function AttemptColumn({ attempt, view, marks, onFocus }: {
   attempt: StepAttempt
@@ -363,6 +369,12 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
               ) : null}
             </div>
           </>
+        ) : null}
+        {attempt.filesTruncated ? (
+          <p className="attempt-quiet">
+            {attempt.filesOmitted ? `${attempt.filesOmitted} more files not listed. ` : 'Folders beyond 16 levels are not listed. '}
+            {attempt.directory ? <button type="button" className="evidence-link" onClick={event => open(folderFileRequest(attempt.directory!.path, context), event.currentTarget)}>Browse all files</button> : null}
+          </p>
         ) : null}
       </div>
     </article>

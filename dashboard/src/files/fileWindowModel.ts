@@ -112,7 +112,10 @@ const markdownLabel = (text: string) => text.replace(/([\\[\]*_`])/g, '\\$1')
 
 /**
  * A folder by absolute path, listed in a file window: each file opens in its
- * own window, subfolders are named. The listing is the daemon's directory route.
+ * own window, and subfolders open their own listings. As in CHROTE's
+ * FilesViewContent directory/file routing, directory entries navigate instead
+ * of opening a file preview; Archon uses its existing Markdown file windows.
+ * The listing is the daemon's directory route.
  */
 export function folderFileRequest(path: string, context?: string): FileRequest {
   const name = path.split('/').filter(Boolean).pop() || path
@@ -124,7 +127,7 @@ export function folderFileRequest(path: string, context?: string): FileRequest {
     load: async () => {
       const { data } = await fetchApi<{ items?: Array<{ name: string; path: string; isDir: boolean }> }>(`/api/files/directory${filePath(path)}`)
       const items = data.items || []
-      const lines = items.map(item => item.isDir ? `- ${markdownLabel(item.name)}/` : `- [${markdownLabel(item.name)}](<${item.path}>)`)
+      const lines = items.map(item => `- [${markdownLabel(item.name)}${item.isDir ? '/' : ''}](<${item.path}${item.isDir ? '/' : ''}>)`)
       const text = lines.length ? lines.join('\n') : '_This folder is empty._'
       return { kind: 'markdown', text: { text, bytes: new TextEncoder().encode(text).length }, path }
     },

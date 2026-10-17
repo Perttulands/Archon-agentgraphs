@@ -83,12 +83,15 @@ func PreviewReferencedFile(ref string) (*ReferencedFilePreview, error) {
 	return preview, nil
 }
 
-// ReadReferencedFile reads a whole referenced file for the raw route, up to
-// the raw cap.
+// ReadReferencedFile streams media or buffers other files up to the raw cap.
+// The caller must close content.File when non-nil.
 func ReadReferencedFile(ref string) (*RunArtifactContent, error) {
 	file, info, resolved, err := openReferencedFile(ref)
 	if err != nil {
 		return nil, err
+	}
+	if content := evidenceStreamContent(resolved, file, info); content != nil {
+		return content, nil
 	}
 	defer file.Close()
 	if info.Size() > EvidenceArtifactRawMaxBytes {

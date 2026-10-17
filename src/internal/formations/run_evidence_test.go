@@ -231,7 +231,7 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefs(t *testing.T) {
 		}
 	}
 
-	if artifacts, truncated, err := store.ListRunArtifacts(runID); err != nil || len(artifacts) != 0 || truncated {
+	if artifacts, truncated, _, err := store.ListRunArtifacts(runID); err != nil || len(artifacts) != 0 || truncated {
 		t.Fatalf("run without artifacts = %+v, %v, %v", artifacts, truncated, err)
 	}
 	root := filepath.Join(store.Workspace, ".archon", "artifacts", runID)
@@ -271,7 +271,7 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	artifacts, truncated, err := store.ListRunArtifacts(runID)
+	artifacts, truncated, _, err := store.ListRunArtifacts(runID)
 	if err != nil || truncated {
 		t.Fatalf("list = %v, %v", truncated, err)
 	}
@@ -328,7 +328,7 @@ func TestRunEvidenceReadsNodesArtifactsAndBriefs(t *testing.T) {
 			t.Fatalf("raw %q err = %v, want ErrNotFound", name, err)
 		}
 	}
-	if _, _, err := store.ListRunArtifacts("run_missing"); !errors.Is(err, ErrNotFound) {
+	if _, _, _, err := store.ListRunArtifacts("run_missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown run list err = %v", err)
 	}
 

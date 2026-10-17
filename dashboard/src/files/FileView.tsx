@@ -6,6 +6,7 @@
 // terminal are CHROTE's and stay there; run files are evidence, read only.
 
 import { useEffect, useState } from 'react'
+import MediaPreview from './MediaPreview'
 import Markdown from '../evidence/Markdown'
 import TextLines, { prettyJson } from '../evidence/TextLines'
 import { formatBytes } from '../evidence/runEvidenceApi'
@@ -95,6 +96,9 @@ export default function FileView({ request, preview, error, mode, onOpen }: {
     </p>
   ) : null
   switch (preview.kind) {
+    case 'video':
+    case 'model':
+      return request.rawUrl ? <MediaPreview kind={preview.kind} src={request.rawUrl} name={request.name} /> : <p className="file-note">No media to show.</p>
     case 'image':
       return request.rawUrl ? <div className="file-image"><img src={request.rawUrl} alt={request.name} /></div> : <p className="file-note">No image to show.</p>
     case 'pdf':

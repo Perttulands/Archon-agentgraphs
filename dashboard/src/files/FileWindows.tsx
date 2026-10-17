@@ -2,7 +2,7 @@ import { Suspense, useEffect, createContext, lazy, useCallback, useContext, useM
 import type { WindowStack } from '../windows/WindowManager'
 import type { WindowRect } from '../windows/windowGeometry'
 import { measureElement, nodeBoxes } from '../windows/cockpitScene'
-import { referencedFileRequest, type FileRequest } from './fileWindowModel'
+import { folderFileRequest, referencedFileRequest, type FileRequest } from './fileWindowModel'
 
 // The cockpit's open file windows. Anything under the provider opens a file
 // with useFileWindows()?.open(request, fileAnchor(event.currentTarget)); the
@@ -74,7 +74,7 @@ export function FileWindowsProvider({ stack, children }: { stack: WindowStack; c
   useEffect(() => {
     const receive = (event: Event) => {
       const { path, anchor } = (event as CustomEvent<{ path: string; anchor?: Element }>).detail
-      open(referencedFileRequest(path), anchor ? fileAnchor(anchor) : null)
+      open(path.endsWith('/') ? folderFileRequest(path.replace(/\/+$/, '') || '/') : referencedFileRequest(path), anchor ? fileAnchor(anchor) : null)
     }
     document.addEventListener('archon-open-path', receive)
     return () => document.removeEventListener('archon-open-path', receive)

@@ -3,11 +3,13 @@ package coordinator
 import (
 	"bytes"
 	"errors"
+	"io"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
@@ -31,14 +33,18 @@ func (c *Coordinator) filePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 // fileRaw serves a referenced file like a raw run artifact. The file window is
-// a reader: never active content, text as text/plain, only known image types
-// kept.
+// a reader: text as text/plain, with known image, video and model types kept.
 func (c *Coordinator) fileRaw(w http.ResponseWriter, r *http.Request) {
 	content, err := formations.ReadReferencedFile(r.URL.Query().Get("path"))
 	if err != nil {
 		fileFailure(w, err)
 		return
 	}
+	serveFileContent(w, r, content)
+}
+
+// Shared raw response for referenced files and run artifacts.
+func serveFileContent(w http.ResponseWriter, r *http.Request, content *formations.RunArtifactContent) {
 	disposition := "inline"
 	if content.ContentType == "application/octet-stream" {
 		disposition = "attachment"
@@ -48,8 +54,16 @@ func (c *Coordinator) fileRaw(w http.ResponseWriter, r *http.Request) {
 	header.Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": content.Name}))
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'")
+	if strings.HasPrefix(content.ContentType, "video/") {
+		header.Set("Content-Security-Policy", "sandbox; default-src 'none'; media-src 'self'; style-src 'unsafe-inline'")
+	}
 	header.Set("Cache-Control", "no-store")
-	http.ServeContent(w, r, "", content.ModifiedAt, bytes.NewReader(content.Body))
+	var reader io.ReadSeeker = bytes.NewReader(content.Body)
+	if content.File != nil {
+		defer content.File.Close()
+		reader = content.File
+	}
+	http.ServeContent(w, r, "", content.ModifiedAt, reader)
 }
 
 func fileFailure(w http.ResponseWriter, err error) {

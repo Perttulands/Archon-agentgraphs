@@ -1,3 +1,4 @@
+import MediaPreview from '../files/MediaPreview'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
 import { useEscapeKey } from '../components/useEscapeKey'
@@ -58,7 +59,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   const names = useMemo(() => evidenceNamesForBoard(board), [board])
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
   const [error, setError] = useState('')
-  const [artifacts, setArtifacts] = useState<{ artifacts: RunArtifactEntry[]; truncated: boolean } | null>(null)
+  const [artifacts, setArtifacts] = useState<{ artifacts: RunArtifactEntry[]; truncated: boolean; omitted: number } | null>(null)
   const [artifactError, setArtifactError] = useState('')
   const [artifactRetry, setArtifactRetry] = useState(0)
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
@@ -166,7 +167,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
               ))}
             </ul>
           )}
-          {artifacts?.truncated ? <p className="evidence-note">The list stops at 500 files or 8 folders deep.</p> : null}
+          {artifacts?.truncated ? <p className="evidence-note">{artifacts.omitted ? `${artifacts.omitted} more files not listed. ` : ''}Outputs are listed first. Open an output folder to browse all its files. Listings go up to 16 folders deep.</p> : null}
         </section>
       </div>
     </div>
@@ -475,6 +476,7 @@ function DocumentView({ runId, document, onOpenArtifact, onClose }: {
 }
 
 function ArtifactBody({ runId, preview, onOpenArtifact }: { runId: string; preview: RunArtifactPreview; onOpenArtifact: (name: string) => void }) {
+  if (preview.kind === 'video' || preview.kind === 'model') return <MediaPreview kind={preview.kind} src={artifactRawUrl(runId, preview.name)} name={preview.name} />
   if (preview.kind === 'image') return <img className="evidence-image" src={artifactRawUrl(runId, preview.name)} alt={preview.name} />
   if (preview.kind === 'pdf') return <p className="evidence-note">PDF. Open it raw to read it.</p>
   if (preview.kind === 'binary' || !preview.text) return <p className="evidence-note">Binary file. Open it raw to download.</p>

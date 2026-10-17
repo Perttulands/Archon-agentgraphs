@@ -89,6 +89,18 @@ export const pickedExecution = { nodeId: 'execution', attempt: 1, gateId: 'gate'
 const evidenceText = (text: string) => ({ text, bytes: text.length })
 // Where a succeeded run snapshots a file or folder output (.archon/artifacts/<run>/<node>/<attempt>/...).
 export const runArtifacts = '/srv/state/.archon/artifacts/run_browser'
+// Media made by a run and cited by its judge. Paths deliberately include a
+// space: real output folders need not be shell words.
+export const mediaAttemptFixture = {
+  attempt: 1, status: 'done', startedSeq: 2,
+  outputs: [
+    { portId: 'video', label: 'Turntable', kind: 'file', fileKind: 'video', artifact: 'execution/1/turntable.mp4', text: { text: '', bytes: 0 } },
+    { portId: 'model', label: 'Mesh', kind: 'file', fileKind: 'model', artifact: 'execution/1/triangle.gltf', text: { text: '', bytes: 0 } },
+  ],
+  verdicts: [{ gateId: 'gate', gateTitle: 'Review gate', evaluationSeq: 4, verdict: 'pass', reason: evidenceText('Watched the turntable.'),
+    evidence: [{ kind: 'formation', text: evidenceText(`${runArtifacts}/execution/1/judge videos/review.webm`) }] }],
+  files: [],
+}
 const OUTPUT_NAME = /^[a-z][a-z0-9_]{0,63}$/
 /**
  * A succeeded run's outputs as the daemon projects them: each declared output
@@ -114,7 +126,7 @@ const succeededEvidence: Record<string, unknown> = {
     definition: { title: 'Peer review', outputs: [{ id: 'out', label: 'Result' }], outgoing: [] },
     attempts: [{ attempt: 1, inputs: [], dispatches: [],
     output: { seq: 6, text: evidenceText(''), ports: [{ portId: 'out', text: evidenceText(reviewMarkdown), ref: { artifact: 'review.md' } }] } }] } },
-  '/api/runs/run_browser/evidence/artifacts': { artifacts: [{ name: 'review.md', size: reviewMarkdown.length, modifiedAt: '2026-09-16T00:00:00Z' }, { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z' }], truncated: false },
+  '/api/runs/run_browser/evidence/artifacts': { artifacts: [{ name: 'review.md', size: reviewMarkdown.length, modifiedAt: '2026-09-16T00:00:00Z' }, { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z' }], truncated: false, omitted: 0 },
   '/api/runs/run_browser/evidence/artifacts/review.md': { artifact: { name: 'review.md', size: reviewMarkdown.length, modifiedAt: '2026-09-16T00:00:00Z', kind: 'markdown', text: evidenceText(reviewMarkdown) } },
   '/api/runs/run_browser/evidence/artifacts/logs/worker.log': { artifact: { name: 'logs/worker.log', size: 40, modifiedAt: '2026-09-16T00:00:00Z', kind: 'text', text: evidenceText('worker started\nworker finished') } },
 }
@@ -515,7 +527,7 @@ export async function cockpitFixture(page: Page, options: { far?: boolean; run?:
     if (options.succeeded && path === '/api/files/directory') {
       const folder = url.searchParams.get('path') || ''
       if (!folder.startsWith(runArtifacts)) return route.fulfill({ status: 404, json: { success: false, error: { message: 'directory not found' } } })
-      return respond({ items: [{ name: 'assets', path: `${folder}/assets`, isDir: true }, { name: 'index.html', path: `${folder}/index.html`, isDir: false }] })
+      return respond({ items: [...(folder.endsWith('/assets') ? [] : [{ name: 'assets', path: `${folder}/assets`, isDir: true }]), { name: 'index.html', path: `${folder}/index.html`, isDir: false }] })
     }
     if (options.succeeded && path === '/api/files/preview') {
       const file = url.searchParams.get('path') || ''

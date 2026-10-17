@@ -507,7 +507,7 @@ paths:
       summary: List the run's artifact directory
       responses:
         '200':
-          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, sorted by name; data.truncated is true past 500 entries or 16 levels. Symlinks and hard links are followed; special files are omitted.
+          description: Enveloped data.artifacts lists name (relative), size and modifiedAt, declared output artifacts first (one representative per nonempty output), then other files by name; data.omitted counts files beyond 500 (the limit expands to retain output representatives), and data.truncated also marks directories beyond 16 levels. Directory cycles are skipped. Symlinks and hard links are followed; special files are omitted.
         '404':
           description: No such run
   /api/runs/{runId}/evidence/attempts:
@@ -550,7 +550,7 @@ paths:
       summary: Preview one artifact
       responses:
         '200':
-          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, binary), path (its absolute path on the daemon host) and, for textual kinds, text capped at 256 KiB.
+          description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, video, model, binary), path (its absolute path on the daemon host) and, for textual kinds, text capped at 256 KiB.
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
   /api/runs/{runId}/artifacts/{name}:
@@ -564,14 +564,14 @@ paths:
         type: string
     get:
       summary: Serve one artifact's bytes for a browser tab
-      description: Text is text/plain; charset=utf-8 with secret patterns redacted; PNG, JPEG, GIF and WebP keep their type; anything else is an application/octet-stream attachment. Every response has X-Content-Type-Options nosniff, Content-Security-Policy sandbox and Cache-Control no-store. Ranges are supported.
+      description: Text is text/plain; charset=utf-8 with secret patterns redacted; PNG, JPEG, GIF and WebP keep their type; PDFs are inline application/pdf. MP4/WebM stream inline as video/mp4 or video/webm with media-src 'self' in their CSP. GLB/glTF stream inline as model/gltf-binary or model/gltf+json, and .bin sidecars stream as application/octet-stream attachments. These streamed assets have no size cap; other content is buffered up to 16 MiB. Every response has X-Content-Type-Options nosniff, Content-Security-Policy sandbox and Cache-Control no-store. Ranges are supported.
       responses:
         '200':
           description: Artifact bytes
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory
         '413':
-          description: Artifact exceeds 16 MiB
+          description: Buffered artifact exceeds 16 MiB
   /api/files/preview:
     parameters:
     - in: query
@@ -584,7 +584,7 @@ paths:
       summary: Preview a referenced file
       responses:
         '200':
-          description: Enveloped data.file contains path (the absolute path read), name, size, modifiedAt, kind (markdown, json, text, image, binary) and, for textual kinds, text capped at 256 KiB with secret patterns redacted.
+          description: Enveloped data.file contains path (the absolute path read), name, size, modifiedAt, kind (markdown, json, text, image, pdf, video, model, binary) and, for textual kinds, text capped at 256 KiB with secret patterns redacted.
         '400':
           description: A relative path, which has no base; use an absolute path
         '403':
@@ -601,7 +601,7 @@ paths:
         type: string
     get:
       summary: Serve a referenced file's bytes, like a raw run artifact
-      description: Text is text/plain; charset=utf-8 with secret patterns redacted; PNG, JPEG, GIF and WebP keep their type; anything else is an application/octet-stream attachment. Every response has X-Content-Type-Options nosniff, Content-Security-Policy sandbox and Cache-Control no-store.
+      description: Text is text/plain; charset=utf-8 with secret patterns redacted; PNG, JPEG, GIF and WebP keep their type; PDFs are inline application/pdf. MP4/WebM stream inline as video/mp4 or video/webm with media-src 'self' in their CSP. GLB/glTF stream inline as model/gltf-binary or model/gltf+json, and .bin sidecars stream as application/octet-stream attachments. These streamed assets have no size cap; other content is buffered up to 16 MiB. Every response has X-Content-Type-Options nosniff, Content-Security-Policy sandbox and Cache-Control no-store.
       responses:
         '200':
           description: File bytes
@@ -612,7 +612,7 @@ paths:
         '404':
           description: No such file, or a directory or other non-regular file
         '413':
-          description: File exceeds 16 MiB
+          description: Buffered file exceeds 16 MiB
   /api/runs/{runId}/gates/{gateId}/verdict:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -1402,6 +1402,9 @@ components:
                             type: string
                     filesTruncated:
                       type: boolean
+                    filesOmitted:
+                      type: integer
+                      description: Files omitted from the output-first attempt listing.
     PendingPick:
       type: object
       description: A human gate's pending pick of a step's best attempt at its spent Limit card

@@ -207,7 +207,7 @@ func TestPeerConversationLocksAcrossProcesses(t *testing.T) {
 	}
 	// The lock leaves nothing beside the journal, so a run's produced
 	// artifacts show the conversation and no coordination file (archon-dbk).
-	artifacts, _, err := store.ListRunArtifacts(id.RunID)
+	artifacts, _, _, err := store.ListRunArtifacts(id.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}

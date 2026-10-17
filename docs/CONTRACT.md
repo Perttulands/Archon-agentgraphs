@@ -2012,9 +2012,13 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   its seat, read from the path that event recorded. Any other sequence
   returns 404.
 - `/api/runs/{runId}/evidence/artifacts` returns `data.artifacts`
-  (`name`, `size`, `modifiedAt`), sorted by name relative to
-  `<state-dir>/.archon/artifacts/<runId>`, and `data.truncated` past 500
-  entries or 16 directory levels. A run without artifacts lists none.
+  (`name`, `size`, `modifiedAt`), relative to
+  `<state-dir>/.archon/artifacts/<runId>`. Accepted output files and folders
+  come first, with at least one file per nonempty output folder, then other
+  files in name order. The list holds 500 files (or more when needed for
+  one representative per output), with `data.omitted` counting unlisted files
+  and `data.truncated` when files are omitted or exceed 16 directory levels.
+  Directory cycles are skipped. A run without artifacts lists none.
 - `/api/runs/{runId}/evidence/attempts` returns `data.attempts`, `{runId, steps}`:
   every step that ran, in the order it first ran, or with `?node=<id>` only
   that step (an unknown step returns 404). A step has `nodeId`, `title`,
@@ -2026,7 +2030,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   (`name` relative to the run's artifact directory and absolute `path`, when
   it exists), `outputs` (`portId`, `label`, `kind`, `text`, and for a path
   `path`, `artifact` for the artifact routes, `size` and `fileKind`: `image`,
-  `pdf`, `markdown`, `json`, `text`, `binary` or `folder`), `verdicts`, each
+  `pdf`, `video`, `model`, `markdown`, `json`, `text`, `binary` or `folder`), `verdicts`, each
   gate evaluation of that attempt's output, by the `origin` of the input the
   gate judged, so a gate on another gate's fail route or after a human pass
   judges the attempt whose output it carries (`gateId`, `gateTitle`,
@@ -2038,7 +2042,10 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   attempt](#picking-the-best-attempt); the pick's own verdict is not one of its
   `verdicts`), and `files`,
   the regular files in its directory (`name`, `path`, `size`, `modifiedAt`,
-  `kind`), with `filesTruncated` past the artifact list's limits. Bytes come
+  `kind`), ordered like the run artifact list with declared outputs first,
+  `filesOmitted` counting unlisted files and `filesTruncated` past its limits.
+  Output folders open complete directory listings, with navigable subfolders.
+  Bytes come
   from `/api/runs/{runId}/artifacts/{name...}` by a file's `name` or an
   output's `artifact`. Texts share the node evidence caps, spent on the newest
   attempts first, so a long run cuts its oldest attempts' texts. `archon run attempts
@@ -2048,7 +2055,7 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   offline or through `--server`.
 - `/api/runs/{runId}/evidence/artifacts/{name...}` returns
   `data.artifact` (`name`, `size`, `modifiedAt`, `kind` `markdown`, `json`,
-  `text`, `image`, `pdf` or `binary`, and `path`, its absolute path on the
+  `text`, `image`, `pdf`, `video`, `model` or `binary`, and `path`, its absolute path on the
   daemon host), with `text` capped at 256 KiB for textual kinds. A `.pdf` file
   that starts with `%PDF-` is `pdf`.
 - `/api/runs/{runId}/evidence/mission` returns `data.mission`
@@ -2056,13 +2063,22 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   mission's TOML as the run froze
   it at admission, which later edits never change.
 - `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
-  up to 16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
+  with MP4, WebM, GLB, glTF and binary glTF sidecars (`.bin`) streamed
+  directly from disk without a size cap. Other files are buffered up to
+  16 MiB; larger files return 413. Text is `text/plain; charset=utf-8`
   and redacted, PNG, JPEG, GIF and WebP keep their image type, a `pdf` is an
-  inline `application/pdf`, and anything else is an `application/octet-stream`
+  inline `application/pdf`. MP4 and WebM are inline `video/mp4` and
+  `video/webm`; GLB and glTF are inline `model/gltf-binary` and
+  `model/gltf+json`. Models and their binary sidecars remain byte-exact.
+  Other binary content is an `application/octet-stream`
   attachment. Responses carry
   `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox` and
   `Cache-Control: no-store`, and support ranges. The file window is a reader,
   so HTML is served as text and nothing a file contains runs in the cockpit.
+  Video responses add `media-src 'self'` to their CSP. Native video controls
+  open in file windows and attempt evidence. GLB/glTF previews load the 3D
+  viewer on demand; relative glTF buffers and textures resolve beside the model.
+  Unsupported formats such as FBX remain downloadable.
 - `/api/runs/{runId}/gates/{gateId}/request` is the evidence API's
   view of a human request still waiting for an answer. For the gate's latest
   request, while it is pending, it returns `gateId`, `requestedSeq`, the frozen
@@ -2132,8 +2148,8 @@ hand-written one returns 400, "use an absolute path".
 - `GET /api/files/preview?path=<ref>` returns `data.file` (`path`
   read, `name`, `size`, `modifiedAt`, `kind` as for artifacts), with `text`
   capped at 256 KiB for textual kinds.
-- `GET /api/files/raw?path=<ref>` returns the bytes up to 16 MiB with
-  the raw artifact route's content types and headers; larger files return 413.
+- `GET /api/files/raw?path=<ref>` uses the raw artifact route's streaming,
+  size limits, content types, range support and headers.
 
 A file the daemon's user may not read returns 403. A missing path, a
 directory or another non-regular file returns 404, because reading a FIFO or

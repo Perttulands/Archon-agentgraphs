@@ -44,49 +44,73 @@ type RunBriefEvidence struct {
 	Text        EvidenceText `json:"text"`
 }
 
-// RunArtifactContent is a whole artifact read for the raw route: textual
+// RunArtifactContent is a buffered text or streaming media response: textual
 // content is redacted like every other served text.
 type RunArtifactContent struct {
 	Name        string
 	ModifiedAt  time.Time
 	ContentType string
 	Body        []byte
+	// File is streamed by the HTTP handler, which must close it.
+	File *os.File
 }
 
-// ListRunArtifacts lists regular files under the run's artifact directory,
-// following symlinks, sorted by name. Truncated reports entries past the count or depth
-// caps. A run without an artifact directory has none.
-func (s *Store) ListRunArtifacts(runID string) ([]RunArtifactEntry, bool, error) {
-	if _, err := s.ReadRunEvents(runID); err != nil {
-		return nil, false, evidenceNotFound(err)
+// ListRunArtifacts lists outputs first and counts files outside the returned list.
+func (s *Store) ListRunArtifacts(runID string) ([]RunArtifactEntry, bool, int, error) {
+	events, err := s.ReadRunEvents(runID)
+	if err != nil {
+		return nil, false, 0, evidenceNotFound(err)
 	}
 	root, err := s.openRunArtifactsRoot(runID)
 	if errors.Is(err, ErrNotFound) {
-		return []RunArtifactEntry{}, false, nil
+		return []RunArtifactEntry{}, false, 0, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	defer root.Close()
 	entries := []RunArtifactEntry{}
 	truncated := false
 	if err := listRunArtifactsAt(root, "", 1, &entries, &truncated); err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
-	return entries, truncated, nil
+	outputs := []AttemptOutput{}
+	for _, event := range events {
+		if event.Type != RunEventNodeOutput {
+			continue
+		}
+		for _, payload := range outputPayloadsFromAny(event.Data["outputs"]) {
+			if ref := evidenceRef(payload.Ref, s.runArtifactRoots(runID)); ref != nil && ref.Artifact != "" {
+				outputs = append(outputs, AttemptOutput{Artifact: ref.Artifact, Kind: payload.Kind})
+			}
+		}
+	}
+	sort.Slice(outputs, func(i, j int) bool { return outputs[i].Artifact < outputs[j].Artifact })
+	entries, omitted := selectEvidenceArtifacts(entries, outputs)
+	return entries, truncated || omitted > 0, omitted, nil
 }
 
 func listRunArtifactsAt(directory *os.File, prefix string, depth int, entries *[]RunArtifactEntry, truncated *bool) error {
+	return listRunArtifactsWithAncestors(directory, prefix, depth, entries, truncated, nil)
+}
+
+func listRunArtifactsWithAncestors(directory *os.File, prefix string, depth int, entries *[]RunArtifactEntry, truncated *bool, ancestors []os.FileInfo) error {
+	info, err := directory.Stat()
+	if err != nil {
+		return err
+	}
+	for _, ancestor := range ancestors {
+		if os.SameFile(info, ancestor) {
+			return nil
+		}
+	}
+	ancestors = append(ancestors, info)
 	names, err := directory.Readdirnames(-1)
 	if err != nil {
 		return err
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if len(*entries) >= EvidenceArtifactListMax {
-			*truncated = true
-			return nil
-		}
 		if !validPathComponent(name) {
 			continue
 		}
@@ -97,7 +121,7 @@ func listRunArtifactsAt(directory *os.File, prefix string, depth int, entries *[
 				*truncated = true
 				continue
 			}
-			err = listRunArtifactsAt(child, prefix+name+"/", depth+1, entries, truncated)
+			err = listRunArtifactsWithAncestors(child, prefix+name+"/", depth+1, entries, truncated, ancestors)
 			_ = child.Close()
 			if err != nil {
 				return err
@@ -157,11 +181,15 @@ func (s *Store) PreviewRunArtifact(runID, name string) (*RunArtifactPreview, err
 	return preview, nil
 }
 
-// ReadRunArtifact reads a whole artifact for the raw route, up to the raw cap.
+// ReadRunArtifact streams media or buffers other artifacts up to the raw cap.
+// The caller must close content.File when non-nil.
 func (s *Store) ReadRunArtifact(runID, name string) (*RunArtifactContent, error) {
 	file, info, err := s.openRunArtifact(runID, name)
 	if err != nil {
 		return nil, err
+	}
+	if content := evidenceStreamContent(name, file, info); content != nil {
+		return content, nil
 	}
 	defer file.Close()
 	if info.Size() > EvidenceArtifactRawMaxBytes {
@@ -179,7 +207,7 @@ func (s *Store) ReadRunArtifact(runID, name string) (*RunArtifactContent, error)
 
 // evidenceTextKind reports whether a preview of this kind carries text.
 func evidenceTextKind(kind string) bool {
-	return kind != "image" && kind != "pdf" && kind != "binary"
+	return kind != "image" && kind != "pdf" && kind != "binary" && kind != "video" && kind != "model"
 }
 
 // evidenceRawContent types a whole file for a raw route: known images and PDFs
@@ -503,6 +531,12 @@ var evidenceImageTypes = map[string]string{
 
 func evidenceArtifactKind(name string, head []byte, partial bool) string {
 	extension := strings.ToLower(path.Ext(name))
+	if extension == ".mp4" || extension == ".webm" {
+		return "video"
+	}
+	if extension == ".glb" || extension == ".gltf" {
+		return "model"
+	}
 	if _, ok := evidenceImageTypes[extension]; ok {
 		return "image"
 	}
@@ -537,4 +571,18 @@ func evidenceTextual(raw []byte, partial bool) bool {
 		}
 	}
 	return false
+}
+
+// These assets must remain byte-exact and seekable, including glTF sidecar
+// buffers. Unlike redacted text they do not need a whole-file memory buffer.
+func evidenceStreamContent(name string, file *os.File, info os.FileInfo) *RunArtifactContent {
+	contentType := map[string]string{
+		".mp4": "video/mp4", ".webm": "video/webm",
+		".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
+		".bin": "application/octet-stream",
+	}[strings.ToLower(path.Ext(name))]
+	if contentType == "" {
+		return nil
+	}
+	return &RunArtifactContent{Name: path.Base(name), ModifiedAt: info.ModTime(), ContentType: contentType, File: file}
 }

@@ -55,6 +55,7 @@ type StepAttempt struct {
 	Outputs        []AttemptOutput   `json:"outputs"`
 	Verdicts       []AttemptVerdict  `json:"verdicts"`
 	Files          []AttemptFile     `json:"files"`
+	FilesOmitted   int               `json:"filesOmitted,omitempty"`
 	FilesTruncated bool              `json:"filesTruncated,omitempty"`
 	// Picked marks the attempt a spent limit picked as the step's best
 	// (archon-gihe).
@@ -161,7 +162,7 @@ func (s *Store) ProjectRunAttempts(runID, nodeID string) (*RunAttemptsEvidence, 
 				continue
 			}
 			attempt.Directory = &AttemptDirectory{Name: name, Path: dir}
-			if attempt.Files, attempt.FilesTruncated, err = s.listAttemptFiles(runID, artifactsDir, step.NodeID, attempt.Attempt); err != nil {
+			if attempt.Files, attempt.FilesTruncated, attempt.FilesOmitted, err = s.listAttemptFiles(runID, artifactsDir, step.NodeID, attempt.Attempt, attempt.Outputs); err != nil {
 				return nil, err
 			}
 		}
@@ -513,20 +514,20 @@ func classifyEvidenceFile(path string, size int64) string {
 
 // listAttemptFiles lists the regular files in an attempt's artifact directory,
 // named relative to the run's artifact directory.
-func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int) ([]AttemptFile, bool, error) {
+func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int, outputs []AttemptOutput) ([]AttemptFile, bool, int, error) {
 	root, err := s.openRunArtifactsRoot(runID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return []AttemptFile{}, false, nil
+			return []AttemptFile{}, false, 0, nil
 		}
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	current := root
 	for _, component := range []string{nodeID, strconv.Itoa(attempt)} {
 		next, err := openFollowingAt(current, component, true)
 		_ = current.Close()
 		if err != nil {
-			return []AttemptFile{}, false, nil
+			return []AttemptFile{}, false, 0, nil
 		}
 		current = next
 	}
@@ -534,12 +535,13 @@ func (s *Store) listAttemptFiles(runID, artifactsDir, nodeID string, attempt int
 	entries := []RunArtifactEntry{}
 	truncated := false
 	if err := listRunArtifactsAt(current, nodeID+"/"+strconv.Itoa(attempt)+"/", 3, &entries, &truncated); err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
+	entries, omitted := selectEvidenceArtifacts(entries, outputs)
 	files := make([]AttemptFile, 0, len(entries))
 	for _, entry := range entries {
 		path := filepath.Join(artifactsDir, filepath.FromSlash(entry.Name))
 		files = append(files, AttemptFile{Name: entry.Name, Path: path, Size: entry.Size, ModifiedAt: entry.ModifiedAt, Kind: classifyEvidenceFile(path, entry.Size)})
 	}
-	return files, truncated, nil
+	return files, truncated || omitted > 0, omitted, nil
 }

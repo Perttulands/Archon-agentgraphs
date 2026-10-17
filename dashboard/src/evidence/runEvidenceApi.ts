@@ -162,7 +162,7 @@ export interface RunArtifactEntry {
   modifiedAt: string
 }
 
-export type ArtifactKind = 'markdown' | 'json' | 'text' | 'image' | 'pdf' | 'binary'
+export type ArtifactKind = 'markdown' | 'json' | 'text' | 'image' | 'pdf' | 'binary' | 'video' | 'model'
 
 export interface RunArtifactPreview extends RunArtifactEntry {
   kind: ArtifactKind
@@ -192,9 +192,9 @@ export async function fetchRunBrief(runId: string, dispatchSeq: number): Promise
   return data.brief
 }
 
-export async function fetchRunArtifacts(runId: string): Promise<{ artifacts: RunArtifactEntry[]; truncated: boolean }> {
-  const { data } = await fetchApi<{ artifacts?: RunArtifactEntry[]; truncated?: boolean }>(`${runPath(runId)}/evidence/artifacts`)
-  return { artifacts: data.artifacts || [], truncated: Boolean(data.truncated) }
+export async function fetchRunArtifacts(runId: string): Promise<{ artifacts: RunArtifactEntry[]; truncated: boolean; omitted: number }> {
+  const { data } = await fetchApi<{ artifacts?: RunArtifactEntry[]; truncated?: boolean; omitted?: number }>(`${runPath(runId)}/evidence/artifacts`)
+  return { artifacts: data.artifacts || [], truncated: Boolean(data.truncated), omitted: data.omitted || 0 }
 }
 
 export async function fetchArtifactPreview(runId: string, name: string): Promise<RunArtifactPreview> {
@@ -263,6 +263,7 @@ export interface StepAttempt {
   verdicts: AttemptVerdict[]
   files: AttemptFile[]
   filesTruncated?: boolean
+  filesOmitted?: number
   /** Set when a spent Limit card's best-of-N pick chose this attempt (archon-gihe); it routes on as the gate's pass. */
   picked?: AttemptPick
 }
