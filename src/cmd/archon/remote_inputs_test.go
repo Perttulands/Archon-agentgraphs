@@ -206,15 +206,15 @@ func TestRemoteGateResponseFileErrorsNeverSend(t *testing.T) {
 	}
 }
 
-func TestRemoteRunDriverSelection(t *testing.T) {
+func TestRemoteRunActorSelection(t *testing.T) {
 	for _, tc := range []struct {
 		env  string
 		args []string
 		want string
 	}{
 		{"", nil, "agent:archon"}, {"agent:environment", nil, "agent:environment"},
-		{"agent:environment", []string{"--by", "agent:explicit"}, "agent:explicit"},
-		{"agent:environment", []string{"--actor", "agent:actor", "--by", "agent:explicit"}, "agent:explicit"},
+		{"agent:environment", []string{"--actor", "agent:explicit"}, "agent:explicit"},
+		{"", []string{"--actor", "agent:explicit"}, "agent:explicit"},
 	} {
 		t.Run(tc.want+strings.Join(tc.args, ""), func(t *testing.T) {
 			t.Setenv("ARCHON_DRIVER", tc.env)
@@ -242,5 +242,46 @@ func TestRemoteRunDriverSelection(t *testing.T) {
 				t.Fatalf("driver %q, want %q", actor, tc.want)
 			}
 		})
+	}
+}
+
+func TestRemoteMutationActors(t *testing.T) {
+	for _, command := range [][]string{
+		{"run", "resume", "run_proof"},
+		{"gate", "approve", "run_proof", "gate_proof", "--requested-seq", "1"},
+		{"gate", "reject", "run_proof", "gate_proof", "--requested-seq", "1"},
+		{"gate", "pick", "run_proof", "gate_proof", "--requested-seq", "1", "--attempt", "1"},
+	} {
+		for _, tc := range []struct{ env, explicit, want string }{
+			{"", "", "agent:archon"},
+			{"agent:environment", "", "agent:environment"},
+			{"agent:environment", "agent:explicit", "agent:explicit"},
+		} {
+			t.Run(strings.Join(command, "/")+"/"+tc.want, func(t *testing.T) {
+				t.Setenv("ARCHON_DRIVER", tc.env)
+				var actor string
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					var body struct {
+						Actor string `json:"actor"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					actor = body.Actor
+					fmt.Fprint(w, `{"data":{}}`)
+				}))
+				defer server.Close()
+				args := append([]string{"--server", server.URL}, command...)
+				if tc.explicit != "" {
+					args = append(args, "--actor", tc.explicit)
+				}
+				if _, stderr, code := runArchon(t, &fakeTmux{}, args...); code != 0 {
+					t.Fatalf("exit %d: %s", code, stderr)
+				}
+				if actor != tc.want {
+					t.Fatalf("actor = %q, want %q", actor, tc.want)
+				}
+			})
+		}
 	}
 }

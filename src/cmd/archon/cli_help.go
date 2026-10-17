@@ -45,7 +45,7 @@ var nounHelps = []nounHelp{
 		{"input", "<mission> [<name>] [--kind text|file|folder] [--required | --optional] [--description <text>] [--delete] [--json]", "list the inputs a run supplies, or with a name declare, change or --delete that input. A mission that declares none takes one required text input, brief. A new input is optional text unless the flags say otherwise, and only the flags you give change an existing one; step briefs reference it as {name}"},
 		{"output", "<mission> [<name>] [--kind text|file|folder] [--from <step-id>:<port-id>] [--required | --optional] [--description <text>] [--delete] [--json]", "list the outputs a successful run promises, or with a name declare, change or --delete that output. Each is bound with --from to one step output port of the same kind; when the run reaches a done End its value is that port's latest accepted output, a snapshot path for a file or folder. A missing required output fails the run. A new output is optional text unless the flags say otherwise, and only the flags you give change an existing one"},
 		{"wire", "<mission> [<input>] <to-node:port> [--json]", "wire the Input card to a step"},
-		{"run", "<mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--by name] [--actor actor] [--json]", "start a run. Required: <mission>, and an --input or --input-file for each input the mission requires (archon mission input <mission> lists them); every other flag is optional. The mission's Limit cards set its limits; it has none without one"},
+		{"run", "<mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]", "start a run. Required: <mission>, and an --input or --input-file for each input the mission requires (archon mission input <mission> lists them); every other flag is optional. The mission's Limit cards set its limits; it has none without one"},
 	}, note: "<input> may be left out when the mission has one Input card."},
 	{noun: "formation", summary: "steps: the agents that do the work", about: "A formation is a step: the team of agents that does it, solo, peer or orchestrated.", commands: []commandHelp{
 		{"delete", "<mission> <formation> [--json]", "remove a step, its connections and its Limit cards"},
@@ -62,7 +62,7 @@ var nounHelps = []nounHelp{
 		{"set-port", "<mission> <formation> <port> [--label <label>] [--kind text|file|folder] [--json]", "relabel a port, or set what an output port carries. <port> is the port's ID or label"},
 		{"wire", "<mission> <from-node:port> <to-node:port> [--join] [--json]", "connect two ports. --join adds an input when the target is already fed"},
 		{"unwire", "<mission> <from-node:port> <to-node:port> [--json]", "remove a connection"},
-		{"run", "<mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--by name] [--actor actor] [--json]", "run one step on its own. It takes the mission's inputs, as a mission run does"},
+		{"run", "<mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]", "run one step on its own. It takes the mission's inputs, as a mission run does"},
 	}},
 	{noun: "gate", summary: "checks between steps, and human verdicts", about: "A gate checks work between steps with code, a judge formation or a human, and routes it on pass or fail.", commands: []commandHelp{
 		{"delete", "<mission> <gate> [--json]", "remove a gate and its routes, including its judge attachment; judge formations remain"},
@@ -70,9 +70,9 @@ var nounHelps = []nounHelp{
 		{"update", "<mission> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--file path]... [--json]", "change a gate. Only the fields given change, and an empty value clears one"},
 		{"judge", "<mission> <gate> --chain f1,f2 | --detach [--json]", "attach a judge chain of formations, or detach it"},
 		{"request", "<runId> <gateId> [--json]", "read a waiting human gate's question, routed input and where each verdict leads. Needs --server"},
-		{"approve", "<runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--json]", "pass a waiting human gate. The response travels with the gate's input"},
-		{"reject", "<runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--json]", "send a waiting human gate's work back. The response is the feedback"},
-		{"pick", "<runId> <gateId> --attempt <n> [--reason text] [--requested-seq <seq>] [--relayed-by slot-id] [--json]", "pick the best attempt of a step whose spent Limit card asks the operator to pick. The picked attempt goes on through the gate's pass route; without --requested-seq the gate's pending pick is read first"},
+		{"approve", "<runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--actor actor] [--json]", "pass a waiting human gate. The response travels with the gate's input"},
+		{"reject", "<runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--actor actor] [--json]", "send a waiting human gate's work back. The response is the feedback"},
+		{"pick", "<runId> <gateId> --attempt <n> [--reason text] [--requested-seq <seq>] [--relayed-by slot-id] [--actor actor] [--json]", "pick the best attempt of a step whose spent Limit card asks the operator to pick. The picked attempt goes on through the gate's pass route; without --requested-seq the gate's pending pick is read first"},
 	}},
 	{noun: "end", summary: "End nodes, which end a path on purpose", about: "An End node ends a path on purpose, done or rejected.", commands: []commandHelp{
 		{"create", "<mission> [--outcome done|rejected] [--title text] [--x n] [--y n] [--json]", "add an End node. Wire a route into it with archon formation wire <mission> <node:port> <end-id>:in"},

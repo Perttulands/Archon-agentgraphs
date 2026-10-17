@@ -128,7 +128,7 @@ func TestArchonFormationAssignAcceptsAModelOutsideTheCatalog(t *testing.T) {
 	if _, stderr, code := archon("formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code", "--model", "sonnet", "--effort", "xhigh"); code != 0 || stderr != "" {
 		t.Fatalf("known model: code=%d stderr=%q", code, stderr)
 	}
-	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5, claude-fable-5-1. Other model names are accepted; the harness decides.") {
+	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable. Other model names are accepted; the harness decides.") {
 		t.Fatalf("usage does not name the known models:\n%s", stderr)
 	}
 }

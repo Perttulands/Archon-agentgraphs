@@ -168,7 +168,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
       const harnesses = [home, ...catalog.harnesses.map(harness => harness.id).filter(id => id !== home)]
       // A model outside the catalog is still the slot's own: it heads its harness's rows, as the current value.
       const own = draft.model && offCatalog(catalog, draft)
-        ? [{ id: `${home}:${draft.model}`, label: draft.model, hint: 'not in the catalog; the harness decides', tag: 'warning', apply: () => land(withFreeModel(draft, draft.model)) }]
+        ? [{ id: `${home}:${draft.model}`, label: draft.model, hint: 'not in the catalog; the harness decides', apply: () => land(withFreeModel(draft, draft.model)) }]
         : []
       const out: Row[] = harnesses.flatMap(harness => [
         ...(harness === home ? own : []),
@@ -178,7 +178,7 @@ export function SentenceWindow({ store, host, open, saved, stage = viewportStage
         })),
         ...(harness === home ? [{ id: `${harness}:`, label: 'default model', hint: `whatever ${harnessName(harness)} runs by default`, apply: () => land(withModel(catalog, draft, harness, '')) }] : []),
       ]).filter(row => !f || row.label.startsWith(f) || row.label.split('-').some(part => part.startsWith(f)))
-      if (f && !out.length && /[-.\d]/.test(f)) out.push({ id: 'free', label: f, hint: 'use it: not in the catalog; the harness decides', tag: 'warning', apply: () => land(withFreeModel(draft, f)) })
+      if (f && !out.length && /[-.\d]/.test(f)) out.push({ id: 'free', label: f, hint: 'use it: not in the catalog; the harness decides', apply: () => land(withFreeModel(draft, f)) })
       return out
     }
     return efforts.map(effort => {

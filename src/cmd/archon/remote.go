@@ -140,6 +140,10 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags(name, stderr)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	var responseFile, missionFilter string
+	actor := new(string)
+	if verdict || name == "gate pick" || name == "run resume" {
+		actor = fs.String("actor", defaultCLIActor(), "acting agent")
+	}
 	mode, reason, relayedBy, seq, grant := new(string), new(string), new(string), new(int), new(bool)
 	takeFail, pickBest, attempt := new(bool), new(bool), new(int)
 	switch {
@@ -181,7 +185,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		if args[1] == "abort" {
 			body = map[string]any{"reason": *reason, "requestedBy": "operator:archon"}
 		} else {
-			body = map[string]any{"reason": *reason, "actor": "operator:archon", "mode": *mode, "grant": *grant, "takeFail": *takeFail, "pickBest": *pickBest}
+			body = map[string]any{"reason": *reason, "actor": *actor, "mode": *mode, "grant": *grant, "takeFail": *takeFail, "pickBest": *pickBest}
 		}
 	case "run list":
 		path += "/runs"
@@ -262,7 +266,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path += "/runs/" + url.PathEscape(pos[0]) + "/gates/" + url.PathEscape(pos[1]) + "/verdict"
 		method = "POST"
-		fields := map[string]any{"requestedSeq": *seq, "verdict": verdict, "reason": *reason}
+		fields := map[string]any{"requestedSeq": *seq, "verdict": verdict, "reason": *reason, "actor": *actor}
 		if *relayedBy != "" {
 			fields["relayedBy"] = *relayedBy
 		}
@@ -295,7 +299,7 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 		}
 		path = gatePath + "/pick"
 		method = "POST"
-		fields := map[string]any{"requestedSeq": *seq, "attempt": *attempt, "reason": *reason}
+		fields := map[string]any{"requestedSeq": *seq, "attempt": *attempt, "reason": *reason, "actor": *actor}
 		if *relayedBy != "" {
 			fields["relayedBy"] = *relayedBy
 		}
@@ -338,14 +342,30 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			if err := json.Unmarshal(raw, &problems); err != nil {
 				return fail(stderr, err)
 			}
+			var board *formations.BoardDocument
+			if args[1] != "logs" {
+				raw, err := request("GET", "/api/runs/"+url.PathEscape(envelope.Data.RunID)+"/evidence/mission", nil)
+				if err != nil {
+					return fail(stderr, err)
+				}
+				var mission struct {
+					Data struct {
+						Mission formations.RunMissionEvidence `json:"mission"`
+					} `json:"data"`
+				}
+				if err := json.Unmarshal(raw, &mission); err != nil {
+					return fail(stderr, err)
+				}
+				board = mission.Data.Mission.Graph
+			}
 			if args[1] == "logs" {
 				for _, problem := range problems.Data.Problems {
 					fmt.Fprintf(stdout, "%d\t%s\t%s\t%s\n", problem.Seq, problem.Type, problem.Code, problem.Reason.Text)
 				}
 			} else if envelope.Data.Final {
-				writeRunEnd(stdout, &envelope.Data, problems.Data.Problems)
+				writeRunEnd(stdout, &envelope.Data, problems.Data.Problems, board)
 			} else {
-				writeCurrentRunBlock(stdout, problems.Data.Problems)
+				writeCurrentRunBlock(stdout, problems.Data.Problems, board)
 			}
 		}
 		return 0
@@ -362,7 +382,7 @@ func remoteUsage(stderr io.Writer, name string) int {
 // daemon. Both take the same run fields and the mission's inputs.
 func remoteRunStart(client *remoteClient, noun string, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags(noun+" run", stderr)
-	actor := fs.String("actor", "", "run actor")
+	actor := fs.String("actor", defaultCLIActor(), "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -394,7 +414,7 @@ func remoteRunStart(client *remoteClient, noun string, args []string, stdout, st
 		return fail(stderr, err)
 	}
 	board := &mission.Data.Board
-	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs, "actor": formations.RunDriver(*run.driver, *actor)}
+	fields := map[string]any{"mission": fs.Arg(0), "expectedRev": board.Rev, "cwd": *run.cwd, "beadId": *run.bead, "inputs": inputs, "actor": *actor}
 	if noun == "formation" {
 		formationID, err := resolveFormationSelector(board, fs.Arg(1))
 		if err != nil {

@@ -108,7 +108,7 @@ export function harnessForModel(catalog: StaffingCatalog, model: string): string
   return catalog.harnesses.find(harness => (harness.models || []).some(entry => entry.id === model))?.id || null
 }
 
-/** A model outside its harness's catalog: accepted, with a warning. A harness with no catalog warns of nothing. */
+/** A model outside its harness's catalog: accepted without a warning. */
 export function offCatalog(catalog: StaffingCatalog, staffing: Pick<Staffing, 'harness' | 'model'>): boolean {
   const models = modelsOf(catalog, staffing.harness)
   return Boolean(staffing.model) && models.length > 0 && !models.some(entry => entry.id === staffing.model)
@@ -280,7 +280,7 @@ export function withRole(catalog: StaffingCatalog, context: SlotContext, base: S
   }
 }
 
-/** A model outside the catalog is accepted on the slot's harness, with a warning. */
+/** A model outside the catalog is accepted on the slot's harness without a warning. */
 export function withFreeModel(base: Staffing, model: string): Outcome {
   return { next: { ...base, model }, note: `${model}: not in the catalog; the harness decides.` }
 }
@@ -322,7 +322,7 @@ export interface Parsed {
   harnessTyped: boolean
   /** A word several roles answer: shown as choices, never committed silently. */
   ambiguous?: { word: string; roles: RoleEntry[] }
-  /** A model the catalog does not know, accepted with a warning. */
+  /** A model the catalog does not know, accepted without a warning. */
   offCatalog?: string
 }
 
@@ -449,7 +449,7 @@ export function parseWords(catalog: StaffingCatalog, input: string, base: Staffi
       role = tied[0]
       read.push({ word: query, as: `role ${tied[0].name}` })
     } else if (roleWords.length === 1 && /[-.\d]/.test(roleWords[0]) && !closeModel(catalog, roleWords[0])) {
-      // A model name the catalog does not know yet: accepted, with a warning.
+      // A model name the catalog does not know yet: accepted without a warning.
       model = roleWords[0]
       offCatalogModel = roleWords[0]
       read.push({ word: roleWords[0], as: `model ${roleWords[0]}, not in the catalog` })

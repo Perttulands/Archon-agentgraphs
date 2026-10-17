@@ -407,8 +407,53 @@ func TestRunBeadReference(t *testing.T) {
 			}
 		})
 	}
-	// The run identity wins over a same-named input; substitution is single-pass.
-	if got := SubstituteRunInputs("{bead} {{bead}}", []MissionInput{{Name: "bead"}}, []RunInput{{Name: "bead", Value: "input-value"}}, "run-value"); got != "run-value {bead}" {
-		t.Fatal(got)
+}
+
+func TestDeclaredBeadInputWins(t *testing.T) {
+	for _, runBead := range []string{"", "run-value"} {
+		for _, tc := range []struct {
+			name     string
+			declared []MissionInput
+			inputs   []RunInput
+			want     string
+		}{
+			{"required", []MissionInput{{Name: "bead", Required: true}}, []RunInput{{Name: "bead", Value: "input-value"}}, "input-value"},
+			{"optional omitted", []MissionInput{{Name: "bead"}}, nil, "(not supplied)"},
+			{"optional empty", []MissionInput{{Name: "bead"}}, []RunInput{{Name: "bead", Value: ""}}, ""},
+			{"undeclared", nil, nil, runBead},
+		} {
+			t.Run(tc.name+"/"+runBead, func(t *testing.T) {
+				if got := SubstituteRunInputs("{bead} {{bead}}", tc.declared, tc.inputs, runBead); got != tc.want+" {bead}" {
+					t.Fatal(got)
+				}
+			})
+		}
+	}
+}
+
+func TestRunDeclaredBeadReachesSeat(t *testing.T) {
+	for _, bead := range []string{"", "run-bead"} {
+		t.Run(bead, func(t *testing.T) {
+			store, personas := s4RunFixture(t)
+			createS4Persona(t, personas, "scout")
+			fixture := inputsBoardFixture(`inputs = [{ name = "bead", kind = "text", required = true }]`)
+			writeFixture(t, store.BoardPath("session-search"), setWorkBriefs(fixture, "Work {bead}.", "Ship {bead}."))
+			board, err := store.ReadBoard("session-search")
+			if err != nil {
+				t.Fatal(err)
+			}
+			executor := &fakeRunExecutor{}
+			engine := NewRunEngine(store, personas, executor)
+			_, err = engine.RunMission("session-search", RunStartRequest{
+				MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev,
+				BeadID: bead, Inputs: map[string]string{"bead": "input-bead"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := executor.calls[0].Brief.Goal; got != "Work input-bead." {
+				t.Fatal(got)
+			}
+		})
 	}
 }

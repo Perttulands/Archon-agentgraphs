@@ -51,7 +51,7 @@ func TestAgentsRosterOffersEachHarnessesModels(t *testing.T) {
 		models[harness.ID] = harness.Models
 	}
 	want := map[string][]formations.HarnessModel{
-		"claude-code": {{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}, {ID: "claude-opus-5-5"}, {ID: "claude-sonnet-5-5"}, {ID: "claude-haiku-5-5"}, {ID: "claude-fable-5-1"}},
+		"claude-code": {{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}},
 		"openai-codex": {
 			{ID: "gpt-6-astra", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
 			{ID: "gpt-5.5", Efforts: []string{"low", "medium", "high", "xhigh"}},

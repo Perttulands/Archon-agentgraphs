@@ -1283,7 +1283,7 @@ func runGateVerdict(store *formations.Store, args []string, stdout, stderr io.Wr
 	}
 	fs := commandFlags(name, stderr)
 	reason := fs.String("response", "", "the response: approve delivers it downstream with the gate input, reject sends it back as feedback")
-	actor := fs.String("actor", "human:operator", "deciding actor")
+	actor := fs.String("actor", defaultCLIActor(), "deciding actor")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1331,7 +1331,7 @@ func runGatePick(store *formations.Store, args []string, stdout, stderr io.Write
 	attempt := fs.Int("attempt", 0, pickAttemptUsage)
 	reason := fs.String("reason", "", pickReasonUsage)
 	seq := fs.Int("requested-seq", 0, "exact pending human request sequence")
-	actor := fs.String("actor", "human:operator", "deciding actor")
+	actor := fs.String("actor", defaultCLIActor(), "deciding actor")
 	relayedBy := fs.String("relayed-by", "", relayedByUsage)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1626,7 +1626,6 @@ func runMissionUpdate(store *formations.Store, args []string, stdout, stderr io.
 type runStartFlags struct {
 	cwd          *string
 	bead         *string
-	driver       *string
 	contextPaths stringList
 	inputs       runInputFlags
 }
@@ -1634,7 +1633,6 @@ type runStartFlags struct {
 func registerRunStartFlags(fs *flag.FlagSet) *runStartFlags {
 	flags := &runStartFlags{}
 	flags.cwd = fs.String("cwd", "", "absolute existing directory the agents work in; omit to create a workspace for the run")
-	flags.driver = fs.String("by", "", "who drives the run; defaults to ARCHON_DRIVER or agent:archon")
 	flags.bead = fs.String("bead", "", "the Beads issue the run belongs to")
 	fs.Var(&flags.contextPaths, "context-path", "absolute file or directory the agents inspect as context; repeat for more")
 	flags.inputs.register(fs)
@@ -1656,7 +1654,7 @@ func (f *runStartFlags) checkCwd() error {
 
 func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("mission run", stderr)
-	actor := fs.String("actor", "", "run actor")
+	actor := fs.String("actor", defaultCLIActor(), "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1702,7 +1700,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 		ContextPaths:      run.contextPaths,
 		BeadID:            *run.bead,
 		Inputs:            inputs,
-		Actor:             formations.RunDriver(*run.driver, *actor),
+		Actor:             *actor,
 		ExpectedBoardETag: board.ETag,
 		ExpectedBoardRev:  board.Rev,
 		Personas:          personas,
@@ -1715,7 +1713,7 @@ func runMissionRun(store *formations.Store, args []string, stdout, stderr io.Wri
 
 func runFormationRun(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("formation run", stderr)
-	actor := fs.String("actor", "", "run actor")
+	actor := fs.String("actor", defaultCLIActor(), "run actor")
 	run := registerRunStartFlags(fs)
 	jsonOut := fs.Bool("json", false, "write JSON")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"json": true})); err != nil {
@@ -1748,7 +1746,7 @@ func runFormationRun(store *formations.Store, args []string, stdout, stderr io.W
 	defer release()
 	engine := newArchonRunEngine(store, personas, "archon")
 	status, err := engine.RunFormation(slug, formationID, formations.FormationRunRequest{
-		Actor:             formations.RunDriver(*run.driver, *actor),
+		Actor:             *actor,
 		Personas:          personas,
 		Cwd:               *run.cwd,
 		ContextPaths:      run.contextPaths,
@@ -1821,10 +1819,14 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 		if err != nil {
 			return fail(stderr, err)
 		}
+		board, err := store.ReadRunBoard(status.RunID)
+		if err != nil {
+			return fail(stderr, err)
+		}
 		if status.Final {
-			writeRunEnd(stdout, status, problems)
+			writeRunEnd(stdout, status, problems, board)
 		} else {
-			writeCurrentRunBlock(stdout, problems)
+			writeCurrentRunBlock(stdout, problems, board)
 		}
 	}
 	return 0
@@ -1849,7 +1851,7 @@ func writeRunStatusLines(stdout io.Writer, status *formations.RunStatusProjectio
 
 // writeRunEnd uses terminal evidence, never an earlier block or error, to
 // explain a final status just as run wait does.
-func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, problems []formations.RunProblem) {
+func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, problems []formations.RunProblem, board *formations.BoardDocument) {
 	fmt.Fprintf(stdout, "outcome\t%s\n", status.Status)
 	actor := status.EndedBy
 	for i := len(problems) - 1; i >= 0; i-- {
@@ -1858,7 +1860,7 @@ func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, probl
 			continue
 		}
 		if len(problem.NodeIDs) > 0 {
-			fmt.Fprintf(stdout, "step\t%s\n", strings.Join(problem.NodeIDs, ", "))
+			fmt.Fprintf(stdout, "step\t%s\n", runStepNames(problem.NodeIDs, board))
 		}
 		if problem.Code != "" {
 			fmt.Fprintf(stdout, "reason\t%s\t%s\n", problem.Code, problem.Reason.Text)
@@ -1880,7 +1882,7 @@ func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, probl
 
 // The error immediately preceding a block often holds the useful message;
 // the block itself can carry only a lifecycle reason such as executor_failed.
-func writeCurrentRunBlock(stdout io.Writer, problems []formations.RunProblem) {
+func writeCurrentRunBlock(stdout io.Writer, problems []formations.RunProblem, board *formations.BoardDocument) {
 	for i := len(problems) - 1; i >= 0; i-- {
 		problem := problems[i]
 		if problem.Type != formations.RunEventBlocked {
@@ -1890,7 +1892,7 @@ func writeCurrentRunBlock(stdout io.Writer, problems []formations.RunProblem) {
 			return
 		}
 		if len(problem.NodeIDs) > 0 {
-			fmt.Fprintf(stdout, "step\t%s\n", strings.Join(problem.NodeIDs, ", "))
+			fmt.Fprintf(stdout, "step\t%s\n", runStepNames(problem.NodeIDs, board))
 		}
 		code, reason := problem.Code, problem.Reason.Text
 		if i > 0 && problems[i-1].Type == formations.RunEventError && problems[i-1].Seq == problem.Seq-1 {
@@ -2026,7 +2028,7 @@ func isBlockedResumable(status *formations.RunStatusProjection) bool {
 
 func runResume(store *formations.Store, args []string, stdout, stderr io.Writer) int {
 	fs := commandFlags("run resume", stderr)
-	actor := fs.String("actor", "agent:archon", "resume actor")
+	actor := fs.String("actor", defaultCLIActor(), "resume actor")
 	mode := fs.String("mode", "reattach", "resume mode")
 	reason := fs.String("reason", "", "resume reason")
 	grant := fs.Bool("grant", false, grantUsage)
@@ -3413,4 +3415,27 @@ func reorderFlags(args []string, boolFlags map[string]bool) []string {
 		}
 	}
 	return append(flags, positionals...)
+}
+
+// Actor defaults are resolved by the invoking CLI, never the daemon host.
+func defaultCLIActor() string {
+	if actor := strings.TrimSpace(os.Getenv("ARCHON_DRIVER")); actor != "" {
+		return actor
+	}
+	return "agent:archon"
+}
+
+// Titles come from the frozen mission, just as run attempts does.
+func runStepNames(ids []string, board *formations.BoardDocument) string {
+	names := make([]string, 0, len(ids))
+	for _, id := range ids {
+		name := id
+		if board != nil {
+			if title := board.NodeTitle(id); title != "" {
+				name += fmt.Sprintf(" %q", title)
+			}
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
 }

@@ -144,9 +144,10 @@ archon $S mission input "$M"
 `--delete` removes it. Without a name it lists what a run supplies, one line
 each: name, kind, required or optional, description. Names are a lowercase
 letter then lowercase letters, digits or underscores. Each seat's brief gets the
-value in place of `{name}`, or `(not supplied)` for an optional input left out;
-`{bead}` always takes the run's `--bead` value, or an empty string when none
-was supplied, even if an input is named `bead`. It needs no declaration.
+value in place of `{name}`, or `(not supplied)` for an optional input left out.
+A declared input named `bead` wins for `{bead}`, following the same input
+rules as other names. Otherwise `{bead}` takes the run's `--bead` value,
+or an empty string when none was supplied; it needs no declaration.
 Other references to undeclared names are the validation error
 `unknown_input_reference`. To show a seat a literal `{name}`, write `{{name}}`;
 it is never a reference. The first step also receives the inputs from the
@@ -208,11 +209,10 @@ named staffings listed by `agent characters`:
 `--character <id>` stamps one's role, harness, model and effort onto the slot,
 and any of those flags given beside it wins. `claude-code` takes
 `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`,
-though a known Codex model may take fewer (`gpt-5.5` stops at `xhigh`). The
+though a known Codex model may take fewer. The
 known models are in `GET /api/agents` `harnesses[].models` and the `formation
-assign` usage: `claude-code` offers its family aliases and full current model
-names, and Codex the models its CLI lists on the daemon host (including
-`gpt-6.1-sol` and `gpt-6-astra`). The catalog is not exhaustive; other model
+assign` usage: `claude-code` offers `opus`, `sonnet`, `haiku` and `fable`,
+and Codex the models its CLI lists on the daemon host. The catalog is not exhaustive; other model
 names are accepted without warnings and the harness decides whether they run.
 Omit `--role` for a vanilla agent. The
 operator sees and edits the same settings in the cockpit as a sentence on each
@@ -439,7 +439,7 @@ or failed, what it produced and where the evidence is.
 archon $S mission input "$M"
 ARCHON_START=$(archon $S mission run "$M" \
   --input change="Add CSV export to the report page" --input-file spec=/abs/spec.md \
-  --bead "$ARCHON_BEAD" --context-path /abs/prior-art --json)
+  --actor "agent:<your session>" --bead "$ARCHON_BEAD" --context-path /abs/prior-art --json)
 ARCHON_RUN_ID=$(jq -er .data.runId <<<"$ARCHON_START")
 archon $S run status "$ARCHON_RUN_ID" --json
 ```
@@ -462,9 +462,10 @@ archon $S run status "$ARCHON_RUN_ID" --json
 - A run's only limits are the mission's Limit cards (above); a launch sets
   none. Without a card a send-back loop continues until its gate passes or you
   stop the run with `run abort`.
-- `--by <name>` names the run's driver (default `ARCHON_DRIVER`, then
-  `agent:archon`). API starts accept `driver`. Run status, lists and the run
-  bar show the recorded name as `startedBy`.
+- `--actor <name>` names the acting agent. Every CLI command taking it
+  defaults to `ARCHON_DRIVER`, then `agent:archon`, resolved only by the CLI
+  and sent as `actor` to the API. Pass your own session name when starting
+  a run. Run status, lists and the run bar show the recorded name as `startedBy`.
 - A lost receipt: check `run list --mission "$M" --json` before starting again.
   It lists only that mission's runs, each with `status`, `startedBy`,
   `startedAt`, `updatedAt` (a final run ended then) and `inputs`.

@@ -76,12 +76,11 @@ patch naming none of them empties the
 slot, as does `formation unassign`. The harness must be one Archon starts and must accept the effort,
 and a model is one name without spaces. The agent roster serves each
 harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
-`haiku` and `fable` plus the full names `claude-opus-5-5`,
-`claude-sonnet-5-5`, `claude-haiku-5-5` and `claude-fable-5-1`.
+`haiku` and `fable`.
 `openai-codex` runs the models its CLI lists in
 `$CODEX_HOME/models_cache.json` (default `~/.codex`), by priority, each with
 the efforts it accepts; without that cache Codex lists none. A known Codex
-model narrows the slot's efforts to its own: `gpt-5.5` takes `low` to `xhigh`.
+model narrows the slot's efforts to its own.
 The catalog is a picker, not an exhaustive list of accepted names. A model
 outside it is accepted without a warning; the harness decides whether it can
 run. Choose the effort by the policy the agent
@@ -237,7 +236,7 @@ id = "slot_work"
 label = "Worker"
 agentId = "builder"
 harness = "openai-codex"
-model = "gpt-6-astra"
+model = "" # harness default
 effort = "medium"
 controller = true
 
@@ -330,7 +329,7 @@ and `error.findings` as `{code,nodeId,message}` entries; no run is recorded.
 The engine's own fail-fast checks remain behind this report. The worker continues after the
 client disconnects. A missing receipt requires checking the run list before
 starting again. A mission run and a single step's run take the same run fields:
-`cwd`, `contextPaths`, `beadId`, `inputs` and `driver`. Omit `cwd` (or send an empty string) to create a private workspace
+`cwd`, `contextPaths`, `beadId`, `inputs` and `actor`. Omit `cwd` (or send an empty string) to create a private workspace
 for this run under `<state-dir>/workspaces/<runId>`. The daemon's
 `--run-workspace-root` flag can select another absolute root. Admission records
 the resolved directory in `run_started` and run status; every seat uses it.
@@ -387,9 +386,9 @@ The Input card hands its first step the supplied values: the implicit `brief`
 unchanged, or one `name: value` line per supplied input in declared order. A
 step brief references an input as `{name}`, and each seat's brief carries the
 value in its place, or `(not supplied)` for an optional input the run left out.
-`{bead}` is built in: it takes the run's `beadId` (`--bead`), or an empty
-string when none was supplied. It needs no input declaration and takes
-precedence over an input named `bead`. `{{bead}}` remains literal.
+Unless an input named `bead` is declared, `{bead}` takes the run's `beadId`
+(`--bead`), or an empty string when none was supplied. A declared input named
+`bead` takes precedence, including the optional-input rule when omitted. `{{bead}}` remains literal.
 Braces around anything else stay as written. The one escape is `{{name}}`: it
 reaches the seat as a literal `{name}` and is never a reference, so a brief can
 show an agent a placeholder. Other references to names the mission does not declare
@@ -657,14 +656,15 @@ data. Projections and SSE stay sanitized; the run evidence routes under
 [HTTP contract](#http-contract) serve a run's outputs, gate results, human
 responses, briefs and artifacts to the operator.
 Run status and lists carry `startedBy`, the run's driver, recorded as the
-start event's actor. CLI run starts accept `--by <name>` and API starts accept
-`driver`; these take precedence over an explicit `actor`. An explicit actor
-still names the driver when neither is supplied. Otherwise the default is `ARCHON_DRIVER`, then `agent:archon`. Historical runs keep their
+start event's actor. Every CLI command taking `--actor <name>` defaults it
+to `ARCHON_DRIVER`, then `agent:archon`. The CLI alone resolves that
+environment default and sends `actor` to the API. Historical runs keep their
 recorded actor. Status also carries `startedAt` and `updatedAt`, the
 times of its first and latest ledger events; a final run ended at
 `updatedAt`. CLI status and attempts render timestamps in local time and
 elapsed time as durations; JSON retains the stored timestamps. Status names
-the mission revision and stopped step, and attempts include their stop reason.
+the mission revision and stopped step (ID plus its frozen title), and attempts
+include their stop reason.
 Each waiting gate carries `requestedAt`, when it asked.
 `run logs` is the same sanitized projection as `run status`. `run follow` prints
 complete enveloped projections from SSE after durable changes, waits through

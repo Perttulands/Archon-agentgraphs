@@ -43,7 +43,6 @@ type formationsRunStartRequest struct {
 	MissionID    string            `json:"inputCardId"`
 	FormationID  string            `json:"formationId"`
 	Actor        string            `json:"actor"`
-	Driver       string            `json:"driver"`
 	ExpectedRev  int               `json:"expectedRev"`
 	Cwd          string            `json:"cwd"`
 	ContextPaths []string          `json:"contextPaths"`
@@ -715,7 +714,7 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status, err := engine.RunFormation(slug, request.FormationID, formations.FormationRunRequest{
-			Actor:        formations.RunDriver(request.Driver, request.Actor),
+			Actor:        request.Actor,
 			Personas:     h.personas,
 			Cwd:          request.Cwd,
 			ContextPaths: request.ContextPaths,
@@ -735,7 +734,7 @@ func (h *FormationsHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		ContextPaths:      request.ContextPaths,
 		BeadID:            request.BeadID,
 		Inputs:            request.Inputs,
-		Actor:             formations.RunDriver(request.Driver, request.Actor),
+		Actor:             request.Actor,
 		ExpectedBoardETag: r.Header.Get("If-Match"),
 		ExpectedBoardRev:  expectedRev,
 		Personas:          h.personas,

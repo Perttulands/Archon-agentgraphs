@@ -2279,6 +2279,7 @@ func TestArchonS5GateApproveRoutesHumanGate(t *testing.T) {
 }
 
 func TestArchonGateApproveRecordsTheResponse(t *testing.T) {
+	t.Setenv("ARCHON_DRIVER", "agent:gate-driver")
 	workspace := t.TempDir()
 	agentsDir := t.TempDir()
 	t.Setenv("ARCHON_AGENTS_DIR", agentsDir)
@@ -2322,8 +2323,8 @@ func TestArchonGateApproveRecordsTheResponse(t *testing.T) {
 			relayedBy, _ = event.Data["relayedBy"].(string)
 		}
 	}
-	if verdicts != 1 || recorded != answer || decidedBy != "human:operator" || relayedBy != "slot_work" {
-		t.Fatalf("%d verdicts, recorded response %q by %q relayed by %q; want one %q by human:operator relayed by slot_work", verdicts, recorded, decidedBy, relayedBy, answer)
+	if verdicts != 1 || recorded != answer || decidedBy != "agent:gate-driver" || relayedBy != "slot_work" {
+		t.Fatalf("%d verdicts, recorded response %q by %q relayed by %q; want one %q by agent:gate-driver relayed by slot_work", verdicts, recorded, decidedBy, relayedBy, answer)
 	}
 }
 

@@ -18,15 +18,14 @@ type HarnessModel struct {
 	Efforts []string `json:"efforts,omitempty"`
 }
 
-// claudeCodeModels includes the family aliases and current full model names
+// claudeCodeModels lists the family aliases
 // accepted by `claude --model`. The first is a new Claude Code slot's default.
 var claudeCodeModels = []string{
 	"opus", "sonnet", "haiku", "fable",
-	"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1",
 }
 
 // HarnessModels lists the models offered for a harness, the one a new slot on
-// that harness takes first. Claude Code offers aliases and full model names. Codex
+// that harness takes first. Claude Code offers family aliases. Codex
 // offers the models its CLI lists, by priority, from the host's
 // models_cache.json; without that cache it offers none.
 func HarnessModels(harnessID string) []HarnessModel {

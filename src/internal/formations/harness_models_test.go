@@ -30,7 +30,7 @@ func useCodexModels(t *testing.T, fixture bool) string {
 
 func TestHarnessesOfferTheirKnownModels(t *testing.T) {
 	useCodexModels(t, true)
-	if got := HarnessModels("claude-code"); !reflect.DeepEqual(got, []HarnessModel{{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}, {ID: "claude-opus-5-5"}, {ID: "claude-sonnet-5-5"}, {ID: "claude-haiku-5-5"}, {ID: "claude-fable-5-1"}}) {
+	if got := HarnessModels("claude-code"); !reflect.DeepEqual(got, []HarnessModel{{ID: "opus"}, {ID: "sonnet"}, {ID: "haiku"}, {ID: "fable"}}) {
 		t.Fatalf("claude-code models = %+v", got)
 	}
 	// Codex lists the models its picker shows, by priority, with each model's levels.
