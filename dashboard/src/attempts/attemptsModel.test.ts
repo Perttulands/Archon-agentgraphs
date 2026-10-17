@@ -65,6 +65,12 @@ describe('settledAttempt and openingAttempt', () => {
   })
 })
 
+it('opens a stopped run on its last produced output without hiding a running attempt', () => {
+  const output = attempt(3, { outputs: [{ portId: 'out', kind: 'folder', text: { text: '', bytes: 0 } }] })
+  expect(openingAttempt([output, attempt(4, { status: 'stopped' })])).toBe(3)
+  expect(openingAttempt([output, attempt(4, { status: 'running' })])).toBe(4)
+})
+
 describe('stepping and pairing', () => {
   const numbers = [1, 2, 3, 4]
 

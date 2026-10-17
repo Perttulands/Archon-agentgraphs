@@ -164,6 +164,12 @@ function FolderOutput({ runId, output, files, truncated, context, evidence }: {
       {output.path ? (
         <FileChip request={folderFileRequest(output.path, context)} label={`${baseName(folder)}/`} detail={files.length || output.artifact ? counted : undefined} glyph="▥" />
       ) : null}
+      {summary.videos.map(file => (
+        <div key={file.name}>
+          <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} size={file.size} />
+          <FileChip request={artifactFileRequest(runId, file.name, context)} label={nameWithin(folder, file.name)} detail={formatBytes(file.size)} />
+        </div>
+      ))}
       {thumbs.length ? (
         <div className="attempt-thumbs">
           {thumbs.map(file => (
@@ -174,7 +180,7 @@ function FolderOutput({ runId, output, files, truncated, context, evidence }: {
           ))}
         </div>
       ) : null}
-      {[...summary.videos, ...summary.models].map(file => (
+      {summary.models.map(file => (
         <div key={file.name}>
           <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} size={file.size} />
           <FileChip request={artifactFileRequest(runId, file.name, context)} label={nameWithin(folder, file.name)} detail={formatBytes(file.size)} />

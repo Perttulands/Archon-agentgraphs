@@ -543,7 +543,9 @@ Every attempt of every step, judges included, has its own directory under
 `run attempts "$ARCHON_RUN_ID" [--node <id>] [--files] [--json]` lists each
 step and attempt, its status, declared outputs and verdict with a reason
 one-liner, and whether it was picked. `--files` adds its directory files;
-`--json` keeps the complete evidence. `run status` prints a `pick` line for each pick (`picks` in JSON). The cockpit's Produced list opens them. Check each
+`--json` keeps the complete evidence. `run status` prints a `pick` line for each pick (`picks` in JSON). The cockpit's output chips open the producing step's attempts, including nested
+videos and contact sheets; cited images open from their thumbnails. The Produced
+menu groups files in run order and lists kept copies once. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 
 The runtime writes the brief each seat receives, including its output contract;

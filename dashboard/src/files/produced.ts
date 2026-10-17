@@ -23,6 +23,7 @@ export interface NodeProduced {
   nodeId: string
   /** The sequence of the output this was read from. */
   seq: number
+  firstSeq?: number
   definition?: NodeEvidence['definition']
   items: ProducedItem[]
 }
@@ -51,7 +52,7 @@ export function producedFromEvidence(evidence: NodeEvidence): NodeProduced | nul
   if (report.bytes && !output.ports.some(port => port.text.bytes === report.bytes && port.text.text === report.text)) {
     items.push({ key: `${nodeId}:report`, nodeId, kind: 'output', bytes: report.bytes })
   }
-  return { nodeId, seq: output.seq, definition: evidence.definition, items }
+  return { nodeId, seq: output.seq, firstSeq: evidence.attempts?.find(attempt => attempt.output)?.output?.seq, definition: evidence.definition, items }
 }
 
 /** The latest output sequence of each node, from the run's events. */
@@ -85,9 +86,13 @@ export function summarizeProduced(
   const lead = final && sinks.length ? sinks : [work[0] || steps[0]].filter(Boolean)
   const primary = artifactsFirst(lead.flatMap(step => step.items))
   const claimed = new Set(steps.flatMap(step => step.items).map(item => item.artifact).filter(Boolean))
+  // Kept output copies supersede their working-path twin within the same
+  // attempt. Keep distinct attempts and distinct paths even with the same basename.
+  const copies = new Set(artifacts.filter(entry => /^[^/]+\/\d+\/outputs\/[^/]+\//.test(entry.name))
+    .map(entry => entry.name.replace(/^([^/]+\/\d+\/)outputs\/[^/]+\//, '$1')))
   const others = [
     ...steps.filter(step => !lead.includes(step)).flatMap(step => artifactsFirst(step.items)),
-    ...artifacts.filter(entry => !claimed.has(entry.name))
+    ...artifacts.filter(entry => !claimed.has(entry.name) && !copies.has(entry.name))
       .map((entry): ProducedItem => ({ key: `artifact:${entry.name}`, kind: 'artifact', artifact: entry.name, bytes: entry.size })),
   ]
   return { primary, others }

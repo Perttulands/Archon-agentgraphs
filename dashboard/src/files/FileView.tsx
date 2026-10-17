@@ -98,7 +98,7 @@ export default function FileView({ request, preview, error, mode, onOpen }: {
   switch (preview.kind) {
     case 'video':
     case 'model':
-      return request.rawUrl ? <MediaPreview kind={preview.kind} src={request.rawUrl} name={request.name} size={preview.size} /> : <p className="file-note">No media to show.</p>
+      return request.rawUrl ? <MediaPreview kind={preview.kind} src={request.rawUrl} name={request.name} size={preview.size} autoLoad /> : <p className="file-note">No media to show.</p>
     case 'image':
       return request.rawUrl ? <div className="file-image"><img src={request.rawUrl} alt={request.name} /></div> : <p className="file-note">No image to show.</p>
     case 'pdf':

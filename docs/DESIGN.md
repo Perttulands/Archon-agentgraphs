@@ -29,7 +29,9 @@ changes it; a variant that needs more proposes the addition in its set.
   there, or explain a step in plain terms.
 - A run's result is the work it produced. Its outputs and files open at the
   operator's fingertips through the file viewers ported from CHROTE, and a
-  gate's rubric opens from the gate.
+  gate's rubric opens from the gate. Output folders lead with their nested
+  videos and contact sheets. Cited images open from thumbnails; child windows
+  open beside their source window. A single small model opens on the first click.
 - The Flow view shows sequence, feeds and gating as a line; the canvas shows
   the graph.
 

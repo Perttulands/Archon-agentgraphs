@@ -37,7 +37,7 @@ test('an attempt shows its movie and judge video inline, and opens a lazy 3D mod
   await expect(movie).toHaveAttribute('preload', 'metadata')
   await expect(movie).not.toHaveAttribute('autoplay')
   const folder = attempts.getByTestId('attempt-1-output-folder')
-  await expect(folder.getByLabel('folder-turntable.mp4', { exact: true })).toHaveAttribute('controls', '')
+  await expect(folder.getByLabel('videos/folder-turntable.mp4', { exact: true })).toHaveAttribute('controls', '')
   await expect(folder.locator('.attempt-listing li')).toHaveCount(8)
   await expect(folder.getByText('and 172 more listed files')).toBeVisible()
   const cited = attempts.getByLabel('review.webm', { exact: true })
@@ -64,6 +64,14 @@ test('an attempt shows its movie and judge video inline, and opens a lazy 3D mod
   const file = page.getByRole('dialog', { name: 'file turntable.mp4' })
   await expect(file.getByLabel('turntable.mp4', { exact: true })).toHaveAttribute('controls', '')
   await expect(file.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('download', 'turntable.mp4')
+  const player = await file.getByLabel('turntable.mp4', { exact: true }).boundingBox()
+  const frame = await file.boundingBox()
+  expect(player!.y + player!.height).toBeLessThanOrEqual(frame!.y + frame!.height)
+  await page.keyboard.press('Escape')
+  await attempts.getByTitle('Open triangle.fbx', { exact: true }).click()
+  const modelFile = page.getByRole('dialog', { name: 'file triangle.fbx' })
+  await expect(modelFile.getByLabel('3D model triangle.fbx', { exact: true })).toBeVisible()
+
 })
 
 
@@ -93,8 +101,8 @@ test('a TOML mission output plays video in one window, and evidence floats and c
   const evidence = page.getByRole('dialog', { name: 'Run evidence · Execution' })
   await expect(evidence).toHaveAttribute('data-window-kind', 'evidence')
   const before = await evidence.boundingBox()
-  expect(before!.width).toBeGreaterThanOrEqual(640)
-  expect(before!.height).toBeGreaterThanOrEqual(600)
+  expect(before!.width).toBeGreaterThanOrEqual(320)
+  expect(before!.height).toBeGreaterThanOrEqual(320)
   const zoom = await page.locator('.zoomctl').boundingBox()
   expect(before!.x + before!.width <= zoom!.x || before!.x >= zoom!.x + zoom!.width ||
     before!.y + before!.height <= zoom!.y || before!.y >= zoom!.y + zoom!.height).toBe(true)

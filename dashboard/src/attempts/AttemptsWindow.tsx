@@ -1,3 +1,4 @@
+import type { FilePlace } from '../files/FileWindows'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { fetchRunAttempts, type StepAttempt, type StepAttempts } from '../evidence/runEvidenceApi'
 import FloatingWindow from '../windows/FloatingWindow'
@@ -54,7 +55,8 @@ function imageGroup(attempt: StepAttempt | undefined): string {
 // Keys typed into a field, or that move or size the window, are not the attempts'.
 const OWN_KEYS = 'input, textarea, select, [contenteditable="true"], .fwin-title, [role="separator"]'
 
-export default function AttemptsWindow({ runId, nodeId, stepTitle, count, version, live, waitingGates, pick, titleOf, onClose }: {
+export default function AttemptsWindow({ runId, nodeId, stepTitle, count, version, live, waitingGates, pick, titleOf, place, onClose }: {
+  place?: FilePlace
   runId: string
   nodeId: string
   stepTitle: string
@@ -296,7 +298,9 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
         ? <><span className="attempts-kicker">Needs your pick</span> {stepTitle}</>
         : <>{stepTitle} <span className="attempts-count">· {numbers.length || count} attempt{(numbers.length || count) === 1 ? '' : 's'}</span></>}
       defaultSize={size}
-      overCanvas
+      anchor={place ? () => place.anchor : undefined}
+      keepClear={place ? () => place.keepClear : undefined}
+      anchorKind={place?.anchorKind}
       takeFocus={!pick || focusRequest > 0}
       onKeyDown={onKeyDown}
       onClose={onClose}

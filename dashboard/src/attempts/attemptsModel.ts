@@ -164,7 +164,9 @@ export function stepAttempt(numbers: readonly number[], current: number, delta: 
 /** The attempt the window opens on: the judge's pick, then the settled attempt, then the latest. */
 export function openingAttempt(attempts: readonly StepAttempt[], recommended?: number): number | null {
   if (recommended && attempts.some(attempt => attempt.attempt === recommended)) return recommended
-  return settledAttempt(attempts) ?? attempts[attempts.length - 1]?.attempt ?? null
+  const latest = attempts[attempts.length - 1]
+  return settledAttempt(attempts) ?? (latest?.status === 'stopped' && !latest.outputs.length
+    ? [...attempts].reverse().find(attempt => attempt.outputs.length)?.attempt : latest?.attempt) ?? latest?.attempt ?? null
 }
 
 /** Two attempts side by side: the focused one and the one before it, or after it when it is the first. */

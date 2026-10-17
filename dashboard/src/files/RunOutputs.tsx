@@ -55,7 +55,7 @@ export default function RunOutputs({ runId, outputs, titleOf }: { runId: string;
           onPointerDown={event => event.stopPropagation()}
           onClick={event => {
             event.stopPropagation()
-            if (attempts?.run?.runId === runId && output.nodeId) attempts.open(output.nodeId)
+            if (attempts?.run?.runId === runId && output.nodeId) attempts.open(output.nodeId, event.currentTarget)
             else files.open(runOutputRequest(runId, output), fileAnchor(event.currentTarget))
           }}
         >

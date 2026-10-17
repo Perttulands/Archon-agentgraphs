@@ -27,3 +27,10 @@ it('opens videos in file windows with native controls and loads the 3D viewer on
   expect(await screen.findByLabelText('3D chair.glb')).toHaveAttribute('data-src', '/api/files/raw?path=%2Fchair.glb')
   expect(loaded).toHaveBeenCalledOnce()
 })
+
+
+it('loads a small model on the first file-window open, while folder tiles still wait', async () => {
+  const request = { id: 'model', name: 'body.fbx', rawUrl: '/body.fbx', load: async () => ({ kind: 'model' as const }) }
+  render(<FileView request={request} preview={{ kind: 'model', size: 1024 }} error="" mode="preview" />)
+  expect(await screen.findByLabelText('3D body.fbx')).toBeInTheDocument()
+})

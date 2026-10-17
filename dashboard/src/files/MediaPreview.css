@@ -3,3 +3,11 @@
 .model-tile { margin-block: 8px; }
 .model-tile-open { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 12px; text-align: left; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
 .model-tile-open span:last-child { font-size: 12px; opacity: .7; }
+
+.file-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.file-content > .file-video { flex: 1; min-height: 0; height: 100%; max-height: 100%; object-fit: contain; }
+.attempt-folder .file-video { height: 240px; object-fit: contain; }
+
+.file-content > .model-tile { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0; }
+.file-content .model-viewer { min-height: 0; height: auto; }
+.file-content .model-viewer-stage { min-height: 100px; }

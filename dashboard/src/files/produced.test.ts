@@ -86,3 +86,10 @@ describe('what a run produced', () => {
     expect(summarizeProduced([], [], false)).toEqual({ primary: [], others: [] })
   })
 })
+
+
+it('lists the kept output copy once and preserves different paths and attempts', () => {
+  const names = ['step/1/mh/videos/body.mp4', 'step/1/outputs/out/mh/videos/body.mp4', 'step/2/mh/videos/body.mp4', 'step/1/other/body.mp4']
+  expect(summarizeProduced([], names.map(name => ({ name, size: 10, modifiedAt: '' })), true).others.map(item => item.artifact))
+    .toEqual(names.slice(1))
+})

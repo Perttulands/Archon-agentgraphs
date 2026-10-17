@@ -60,7 +60,7 @@ function ProducedChip({ item, value, onOpened, role, openedFrom }: {
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
-        if (item.nodeId && item.portId && attempts?.run?.runId === value.runId) attempts.open(item.nodeId)
+        if (item.nodeId && item.portId && attempts?.run?.runId === value.runId) attempts.open(item.nodeId, openedFrom?.() || event.currentTarget)
         else files?.open(producedRequest(value.runId, item, value.names), fileAnchor(openedFrom?.() || event.currentTarget))
         onOpened?.()
       }}
@@ -188,7 +188,7 @@ export function RunProduced() {
           the menu is drawn at the page's top level to open above every window. */}
       {menu ? createPortal((
         <div ref={menuRef} className="run-produced-menu" role="menu" aria-label="Everything this run produced" style={{ left: menu.left, top: menu.top }} onKeyDown={menuKeys}>
-          {[...groups].map(([key, group]) => (
+          {[...groups].sort(([a], [b]) => (value.byNode.get(a)?.firstSeq ?? value.byNode.get(a)?.seq ?? Infinity) - (value.byNode.get(b)?.firstSeq ?? value.byNode.get(b)?.seq ?? Infinity)).map(([key, group]) => (
             <div className="run-produced-group" key={key}>
               <div className="run-produced-group-title">{group.title} · {group.count}</div>
               {group.outputs.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}

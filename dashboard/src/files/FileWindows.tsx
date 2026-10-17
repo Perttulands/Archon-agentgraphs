@@ -50,7 +50,7 @@ export function fileAnchor(control: Element): FilePlace {
   const nodeId = holder?.getAttribute('data-node') || holder?.getAttribute('data-flow-node') || ''
   const anchorElement = !holder || holder.hasAttribute('data-flow-node') ? control : holder
   const anchor = measureElement(anchorElement, true)!
-  const anchorKind = holder?.hasAttribute('data-file-anchor') ? 'control' : 'node'
+  const anchorKind = holder?.matches('.fwin, [data-file-anchor]') ? 'control' : 'node'
   return { anchor, keepClear: nodeId ? nodeBoxes([nodeId]) : [], anchorKind }
 }
 

@@ -1,3 +1,4 @@
+import { fileAnchor, type FilePlace } from '../files/FileWindows'
 import { Suspense, createContext, lazy, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { WindowStack } from '../windows/WindowManager'
 import { attemptsWindowId, type AttemptsPick } from './attemptsModel'
@@ -34,7 +35,8 @@ export interface StepPick extends AttemptsPick {
 interface AttemptsState {
   run: AttemptsRun | null
   opened: readonly string[]
-  open: (nodeId: string) => void
+  places: ReadonlyMap<string, FilePlace>
+  open: (nodeId: string, origin?: Element | null) => void
   close: (nodeId: string) => void
 }
 
@@ -44,18 +46,20 @@ export const useAttemptsWindows = () => useContext(AttemptsContext)
 
 export function AttemptsWindowsProvider({ run, stack, children }: { run: AttemptsRun | null; stack: WindowStack; children: ReactNode }) {
   const runId = run?.runId || ''
+  const places = useRef(new Map<string, FilePlace>())
   // The windows belong to the run they were opened on.
   const [opened, setOpened] = useState<{ runId: string; nodes: readonly string[] }>({ runId: '', nodes: [] })
   const stackRef = useRef(stack)
   stackRef.current = stack
-  const open = useCallback((nodeId: string) => {
+  const open = useCallback((nodeId: string, origin?: Element | null) => {
+    if (origin) places.current.set(nodeId, fileAnchor(origin))
     setOpened(current => current.runId !== runId ? { runId, nodes: [nodeId] }
       : current.nodes.includes(nodeId) ? current : { runId, nodes: [...current.nodes, nodeId] })
     stackRef.current.focus(attemptsWindowId(nodeId))
   }, [runId])
   const close = useCallback((nodeId: string) => setOpened(current => ({ ...current, nodes: current.nodes.filter(node => node !== nodeId) })), [])
   const nodes = opened.runId === runId ? opened.nodes : []
-  const value = useMemo(() => ({ run, opened: nodes, open, close }), [close, nodes, open, run])
+  const value = useMemo(() => ({ run, opened: nodes, places: places.current, open, close }), [close, nodes, open, run])
   return <AttemptsContext.Provider value={value}>{children}</AttemptsContext.Provider>
 }
 
@@ -74,7 +78,7 @@ export function AttemptsButton({ nodeId, className = 'finspect' }: { nodeId: str
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
         event.stopPropagation()
-        state.open(nodeId)
+        state.open(nodeId, event.currentTarget)
       }}
     >{count} attempt{count === 1 ? '' : 's'}</button>
   )
@@ -95,6 +99,7 @@ export function AttemptsWindowsLayer({ pick }: { pick: StepPick | null }) {
             <AttemptsWindow
               runId={run.runId}
               nodeId={nodeId}
+              place={state.places.get(nodeId)}
               stepTitle={run.titleOf(nodeId)}
               count={run.counts.get(nodeId) || 0}
               version={run.version}

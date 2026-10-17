@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import FloatingWindow from '../windows/FloatingWindow'
 import FileView, { FileActions, useFilePreview } from './FileView'
-import type { FilePlace } from './FileWindows'
+import { fileAnchor, type FilePlace } from './FileWindows'
 import type { FileRequest } from './fileWindowModel'
 
 /** One file in a floating window of the 'file' kind. */
@@ -9,9 +9,10 @@ export default function FileWindow({ request, place, onOpen, onClose }: {
   request: FileRequest
   /** Where the window opens, measured when the file was opened. */
   place?: FilePlace | null
-  onOpen: (request: FileRequest) => void
+  onOpen: (request: FileRequest, place?: FilePlace | null) => void
   onClose: () => void
 }) {
+  const origin = useRef<HTMLDivElement>(null)
   const { preview, error } = useFilePreview(request)
   const [mode, setMode] = useState<'preview' | 'source'>('preview')
   return (
@@ -33,7 +34,8 @@ export default function FileWindow({ request, place, onOpen, onClose }: {
       actions={<FileActions request={request} preview={preview} error={error} mode={mode} onMode={setMode} />}
       onClose={onClose}
     >
-      <FileView request={request} preview={preview} error={error} mode={mode} onOpen={onOpen} />
+      <div ref={origin} className="file-content"><FileView request={request} preview={preview} error={error} mode={mode}
+        onOpen={next => onOpen(next, origin.current ? fileAnchor(origin.current) : place)} /></div>
     </FloatingWindow>
   )
 }
