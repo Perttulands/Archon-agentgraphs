@@ -570,17 +570,20 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       return respond({ runId: 'run_browser', status: options.picked ? 'picked' : 'succeeded', startedBy: 'agent:archon', final: true, missionSlug: 'browser', inputCardId: 'mission', eventCount: 7, cwd: runCwd, ...(options.declaredInputs ? { inputs: flowInputs } : {}), ...(outputs.length ? { outputs } : {}) })
     }
     if (options.succeeded && path === '/api/runs/run_browser/evidence/attempts') {
-      const nodeId = url.searchParams.get('node') || 'execution'
-      const formation = currentBoard.formations.find(step => step.id === nodeId)!
-      const declared = runOutputs(currentBoard).filter(output => output.nodeId === nodeId)
-      if (!declared.length) declared.push({ name: 'Result', kind: nodeId === 'peer' ? 'file' : 'text', value: nodeId === 'peer' ? `${runArtifacts}/review.md` : 'Implemented the reviewed plan.\n\nAll tests pass.', nodeId, portId: 'out', attempt: 1 })
-      return respond({ attempts: { runId: 'run_browser', steps: [{ nodeId, title: formation.title, outputs: formation.outputs,
-        attempts: [{ attempt: 1, status: 'done', outputs: declared.map(output => ({
-          portId: output.portId, label: output.name, kind: output.kind,
-          text: evidenceText(output.kind === 'text' ? output.value : ''),
-          ...(output.kind === 'text' ? {} : { path: output.value, artifact: output.value.slice(runArtifacts.length + 1), fileKind: output.kind === 'folder' ? 'folder' : 'markdown' }),
-        })), verdicts: nodeId === 'execution' ? [{ gateId: 'gate', gateTitle: 'Review gate', evaluationSeq: 4, verdict: options.failedGate ? 'fail' : 'pass', reason: evidenceText(options.failedGate ? 'Review needs another attempt.' : 'The reviewed implementation passes all checks.'), evidence: [] }] : [], files: [] }],
-      }] } })
+      const selectedNode = url.searchParams.get('node')
+      const steps = currentBoard.formations.filter(step => !selectedNode || step.id === selectedNode).map(formation => {
+        const nodeId = formation.id
+        const declared = runOutputs(currentBoard).filter(output => output.nodeId === nodeId)
+        if (!declared.length) declared.push({ name: 'Result', kind: nodeId === 'peer' ? 'file' : 'text', value: nodeId === 'peer' ? `${runArtifacts}/review.md` : 'Implemented the reviewed plan.\n\nAll tests pass.', nodeId, portId: 'out', attempt: 1 })
+        return { nodeId, title: formation.title, outputs: formation.outputs,
+          attempts: [{ attempt: 1, status: 'done', directory: { name: `${nodeId}/1`, path: `${runArtifacts}/${nodeId}/1` }, outputs: declared.map(output => ({
+            portId: output.portId, label: output.name, kind: output.kind,
+            text: evidenceText(output.kind === 'text' ? output.value : ''),
+            ...(output.kind === 'text' ? {} : { path: output.value, artifact: output.value.slice(runArtifacts.length + 1), fileKind: output.kind === 'folder' ? 'folder' : 'markdown' }),
+          })), verdicts: nodeId === 'execution' ? [{ gateId: 'gate', gateTitle: 'Review gate', evaluationSeq: 4, verdict: options.failedGate ? 'fail' : 'pass', reason: evidenceText(options.failedGate ? 'Review needs another attempt.' : 'The reviewed implementation passes all checks.'), evidence: [] }] : [], files: [] }],
+        }
+      })
+      return respond({ attempts: { runId: 'run_browser', steps } })
     }
     if (options.succeeded && path.startsWith('/api/runs/run_browser/evidence/artifacts/') && path.endsWith('/review.md')) {
       return respond({ artifact: { name: path.split('/evidence/artifacts/')[1], kind: 'markdown', text: evidenceText(reviewMarkdown) } })

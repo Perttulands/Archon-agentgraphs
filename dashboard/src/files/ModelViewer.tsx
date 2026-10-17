@@ -1,27 +1,32 @@
 // Adapted from CHROTE dashboard/src/components/ModelViewer.tsx.
 // Archon resolves glTF sidecars through its raw file routes and lazy-loads Three.js.
 import { useEffect, useRef, useState } from 'react'
-import { LoadingManager, Box3, HemisphereLight, DirectionalLight, MeshStandardMaterial, Mesh, SkinnedMesh, PerspectiveCamera, Scene, Sphere, Texture, Vector3, WebGLRenderer } from 'three'
-import type { Object3D } from 'three'
+import { LoadingManager, Box3, HemisphereLight, DirectionalLight, Mesh, SkinnedMesh, PerspectiveCamera, Scene, Sphere, Texture, Vector3, WebGLRenderer } from 'three'
+import type { Material, Object3D } from 'three'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { modelResourceUrl } from './mediaUrls'
 import { ModelPreviewError, readModelData, requireFbxMesh } from './modelPreviewData'
+import { restoreMissingModelMaterials } from './modelMaterials'
 import './ModelViewer.css'
 
-function disposeModel(model: Object3D) {
+function disposeModel(model: Object3D, retiredMaterials: Set<Material>) {
+  const materials = new Set(retiredMaterials)
   const textures = new Set<Texture>()
   model.traverse(object => {
     if (!(object instanceof Mesh)) return
     object.geometry.dispose()
     if (object instanceof SkinnedMesh) object.skeleton.dispose()
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-      for (const value of Object.values(material)) if (value instanceof Texture) textures.add(value)
-      material.dispose()
+      materials.add(material)
     }
   })
+  for (const material of materials) {
+    for (const value of Object.values(material)) if (value instanceof Texture) textures.add(value)
+    material.dispose()
+  }
   for (const texture of textures) {
     texture.dispose()
     if (typeof ImageBitmap !== 'undefined' && texture.image instanceof ImageBitmap) texture.image.close()
@@ -40,6 +45,7 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
     const controller = new AbortController()
     let disposed = false
     let model: Object3D | undefined
+    const retiredMaterials = new Set<Material>()
     let renderer: WebGLRenderer
     try {
       renderer = new WebGLRenderer({ antialias: true, alpha: true })
@@ -88,32 +94,23 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
     observer.observe(stage)
     resize()
     const manager = new LoadingManager()
-    // FBX returns geometry before its external textures finish loading.
-    let textureFailed = false
-    manager.onError = () => { textureFailed = true }
-    manager.onLoad = () => {
-      if (disposed) { if (model) disposeModel(model); return }
-      if (textureFailed && model) {
-        model.traverse(object => {
-          if (!(object instanceof Mesh)) return
-          const materials = Array.isArray(object.material) ? object.material : [object.material]
-          const replacements = materials.map(material => {
-            const textures = Object.values(material).filter((value): value is Texture => value instanceof Texture)
-            if (!textures.some(texture => !texture.image || (texture.image instanceof HTMLImageElement && !texture.image.naturalWidth))) return material
-            // Missing maps must not leave a black FBX silhouette. Dispose every
-            // map on the replaced material, including successfully loaded ones.
-            for (const texture of textures) {
-              texture.dispose()
-              if (typeof ImageBitmap !== 'undefined' && texture.image instanceof ImageBitmap) texture.image.close()
-            }
-            setTextureNote('Some textures could not be loaded. Showing affected surfaces with a neutral material.')
-            material.dispose()
-            return new MeshStandardMaterial({ color: 0xb8bec8, roughness: 0.8, side: material.side })
-          })
-          object.material = Array.isArray(object.material) ? replacements : replacements[0]
-        })
-      }
+    // FBX can return its geometry before textures finish, or return no
+    // texture requests at all. Reconcile on both model assignment and manager
+    // completion; never mistake an in-flight texture for a missing one.
+    let resourcesLoaded = true
+    const reconcileMaterials = () => {
+      if (disposed || !model || !resourcesLoaded) return
+      const retired = restoreMissingModelMaterials(model, /\.fbx$/i.test(name))
+      for (const material of retired) retiredMaterials.add(material)
+      if (retired.size) setTextureNote('Some textures could not be loaded. Showing affected surfaces with a neutral material.')
       render()
+    }
+    manager.onStart = () => { resourcesLoaded = false }
+    manager.onLoad = () => {
+      // A texture may finish after unmount; release its newly arrived image too.
+      if (disposed) { if (model) disposeModel(model, retiredMaterials); return }
+      resourcesLoaded = true
+      reconcileMaterials()
     }
     manager.setURLModifier(resource => modelResourceUrl(src, resource))
     void fetch(src, { signal: controller.signal })
@@ -129,13 +126,14 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
       .then(object => {
         if (!object) return
         model = object
-        if (disposed) { disposeModel(model); return }
+        if (disposed) { disposeModel(model, retiredMaterials); return }
         model.updateMatrixWorld(true)
         const bounds = new Box3().setFromObject(model).getBoundingSphere(new Sphere())
         if (bounds.isEmpty()) throw new ModelPreviewError('No mesh in this file')
         radius = Math.max(bounds.radius, 0.001)
         center.copy(bounds.center)
         scene.add(model)
+        reconcileMaterials()
         fit()
         setStatus('')
       })
@@ -149,7 +147,7 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
       controller.abort()
       observer.disconnect()
       controls.dispose()
-      if (model) disposeModel(model)
+      if (model) disposeModel(model, retiredMaterials)
       renderer.dispose()
       renderer.forceContextLoss()
       renderer.domElement.remove()
@@ -159,7 +157,7 @@ export default function ModelViewer({ src, name }: { src: string; name: string }
   return (
     <div className="model-viewer">
       <div className="model-viewer-stage" ref={stageRef} />
-      {textureNote && !error ? <p>{textureNote}</p> : null}
+      {textureNote && !error ? <p className="model-viewer-texture-note">{textureNote}</p> : null}
       {error ? <p role="alert">{error} <a href={src} download>Download</a></p>
         : status ? <p role="status">{status}</p>
           : <div className="model-viewer-controls"><button type="button" onClick={() => resetRef.current()}>Reset view</button></div>}

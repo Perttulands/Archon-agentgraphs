@@ -4,7 +4,7 @@ import type { NodeEvidence } from '../evidence/runEvidenceApi'
 import { GateRunFacts } from './GateRunFacts'
 
 const evidence = vi.hoisted(() => ({ current: null as NodeEvidence | null }))
-vi.mock('../evidence/runEvidenceApi', () => ({ fetchNodeEvidence: () => Promise.resolve(evidence.current) }))
+vi.mock('../evidence/runEvidenceApi', () => ({ fetchNodeEvidence: () => Promise.resolve(evidence.current), fetchRunAttempts: () => Promise.resolve({ steps: [] }) }))
 
 const text = (value: string) => ({ text: value, bytes: value.length })
 const gate = (rest: Partial<NodeEvidence>): NodeEvidence => ({ runId: 'run_1', nodeId: 'gate', kind: 'gate', ...rest })

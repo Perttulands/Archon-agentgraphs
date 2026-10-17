@@ -549,7 +549,10 @@ terminal reason when that end stopped it; status also names the last blocked
 or active step. `--files` adds its directory files; `--json` keeps the complete
 evidence. `run status` prints a `pick` line for each pick (`picks` in JSON).
 The cockpit's output chips open the producing step's attempts, including nested
-videos and contact sheets; cited images open from their thumbnails. The Produced
+videos and contact sheets; cited images open from their thumbnails. Cite files
+relative to the producing attempt directory or an output folder, or use their
+absolute paths. The cockpit resolves the same citations in attempts, run
+evidence and gate evidence; ambiguous relative names stay text. The Produced
 menu groups files in run order and lists kept copies once. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 

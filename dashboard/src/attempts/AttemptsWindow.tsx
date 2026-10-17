@@ -32,11 +32,11 @@ import './attempts.css'
 // stand out, the judge's choice is marked, and one button picks.
 
 
-/** Room for each attempt's column, up to most of the screen. */
+/** Room for the attempt strip, leaving space around it for its opening step. */
 export function attemptsWindowSize(count: number, viewport: FrameSize): FrameSize {
   return {
-    width: Math.round(Math.min(viewport.width * .94, Math.max(480, 40 + Math.max(1, count) * 400))),
-    height: Math.round(viewport.height * .86),
+    width: Math.round(Math.min(viewport.width * .72, Math.max(480, 40 + Math.max(1, count) * 400))),
+    height: Math.round(Math.min(840, viewport.height * .78)),
   }
 }
 

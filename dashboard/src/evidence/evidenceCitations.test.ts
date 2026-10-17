@@ -28,4 +28,23 @@ describe('evidence file citations', () => {
   it('does not invent a sibling missing from the artifact list', () => {
     expect(resolveCitation('renders/sh_face_hd.png', [], ['/state/judge/3/report.md'])).toBeNull()
   })
+  it('resolves against an attempt directory and output folder without borrowing another attempt', () => {
+    const files = ['replay/2/replay/checkpoints/09.jpg', 'replay/3/replay/checkpoints/09.jpg', 'replay/3/replay/input-preflight.json']
+    expect(resolveCitation('replay/checkpoints/09.jpg', files, [], ['replay/3', 'replay/3/replay'])).toBe(files[1])
+    expect(resolveCitation('checkpoints/09.jpg', files, [], ['replay/3', 'replay/3/replay'])).toBe(files[1])
+    expect(resolveCitation('replay/3/replay/input-preflight.json', files, [], ['replay/3'])).toBe(files[2])
+    expect(resolveCitation('replay/checkpoints/09.jpg', [files[0]], [], ['replay/3'])).toBeNull()
+  })
+
+  it('resolves real replay citations inside snapshotted output folders', () => {
+    const image = 'fmn_replay/1/outputs/port_replay/replay/checkpoints/09.jpg'
+    const json = 'fmn_replay/1/outputs/port_replay/replay/input-preflight.json'
+    const directories = ['fmn_replay/1', 'fmn_replay/1/outputs/port_replay/replay']
+    const earlier = image.replace('/1/', '/2/')
+    expect(resolveCitation('replay/checkpoints/09.jpg', [earlier, image], [], directories)).toBe(image)
+    expect(resolveCitation('replay/input-preflight.json', [json], [], directories)).toBe(json)
+    expect(resolveCitation('replay/checkpoints/09.jpg', [earlier], [], directories)).toBeNull()
+    expect(resolveCitation('replay/checkpoints/09.jpg', [image, 'fmn_replay/1/other/replay/checkpoints/09.jpg'], [], directories)).toBeNull()
+  })
+
 })

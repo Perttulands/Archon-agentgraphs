@@ -72,13 +72,13 @@ function ProducedChip({ item, value, onOpened, role, openedFrom }: {
 }
 
 /** A step's produced chips, for its card, node window or Flow row. Nothing until it has produced something. */
-export function ProducedFiles({ nodeId, className }: { nodeId: string; className?: string }) {
+export function ProducedFiles({ nodeId, className, reserveRow = false }: { nodeId: string; className?: string; reserveRow?: boolean }) {
   const value = useContext(RunProducedContext)
   const files = useFileWindows()
   const items = value?.byNode.get(nodeId)?.items || []
-  if (!value || !files || items.length === 0) return null
+  if (!value || !files || (items.length === 0 && !reserveRow)) return null
   return (
-    <div className={`produced${className ? ` ${className}` : ''}`} data-testid={`produced-${nodeId}`} aria-label={`Produced by ${value.names.node(nodeId)}`}>
+    <div className={`produced${reserveRow ? ' produced-reserved' : ''}${className ? ` ${className}` : ''}`} data-testid={`produced-${nodeId}`} aria-label={items.length ? `Produced by ${value.names.node(nodeId)}` : undefined}>
       {items.map(item => <ProducedChip key={item.key} item={item} value={value} />)}
     </div>
   )

@@ -3553,7 +3553,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   <ReferencedFiles nodeId={formation.id} files={nodeFileRefs(board, formation.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
                   <div className="fstatus">{state === 'running' || state === 'waiting' ? state : ''}</div>
                   <div className="fbody" onPointerDown={event => beginNodeDrag(event, formation.id)}>{renderBody(formation)}</div>
-                  <ProducedFiles nodeId={formation.id} />
+                  <ProducedFiles nodeId={formation.id} reserveRow={outputNodeIds.has(formation.id)} />
                   {formation.outputs.map((port, portIndex) => {
                     const endpoint = `${formation.id}:${port.id}`
                     return (

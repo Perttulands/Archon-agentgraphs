@@ -107,6 +107,7 @@ async function rows(page: Page) {
 /** Drags empty canvas so the slot's edge meets the canvas's own edge, at the zoom it has. */
 async function panSlotTo(page: Page, slot: Locator, edge: 'bottom' | 'right' | 'top') {
   const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
+  await expect(slot).toBeVisible()
   const box = (await slot.boundingBox())!
   const dx = edge === 'right' ? canvas.x + canvas.width - 8 - (box.x + box.width) : 0
   const dy = edge === 'bottom' ? canvas.y + canvas.height - 8 - (box.y + box.height) : edge === 'top' ? canvas.y + 8 - box.y : 0

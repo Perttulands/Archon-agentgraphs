@@ -1,6 +1,6 @@
 import { useWindowStack } from '../windows/WindowManager'
 import MediaPreview from '../files/MediaPreview'
-import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { useContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { gateKindLabel } from '../components/GateEditorDialog'
 import FloatingWindow from '../windows/FloatingWindow'
 import { mediaKind } from '../files/mediaUrls'
@@ -18,6 +18,8 @@ import {
   fetchNodeEvidence,
   fetchRunArtifacts,
   fetchRunBrief,
+  fetchRunAttempts,
+  type StepAttempts,
   formatBytes,
   type EvidenceAttempt,
   type EvidenceEvaluation,
@@ -29,7 +31,7 @@ import {
   type RunArtifactEntry,
   type RunArtifactPreview,
 } from './runEvidenceApi'
-import { citedPaths, resolveCitation } from './evidenceCitations'
+import { CitationContext, CitationScopeProvider, CitationFiles, CitedEvidence, evidencePaths, attemptCitationScope } from './CitationFiles'
 import '../attempts/attempts.css'
 import './evidence.css'
 
@@ -59,19 +61,17 @@ const CLEANUP_SETTLED = new Set(['ended', 'kept_on_call'])
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 const byteLength = (text: string) => new TextEncoder().encode(text).length
 
-const CitationContext = createContext<{ runId: string; artifacts: string[]; paths: string[]; open: (path: string, source?: Element) => void } | null>(null)
-
-function evidencePaths(value: unknown): string[] {
-  if (typeof value === 'string') return citedPaths(value).filter(path => path.startsWith('/'))
-  if (!value || typeof value !== 'object') return []
-  return [...new Set(Object.values(value).flatMap(evidencePaths))]
-}
-
 export default function RunEvidence({ runId, nodeId, title, state, board, onClose }: RunEvidenceProps) {
   const names = useMemo(() => evidenceNamesForBoard(board), [board])
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
   const [error, setError] = useState('')
   const [artifacts, setArtifacts] = useState<{ artifacts: RunArtifactEntry[]; truncated: boolean; omitted: number } | null>(null)
+  const [attemptSteps, setAttemptSteps] = useState<StepAttempts[]>([])
+  useEffect(() => {
+    let current = true
+    fetchRunAttempts(runId).then(result => { if (current) setAttemptSteps(result.steps) }, () => {})
+    return () => { current = false }
+  }, [runId, state])
   const [artifactError, setArtifactError] = useState('')
   const [artifactRetry, setArtifactRetry] = useState(0)
   const [openDocument, setOpenDocument] = useState<OpenDocument | null>(null)
@@ -134,7 +134,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
       anchor={() => anchor?.anchor || null}
       keepClear={() => anchor?.keepClear || []} anchorKind={anchor?.anchorKind}
       onClose={onClose}>
-      <CitationContext.Provider value={{ runId, artifacts: artifacts?.artifacts.map(file => file.name) || [], paths: evidencePaths(evidence), open: openArtifact }}>
+      <CitationContext.Provider value={{ runId, artifacts: [...(artifacts?.artifacts.map(file => file.name) || []), ...attemptSteps.flatMap(step => step.attempts.flatMap(attempt => attemptCitationScope(attempt).artifacts))], directories: [], paths: evidencePaths(evidence), open: openArtifact }}>
       <div data-testid="node-inspector" className="node-evidence">
         <dl className="node-evidence-identity">
           <div><dt>State</dt><dd data-testid="node-evidence-state">{state || 'not started'}</dd></div>
@@ -150,10 +150,10 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
         {documentError ? <div className="note-error" role="alert">{documentError}</div> : null}
 
         {evidence && evidence.kind === 'gate' ? (
-          <GateEvaluations runId={runId} evaluations={evidence.evaluations || []} names={names} onOpenArtifact={openArtifact} />
+          <GateEvaluations runId={runId} evaluations={evidence.evaluations || []} attemptSteps={attemptSteps} names={names} onOpenArtifact={openArtifact} />
         ) : null}
         {evidence && evidence.kind !== 'gate' ? (
-          <Attempts runId={runId} nodeId={nodeId} attempts={evidence.attempts || []} names={names} onOpenArtifact={openArtifact} onOpenBrief={openBrief} />
+          <Attempts runId={runId} nodeId={nodeId} attempts={evidence.attempts || []} attemptSteps={attemptSteps} names={names} onOpenArtifact={openArtifact} onOpenBrief={openBrief} />
         ) : null}
 
         {failures.length ? (
@@ -195,19 +195,26 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
 
 const sameText = (a: EvidenceText, b: EvidenceText) => a.bytes > 0 && a.bytes === b.bytes && a.text === b.text
 
-function Attempts({ runId, nodeId, attempts, names, onOpenArtifact, onOpenBrief }: {
+function Attempts({ runId, nodeId, attempts, attemptSteps, names, onOpenArtifact, onOpenBrief }: {
   runId: string
   nodeId: string
   attempts: EvidenceAttempt[]
+  attemptSteps: StepAttempts[]
   names: EvidenceNames
   onOpenArtifact: (name: string) => void
   onOpenBrief: (seq: number, label: string) => void
 }) {
-  const latestOutput = [...attempts].reverse().find(attempt => attempt.output)?.output
+  const latestAttempt = [...attempts].reverse().find(attempt => attempt.output)
+  const latestOutput = latestAttempt?.output
+  const scopeFor = (number?: number) => {
+    const attempt = attemptSteps.find(step => step.nodeId === nodeId)?.attempts.find(attempt => attempt.attempt === number)
+    return attempt ? attemptCitationScope(attempt) : {}
+  }
   // Seats usually return the same text as the whole output and as its port: print it once.
   const outputInPort = latestOutput ? latestOutput.ports.some(port => sameText(port.text, latestOutput.text)) : false
   return (
     <>
+      <CitationScopeProvider scope={scopeFor(latestAttempt?.attempt)}>
       <section className="node-evidence-section">
         <h3>Output</h3>
         {latestOutput ? (
@@ -235,10 +242,12 @@ function Attempts({ runId, nodeId, attempts, names, onOpenArtifact, onOpenBrief 
           </div>
         ) : <div className="node-evidence-empty">No output recorded yet.</div>}
       </section>
+      </CitationScopeProvider>
 
       <section className="node-evidence-section">
         <h3>Attempts</h3>
         {attempts.length === 0 ? <div className="node-evidence-empty">No attempts recorded yet.</div> : attempts.map(attempt => (
+          <CitationScopeProvider key={`${attempt.attempt}-${attempt.startedSeq || 0}`} scope={scopeFor(attempt.attempt)}>
           <div className="node-evidence-attempt" data-testid={`node-attempt-${attempt.attempt}`} key={`${attempt.attempt}-${attempt.startedSeq || 0}`}>
             <div className="node-attempt-head">Attempt {attempt.attempt}{attempt.reason ? ` · ${attempt.reason}` : ''}</div>
             {attempt.inputs.map((input, index) => (
@@ -267,15 +276,23 @@ function Attempts({ runId, nodeId, attempts, names, onOpenArtifact, onOpenBrief 
               </div>
             ))}
           </div>
+          </CitationScopeProvider>
         ))}
       </section>
     </>
   )
 }
 
-function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
+export function gateCitationScope(evaluation: EvidenceEvaluation, steps: StepAttempts[]) {
+  const attempts = steps.flatMap(step => step.attempts.filter(attempt => attempt.verdicts.some(verdict => verdict.evaluationSeq === evaluation.seq)))
+  const scopes = attempts.map(attemptCitationScope)
+  return scopes.length ? { directories: scopes.flatMap(scope => scope.directories), paths: [...evidencePaths(evaluation), ...scopes.flatMap(scope => scope.paths)] } : { paths: evidencePaths(evaluation) }
+}
+
+function GateEvaluations({ runId, evaluations, attemptSteps, names, onOpenArtifact }: {
   runId: string
   evaluations: EvidenceEvaluation[]
+  attemptSteps: StepAttempts[]
   names: EvidenceNames
   onOpenArtifact: (name: string) => void
 }) {
@@ -290,7 +307,8 @@ function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
   return (
     <>
       {[...evaluations].reverse().map((evaluation, index) => (
-        <section className="node-evidence-section" key={evaluation.seq} data-testid={`gate-evaluation-${evaluation.seq}`}>
+        <CitationScopeProvider key={evaluation.seq} scope={gateCitationScope(evaluation, attemptSteps)}>
+        <section className="node-evidence-section" data-testid={`gate-evaluation-${evaluation.seq}`}>
           <h3>{index === 0 ? 'Gate verdict' : 'Earlier evaluation'}{evaluation.attempt ? ` · attempt ${evaluation.attempt}` : ''}</h3>
           {evaluation.verdict ? (
             <div className={`node-evidence-verdict ${evaluation.verdict.verdict === 'fail' ? 'fail' : 'pass'}`} data-testid={index === 0 ? 'node-gate-verdict' : undefined}>
@@ -351,6 +369,7 @@ function GateEvaluations({ runId, evaluations, names, onOpenArtifact }: {
           </div>
           {evaluation.input ? <InputView runId={runId} input={evaluation.input} names={names} onOpenArtifact={onOpenArtifact} /> : null}
         </section>
+        </CitationScopeProvider>
       ))}
     </>
   )
@@ -406,7 +425,7 @@ function EvidenceItems({ items, omitted }: { items: EvidenceItem[]; omitted?: nu
   const context = useContext(CitationContext)
   if (items.length === 0) return null
   return (
-    <CitationContext.Provider value={context ? { ...context, paths: evidencePaths(items) } : null}>
+    <CitationContext.Provider value={context ? { ...context, paths: [...evidencePaths(items), ...context.paths] } : null}>
     <ul className="evidence-items">
       {items.map((item, index) => (
         <li key={index}>
@@ -418,31 +437,6 @@ function EvidenceItems({ items, omitted }: { items: EvidenceItem[]; omitted?: nu
     </ul>
     </CitationContext.Provider>
   )
-}
-
-/** Fixed thumbnail frames keep decoded images from shifting the evidence. */
-function CitationFiles({ text, imagesOnly = false }: { text: string; imagesOnly?: boolean }) {
-  const context = useContext(CitationContext)
-  if (!context) return null
-  const paths = [...new Set(citedPaths(text).map(path => resolveCitation(path, context.artifacts, [...citedPaths(text).filter(path => path.startsWith('/')), ...context.paths])).filter((path): path is string => !!path))]
-  const images = paths.filter(path => /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(path))
-  const others = imagesOnly ? [] : paths.filter(path => !images.includes(path))
-  const raw = (path: string) => path.startsWith('/') ? `/api/files/raw?path=${encodeURIComponent(path)}` : artifactRawUrl(context.runId, path)
-  return <>
-    {images.length ? <div className="attempt-thumbs evidence">{images.map(path => <button key={path} type="button" className="attempt-thumb" title={path}
-      aria-label={`Open ${path.split('/').pop()}`} onClick={event => context.open(path, event.currentTarget)}>
-      <img src={raw(path)} alt={path.split('/').pop()} loading="lazy" decoding="async" draggable={false} />
-    </button>)}</div> : null}
-    {others.map(path => <button key={path} type="button" className="evidence-link" onClick={event => context.open(path, event.currentTarget)}>{path}</button>)}
-  </>
-}
-
-function CitedEvidence({ text }: { text: string }) {
-  const context = useContext(CitationContext)
-  const paths = citedPaths(text)
-  const standalone = paths.length === 1 && paths[0] === text.trim()
-  const resolved = standalone && context ? resolveCitation(paths[0], context.artifacts, context.paths) : null
-  return <>{resolved ? null : text}<CitationFiles text={text} /></>
 }
 
 function RefLink({ runId, value, onOpenArtifact }: { runId: string; value?: EvidenceRef; onOpenArtifact: (name: string) => void }) {
@@ -489,7 +483,7 @@ function EvidenceTextView({ value, label, format = 'markdown', basePath, runId, 
       ) : (
         <pre className="evidence-plain">{value.text}</pre>
       )}
-      <CitationFiles text={value.text} imagesOnly />
+      <CitationFiles text={value.text} />
       {value.truncated ? (
         <p className="evidence-note" data-testid="evidence-truncated">
           Showing {formatBytes(byteLength(value.text))} of {formatBytes(value.bytes)}. The rest stays in the run evidence on the host.

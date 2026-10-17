@@ -1035,12 +1035,13 @@ run bar's Produced list leads with a finished run's final steps (those whose
 outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, grouped in run order by step and output with counts, outputs before other files.
 A kept output copy replaces its working-path twin in the list; distinct paths
-and attempts remain distinct.
+and attempts remain distinct. A formation that recorded output reserves its
+produced-file row while evidence loads, keeping its card and open windows still.
 Declared output chips open the producing step's attempts; other files open in a
 floating file window, rendered by kind, with Open raw and Copy path (the
 artifact's absolute path on the daemon host); several can be open side by side.
-Node, note and file windows float in the free space nearest what opened them,
-over the canvas or over Flow, shrinking to half their remembered size at most to
+Node, note, file and attempts windows float in the free space nearest what
+opened them, over the canvas or over Flow, shrinking to half their remembered size at most to
 fit. A window leaves its own card or Flow row, its neighbours, its next links and
 the title bars of open windows visible and clickable where space allows, and
 cascades when no free space is left. Opening, closing or resizing a window never
@@ -1050,23 +1051,28 @@ A step that ran at least once shows "N attempts" among its card's run tools and
 in its Flow row, and its node window always shows the count. One click opens the
 step's attempts window (archon-7963), read from the attempts route below. It
 lays every attempt out oldest first, one column each, so the loop reads left to
-right: the attempt's outcome and time, each gate's verdict with its reason and
-evidence (image evidence such as a judge's crops as thumbnails), then what each
+right: the attempt's outcome and time, with a stopped or failed attempt's reason
+in its column header, each gate's verdict and evidence (image evidence such as a judge's crops as thumbnails), then what each
 output produced: images large enough to judge, text and Markdown rendered, and
 other files as chips that open the file window. Run evidence uses the shared
 floating window, with Escape closing an open document before the window.
 Cited images appear as thumbnails in run evidence too; a relative citation
-links only when it matches a listed run artifact, using its cited report to
-disambiguate attempts. Scheme-bearing URLs are not file citations. Evidence
+uses the same resolver in attempts, run evidence and gate evidence. It links
+only to a known artifact, resolving against the producing attempt directory
+and output folders, with cited reports disambiguating other matches.
+Scheme-bearing URLs are not file citations. Evidence
 windows keep a readable minimum of 640×600, even when that covers other cards.
 A folder searches its nested files and previews videos first, then twelve images, preferring verdict-cited images and names
 containing contact sheet or sheet, then at most three final images. It shows
-model tiles with names and sizes before eight other files,
-and counts the rest. Folder model tiles load only when clicked; opening one
+each model once as a tile with its name, size and Open file action before
+eight other files, and counts the rest. Folder model tiles load only when clicked; opening one
 model file of at most 64 MiB loads it immediately. Videos fit the file window
 with their native controls visible. Opening another model
 unmounts the previous viewer and releases its graphics resources. Missing
-textures use a neutral lit material. Files above 64 MiB offer a download
+textures use a neutral lit material with a note; an FBX export with black
+untextured materials uses the same fallback. The note overlays the preview
+without moving its frame. Attempt media fits its column, including side by
+side, and long chip names wrap. Files above 64 MiB offer a download
 instead of parsing in the browser; geometry-free FBX says "No mesh in this file".
 Cited images, contact sheets and previewable media are preferred before filling a folder's file-list cap. The attempt the loop
 settled on, the picked one or else the latest that passed, is marked green.

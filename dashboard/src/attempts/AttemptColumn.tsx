@@ -1,6 +1,6 @@
 import MediaPreview from '../files/MediaPreview'
 import { mediaKind } from '../files/mediaUrls'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useState, type ReactNode } from 'react'
 import Markdown from '../evidence/Markdown'
 import { prettyJson } from '../evidence/TextLines'
 import {
@@ -15,6 +15,8 @@ import {
   type StepAttempt,
 } from '../evidence/runEvidenceApi'
 import LinkedText from '../files/LinkedText'
+import { resolveCitation } from '../evidence/evidenceCitations'
+import { CitationContext, CitationFiles, CitedEvidence, attemptCitationScope } from '../evidence/CitationFiles'
 import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { artifactFileRequest, folderFileRequest, referencedFileRequest, type FileRequest } from '../files/fileWindowModel'
 import AttemptImage, { type ImageZoom } from './AttemptImage'
@@ -104,6 +106,7 @@ function TextBlock({ text, kind, basePath, runId }: { text: EvidenceText; kind: 
           onOpenPath={basePath ? path => { const link = document.activeElement || document.body; open(artifactFileRequest(runId, path), link) } : undefined}
           imageUrl={basePath ? path => artifactRawUrl(runId, path) : undefined} />
       ) : <pre className="attempt-text-pre">{kind === 'json' ? prettyJson(text.text) : text.text}</pre>}
+      <CitationFiles text={text.text} />
       {text.truncated ? <p className="attempt-cut">{cutWords(text)}</p> : null}
     </div>
   )
@@ -165,7 +168,7 @@ function FolderOutput({ runId, output, files, truncated, context, evidence }: {
         <FileChip request={folderFileRequest(output.path, context)} label={`${baseName(folder)}/`} detail={files.length || output.artifact ? counted : undefined} glyph="▥" />
       ) : null}
       {summary.videos.map(file => (
-        <div key={file.name}>
+        <div key={file.name} className="attempt-media">
           <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} size={file.size} />
           <FileChip request={artifactFileRequest(runId, file.name, context)} label={nameWithin(folder, file.name)} detail={formatBytes(file.size)} />
         </div>
@@ -181,9 +184,8 @@ function FolderOutput({ runId, output, files, truncated, context, evidence }: {
         </div>
       ) : null}
       {summary.models.map(file => (
-        <div key={file.name}>
-          <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} size={file.size} />
-          <FileChip request={artifactFileRequest(runId, file.name, context)} label={nameWithin(folder, file.name)} detail={formatBytes(file.size)} />
+        <div key={file.name} className="attempt-media">
+          <MediaPreview kind={mediaKind(file.name)!} src={artifactRawUrl(runId, file.name)} name={nameWithin(folder, file.name)} size={file.size} onOpen={event => open(artifactFileRequest(runId, file.name, context), event.currentTarget)} />
         </div>
       ))}
       {rows.length ? (
@@ -210,6 +212,7 @@ function outputNote(output: AttemptOutput): string {
 }
 
 function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; output: AttemptOutput; files: AttemptFile[]; view: AttemptView }) {
+  const open = useOpen()
   const label = output.label || output.portId
   const context = `${view.stepTitle} · attempt ${attempt.attempt}`
   const testId = `attempt-${attempt.attempt}-output-${output.portId}`
@@ -224,7 +227,9 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
     const detail = output.size ? formatBytes(output.size) : ''
     const media = mediaKind(path)
     if (media && request.rawUrl) {
-      body = <><MediaPreview kind={media} src={request.rawUrl} name={name} size={output.size} /><FileChip request={request} label={name} detail={detail} /></>
+      body = <><MediaPreview kind={media} src={request.rawUrl} name={name} size={output.size}
+        onOpen={media === 'model' ? event => open(request, event.currentTarget) : undefined} />
+        {media === 'video' ? <FileChip request={request} label={name} detail={detail} /> : null}</>
     } else if (output.fileKind === 'image' || (!output.fileKind && isImagePath(path))) {
       const src = output.artifact ? artifactRawUrl(view.runId, output.artifact) : `/api/files/raw?path=${encodeURIComponent(output.path || '')}`
       body = <ImageOutput src={src} name={name} group={output.portId} view={view} request={request} detail={detail} testId={`${testId}-image`} />
@@ -245,7 +250,7 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
     <section className={`attempt-output kind-${output.kind}`} data-testid={testId} aria-label={`${label} of attempt ${attempt.attempt}`}>
       <h4 className="attempt-label">{label}</h4>
       {body}
-      {note && output.kind !== 'text' ? <p className="attempt-note"><LinkedText text={note} /></p> : null}
+      {note && output.kind !== 'text' ? <div className="attempt-note"><LinkedText text={note} /><CitationFiles text={note} /></div> : null}
     </section>
   )
 }
@@ -253,7 +258,8 @@ function OutputView({ attempt, output, files, view }: { attempt: StepAttempt; ou
 function EvidenceItems({ items, omitted, context }: { items: EvidenceItem[]; omitted?: number; context: string }) {
   const open = useOpen()
   const paths = items.map(item => item.text.text.trim())
-  const isPath = (text: string) => text.startsWith('/') && !/[\r\n]/.test(text)
+  const citations = useContext(CitationContext)
+  const isPath = (text: string) => text.startsWith('/') && !/[\r\n]/.test(text) && !(citations && resolveCitation(text, citations.artifacts, citations.paths, citations.directories))
   const images = paths.filter(text => isPath(text) && isImagePath(text))
   const media = paths.filter(text => isPath(text) && mediaKind(text))
   const files = paths.filter(text => isPath(text) && !isImagePath(text) && !mediaKind(text))
@@ -279,7 +285,7 @@ function EvidenceItems({ items, omitted, context }: { items: EvidenceItem[]; omi
       ) : null}
       {notes.length ? (
         <ul className="attempt-evidence-notes">
-          {notes.map((item, index) => <li key={index}><LinkedText text={item.text.text} /></li>)}
+          {notes.map((item, index) => <li key={index}><CitedEvidence text={item.text.text} /></li>)}
         </ul>
       ) : null}
       {omitted ? <p className="attempt-quiet">and {omitted} more</p> : null}
@@ -292,7 +298,7 @@ function VerdictView({ verdict, view, attempt }: { verdict: AttemptVerdict; view
   return (
     <div className={`attempt-verdict tone-${tone}`} data-testid={`attempt-${attempt}-verdict-${verdict.gateId}${verdict.superseded ? '-superseded' : ''}`}>
       <p className="attempt-verdict-head">{verdictHeadline(verdict, view.waitingGates)}</p>
-      {verdict.reason.text.trim() ? <p className="attempt-reason"><LinkedText text={verdict.reason.text} /></p> : null}
+      {verdict.verdict !== 'fail' && verdict.reason.text.trim() ? <div className="attempt-reason"><LinkedText text={verdict.reason.text} /><CitationFiles text={verdict.reason.text} /></div> : null}
       {verdict.reason.truncated ? <p className="attempt-cut">{cutWords(verdict.reason)}</p> : null}
       <EvidenceItems items={verdict.evidence} omitted={verdict.evidenceOmitted} context={`${verdict.gateTitle || verdict.gateId} · attempt ${attempt}`} />
     </div>
@@ -328,6 +334,7 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
   const pickedBy = attempt.picked ? pickerWords(attempt.picked.decidedBy, view.titleOf) : ''
   const beside = (event: { shiftKey: boolean; target: EventTarget }) => event.shiftKey && !view.compare && !(event.target as Element).closest?.(OWN_CLICKS)
   return (
+    <CitationContext.Provider value={{ runId: view.runId, ...attemptCitationScope(attempt) }}>
     <article
       className={`attempt-col${marks.focused ? ' focused' : ''}${marks.settled ? ' settled' : ''}${excluded ? ' excluded' : ''}`}
       data-attempt={attempt.attempt}
@@ -345,25 +352,29 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
           {marks.recommended ? <span className="attempt-outcome outcome-recommended">judge&apos;s pick</span> : null}
         </div>
         <span className="attempt-time">{[attemptTiming(attempt, view.now), excluded ? 'not a candidate' : ''].filter(Boolean).join(' · ')}</span>
+        {attempt.stopReason?.text.trim() ? <p className="attempt-reason attempt-stop-reason"><LinkedText text={attempt.stopReason.text} /></p> : null}
+        {attempt.verdicts.filter(verdict => verdict.verdict === 'fail' && verdict.reason.text.trim()).map(verdict => (
+          <div className="attempt-reason" key={`${verdict.gateId}:${verdict.evaluationSeq}`}><LinkedText text={verdict.reason.text} /><CitationFiles text={verdict.reason.text} /></div>
+        ))}
       </header>
       <div className="attempt-verdicts">
         {attempt.picked ? (
           <div className="attempt-verdict tone-picked" data-testid={`attempt-${attempt.attempt}-pick`}>
             <p className="attempt-verdict-head">Picked as the best{pickedBy ? ` · ${pickedBy}` : ''}</p>
-            {attempt.picked.reason.text.trim() ? <p className="attempt-reason"><LinkedText text={attempt.picked.reason.text} /></p> : null}
+            {attempt.picked.reason.text.trim() ? <div className="attempt-reason"><LinkedText text={attempt.picked.reason.text} /><CitationFiles text={attempt.picked.reason.text} /></div> : null}
           </div>
         ) : null}
         {marks.recommended ? (
           <div className="attempt-verdict tone-recommended" data-testid={`attempt-${attempt.attempt}-recommended`}>
             <p className="attempt-verdict-head">{upperFirst(judgeWords(marks.recommended.decidedBy, view.titleOf))} picks this one</p>
-            {marks.recommended.reason ? <p className="attempt-reason"><LinkedText text={marks.recommended.reason} /></p> : null}
+            {marks.recommended.reason ? <div className="attempt-reason"><LinkedText text={marks.recommended.reason} /><CitationFiles text={marks.recommended.reason} /></div> : null}
           </div>
         ) : null}
         {attempt.verdicts.map(verdict => <VerdictView key={`${verdict.gateId}:${verdict.evaluationSeq}`} verdict={verdict} view={view} attempt={attempt.attempt} />)}
       </div>
       <div className="attempt-outputs">
         {outputs.length ? outputs.map(({ output, files }) => <OutputView key={output.portId} attempt={attempt} output={output} files={files} view={view} />)
-          : <p className="attempt-quiet">{attempt.status === 'running' ? 'No output yet.' : attempt.status === 'stopped' ? attempt.stopReason?.text || 'Stopped before its output.' : 'No output recorded.'}</p>}
+          : attempt.stopReason?.text.trim() ? null : <p className="attempt-quiet">{attempt.status === 'running' ? 'No output yet.' : attempt.status === 'stopped' ? 'Stopped before its output.' : 'No output recorded.'}</p>}
       </div>
       <div className="attempt-files">
         {others.length ? (
@@ -390,5 +401,6 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
         ) : null}
       </div>
     </article>
+    </CitationContext.Provider>
   )
 }

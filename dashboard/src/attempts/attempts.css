@@ -49,7 +49,7 @@
 /* Each attempt is a column of four rows shared across the strip, so every
    verdict starts at the same height and the loop reads straight across. */
 .attempts-grid { display: grid; grid-template-rows: auto auto auto auto; column-gap: 12px; align-items: start; }
-.attempts-grid.strip { grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); }
+.attempts-grid.strip { grid-auto-flow: column; grid-auto-columns: minmax(min(520px, calc(100cqw - 24px)), 1fr); }
 .attempts-grid.compare { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .attempt-col {
   grid-row: span 4; display: grid; grid-template-rows: subgrid; align-self: stretch; min-width: 0;
@@ -95,7 +95,7 @@
 .attempt-figure { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0; }
 .attempt-figure figcaption { max-width: 100%; }
 .attempt-image {
-  --attempt-image-height: 56cqh;
+  --attempt-image-height: max(320px, 56cqh);
   position: relative; display: block; width: 100%; max-height: var(--attempt-image-height); aspect-ratio: 1; margin-inline: auto; padding: 0; overflow: hidden;
   border: 1px solid var(--divider); border-radius: 4px; background: var(--background); cursor: zoom-in; touch-action: none;
 }
@@ -119,12 +119,15 @@
 
 /* Chips open a file in its window. */
 .attempt-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.attempt-chip { max-width: 100%; }
-.attempt-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.attempt-chip { max-width: 100%; white-space: normal; text-align: left; flex-wrap: wrap; }
+.attempt-chip-name { min-width: 0; overflow-wrap: anywhere; }
 .attempt-chip-detail { flex-shrink: 0; color: var(--text-secondary); }
 
 /* A folder: what it holds, its images to look at, the rest to open. */
-.attempt-folder { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.attempt-folder { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
+.attempt-media { width: 100%; min-width: 0; max-width: 100%; }
+.attempt-col .file-video, .attempt-col .model-tile { min-width: 0; max-width: 100%; }
+.attempt-head { min-width: 0; }
 .attempt-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; width: 100%; }
 .attempt-thumbs.evidence { grid-template-columns: repeat(auto-fill, 56px); }
 .attempts-grid.compare .attempt-thumbs.evidence { grid-template-columns: repeat(auto-fill, 96px); }

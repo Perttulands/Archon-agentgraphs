@@ -32,6 +32,9 @@ changes it; a variant that needs more proposes the addition in its set.
   gate's rubric opens from the gate. Output folders lead with their nested
   videos and contact sheets. Cited images open from thumbnails; child windows
   open beside their source window. A single small model opens on the first click.
+  Attempt media stays within its column; long file names wrap. Failed and
+  stopped attempts put the reason in their column header. Attempts windows
+  leave the opening card or Flow status visible.
 - The Flow view shows sequence, feeds and gating as a line; the canvas shows
   the graph.
 

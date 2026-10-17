@@ -138,3 +138,82 @@ for (const scenario of [
     await expect(page.getByRole('alert').getByRole('link', { name: 'Download' })).toBeVisible()
   })
 }
+
+for (const missing of ['unexported', 'delayed-request'] as const) {
+  test(`an FBX with ${missing} textures uses a neutral material and explains it`, async ({ page }) => {
+    const material = `\tMaterial: 3, "Material::MI_Body_Baked", "" {\n\t\tShadingModel: "phong"\n\t\tProperties70:  {\n\t\t\tP: "DiffuseColor", "Color", "", "A",0,0,0\n\t\t}\n\t}\n`
+    const texture = `\tTexture: 4, "Texture::Body", "" {\n\t\tFileName: "missing.png"\n\t}\n\tVideo: 5, "Video::Body", "Clip" {\n\t\tFilename: "missing.png"\n\t\tRelativeFilename: "missing.png"\n\t}\n`
+    const body = ';'.repeat(256) + '\n' + readFileSync(new URL('./fixtures/triangle.fbx', import.meta.url), 'utf8')
+      .replace('Objects:  {', `Objects:  {\n${material}${missing === 'delayed-request' ? texture : ''}`)
+      .replace('Connections:  {', `Connections:  {\n\tC: "OO",3,2\n${missing === 'delayed-request' ? '\tC: "OP",4,3,"DiffuseColor"\n\tC: "OO",5,4\n' : ''}`)
+    await iterationsFixture(page, 'single')
+    await page.route('**/api/runs/run_browser/evidence/attempts?**', route => route.fulfill({ json: { success: true, data: { attempts: {
+      runId: 'run_browser', steps: [{ nodeId: 'execution', title: 'Draw Ahti', outputs: [], attempts: [{
+        ...mediaAttemptFixture, files: [], verdicts: [],
+        outputs: [{ portId: 'model', kind: 'file', fileKind: 'model', artifact: 'execution/1/body.fbx', size: body.length, text: { text: '', bytes: 0 } }],
+      }] }],
+    } } } }))
+    await page.route('**/api/runs/run_browser/artifacts/execution/1/body.fbx', route => route.fulfill({ body }))
+    let releaseTexture = () => {}
+    const textureReady = new Promise<void>(resolve => { releaseTexture = resolve })
+    let textureRequested = false
+    await page.route('**/api/runs/run_browser/artifacts/execution/1/missing.png', async route => {
+      textureRequested = true
+      await textureReady
+      await route.fulfill({ status: 404, body: '' })
+    })
+    await page.goto('/?mission=browser&run=run_browser')
+    await page.getByTestId('attempts-open-execution').click()
+    await page.getByRole('button', { name: 'Preview 3D model body.fbx' }).click()
+    await expect(page.getByRole('button', { name: 'Reset view' })).toBeVisible()
+    const stage = page.getByLabel('3D model body.fbx', { exact: true })
+    const before = await stage.boundingBox()
+    const note = page.getByText('Some textures could not be loaded. Showing affected surfaces with a neutral material.', { exact: true })
+    if (missing === 'delayed-request') {
+      await expect.poll(() => textureRequested).toBe(true)
+      await expect(note).toHaveCount(0)
+      releaseTexture()
+    }
+    await expect(note).toBeVisible()
+    expect(await stage.boundingBox()).toEqual(before)
+    await expect(page.getByRole('alert')).toHaveCount(0)
+  })
+}
+
+for (const width of [1920, 2560]) {
+  test(`folder media stays within its attempt at ${width}px, with one model label`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
+    await page.addInitScript(() => localStorage.clear())
+    await iterationsFixture(page, 'single')
+    const model = `report-after/capability/moss-lods/${'DryadBody_AllLODs_'.repeat(10)}.fbx`
+    await page.route('**/api/runs/run_browser/evidence/attempts?**', route => route.fulfill({ json: { success: true, data: { attempts: {
+      runId: 'run_browser', steps: [{ nodeId: 'execution', title: 'Draw Ahti', outputs: [], attempts: [{
+        ...mediaAttemptFixture, verdicts: [],
+        outputs: mediaAttemptFixture.outputs.filter(output => output.kind === 'folder'),
+        files: [
+          { name: 'execution/1/videos/turntable.mp4', path: `${runArtifacts}/execution/1/videos/turntable.mp4`, kind: 'video', size: 300, modifiedAt: '' },
+          { name: `execution/1/${model}`, path: `${runArtifacts}/execution/1/${model}`, kind: 'model', size: 300, modifiedAt: '' },
+        ],
+      }] }],
+    } } } }))
+    await page.route('**/api/runs/run_browser/artifacts/**/*.mp4', route => route.fulfill({ contentType: 'video/mp4', body: readFileSync(new URL('./fixtures/preview.mp4', import.meta.url)) }))
+    await page.goto('/?mission=browser&run=run_browser')
+    await page.getByTestId('attempts-open-execution').click()
+    const folder = page.getByTestId('attempt-1-output-folder')
+    await expect(folder.getByRole('button', { name: `Preview 3D model ${model}`, exact: true })).toBeVisible()
+    await expect(folder.getByText(model, { exact: true })).toHaveCount(1)
+    const bounds = await folder.locator('..').boundingBox()
+    for (const child of await folder.locator('video, .model-tile-open, .model-tile-open span').all()) {
+      const box = await child.boundingBox()
+      expect(box!.x).toBeGreaterThanOrEqual(bounds!.x)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width)
+    }
+    const label = folder.locator('.model-tile-open span').first()
+    const lines = await label.evaluate(element => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return range.getClientRects().length
+    })
+    expect(lines).toBeGreaterThan(1)
+  })
+}

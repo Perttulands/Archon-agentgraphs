@@ -1,7 +1,8 @@
-import { fileAnchor, type FilePlace } from '../files/FileWindows'
+import type { FilePlace } from '../files/FileWindows'
 import { Suspense, createContext, lazy, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { WindowStack } from '../windows/WindowManager'
 import { attemptsWindowId, type AttemptsPick } from './attemptsModel'
+import { attemptsAnchor } from './attemptsPlacement'
 import './attemptsButton.css'
 
 const AttemptsWindow = lazy(() => import('./AttemptsWindow'))
@@ -52,7 +53,7 @@ export function AttemptsWindowsProvider({ run, stack, children }: { run: Attempt
   const stackRef = useRef(stack)
   stackRef.current = stack
   const open = useCallback((nodeId: string, origin?: Element | null) => {
-    if (origin) places.current.set(nodeId, fileAnchor(origin))
+    if (origin) places.current.set(nodeId, attemptsAnchor(origin))
     setOpened(current => current.runId !== runId ? { runId, nodes: [nodeId] }
       : current.nodes.includes(nodeId) ? current : { runId, nodes: [...current.nodes, nodeId] })
     stackRef.current.focus(attemptsWindowId(nodeId))

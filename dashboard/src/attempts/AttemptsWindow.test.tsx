@@ -52,7 +52,7 @@ describe('AttemptsWindow', () => {
     expect(fetchAttempts).toHaveBeenCalledWith('run_1', 'draw')
     expect([...document.querySelectorAll('[data-attempt]')].map(column => column.getAttribute('data-attempt'))).toEqual(['1', '2', '3', '4'])
     expect(screen.getByTestId('attempt-2-verdict-review')).toHaveTextContent('Review gate · ✕ fail')
-    expect(screen.getByTestId('attempt-2-verdict-review')).toHaveTextContent('reason 2')
+    expect(screen.getByTestId('attempt-2').querySelector('.attempt-head')).toHaveTextContent('reason 2')
     expect(screen.getByTestId('attempt-3')).toHaveClass('settled')
     expect(focused()).toBe('3')
 
@@ -66,6 +66,24 @@ describe('AttemptsWindow', () => {
     expect(focused()).toBe('1')
     fireEvent.click(screen.getByTestId('attempts-pip-3'))
     expect(focused()).toBe('3')
+  })
+
+  it.each(['pass', 'fail'] as const)('opens relative image and JSON evidence for a %s attempt in its own directory', async verdict => {
+    attempts = [attempt(3, verdict, {
+      directory: { name: 'draw/3', path: '/state/.archon/artifacts/run_1/draw/3' },
+      outputs: [{ portId: 'replay', kind: 'folder', artifact: 'draw/3/outputs/port_replay/replay', path: '/state/.archon/artifacts/run_1/draw/3/outputs/port_replay/replay', text: text('') }],
+      files: [
+        { name: 'draw/3/outputs/port_replay/replay/checkpoints/09.jpg', path: '/state/.archon/artifacts/run_1/draw/3/outputs/port_replay/replay/checkpoints/09.jpg', kind: 'image', size: 10, modifiedAt: '' },
+        { name: 'draw/3/outputs/port_replay/replay/input-preflight.json', path: '/state/.archon/artifacts/run_1/draw/3/outputs/port_replay/replay/input-preflight.json', kind: 'json', size: 10, modifiedAt: '' },
+      ],
+      verdicts: [{ gateId: 'review', evaluationSeq: 32, verdict, reason: text('Check replay/checkpoints/09.jpg'), evidence: [{ text: text('replay/input-preflight.json') }] }],
+    })]
+    render(<Window />)
+    const column = await screen.findByTestId('attempt-3')
+    const thumbnail = within(column).getByRole('button', { name: 'Open 09.jpg' })
+    expect(within(thumbnail).getByRole('img')).toHaveAttribute('src', '/api/runs/run_1/artifacts/draw/3/outputs/port_replay/replay/checkpoints/09.jpg')
+    expect(within(column).getByRole('button', { name: 'draw/3/outputs/port_replay/replay/input-preflight.json' })).toBeInTheDocument()
+    if (verdict === 'fail') expect(column.querySelector('.attempt-head')).toHaveTextContent('Check replay/checkpoints/09.jpg')
   })
 
   it('shows the terminal reason on a stopped attempt as soon as it opens', async () => {
@@ -200,9 +218,11 @@ describe('AttemptsWindow', () => {
     expect(screen.getByTestId('attempts-pick-go')).toBeEnabled()
   })
 
-  it('sizes the window for its attempts, up to most of the screen', () => {
-    expect(attemptsWindowSize(1, { width: 1920, height: 1080 })).toEqual({ width: 480, height: 929 })
-    expect(attemptsWindowSize(3, { width: 1920, height: 1080 })).toEqual({ width: 1240, height: 929 })
-    expect(attemptsWindowSize(9, { width: 1920, height: 1080 }).width).toBe(1805)
+  it('sizes the attempt strip within the viewport, leaving room for its opening step', () => {
+    expect(attemptsWindowSize(1, { width: 1920, height: 1080 })).toEqual({ width: 480, height: 840 })
+    expect(attemptsWindowSize(3, { width: 1920, height: 1080 })).toEqual({ width: 1240, height: 840 })
+    expect(attemptsWindowSize(9, { width: 1920, height: 1080 }).width).toBe(1382)
+    expect(attemptsWindowSize(3, { width: 2560, height: 1440 })).toEqual({ width: 1240, height: 840 })
+    expect(attemptsWindowSize(1, { width: 1000, height: 700 })).toEqual({ width: 480, height: 546 })
   })
 })

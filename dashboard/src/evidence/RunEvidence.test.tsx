@@ -326,6 +326,36 @@ describe('RunEvidence', () => {
     expect(fetch).toHaveBeenCalledWith(`/api/runs/run_1/evidence/artifacts/${image}`, expect.any(Object))
   })
 
+  it.each(['pass', 'fail'])('uses the evaluated attempt output folder for %s gate citations', async verdict => {
+    const image = 'replay/3/outputs/port_replay/replay/checkpoints/09.jpg'
+    const json = 'replay/3/outputs/port_replay/replay/input-preflight.json'
+    const fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/nodes/gate_replay')) return respond({ evidence: {
+        runId: 'run_1', nodeId: 'gate_replay', kind: 'gate', evaluations: [{
+          seq: 30, attempt: 3, kinds: ['formation'], criterion: text('Check replay'), kindResults: [],
+          verdict: { seq: 32, verdict, reason: text('See replay/checkpoints/09.jpg'), evidence: [{ text: text('replay/input-preflight.json') }] },
+        }],
+      } })
+      if (url.endsWith('/evidence/attempts')) return respond({ attempts: { steps: [{ nodeId: 'replay', attempts: [2, 3].map(number => ({
+        attempt: number, outputs: [{ kind: 'folder', artifact: `replay/${number}/outputs/port_replay/replay` }],
+        directory: { name: `replay/${number}`, path: `/state/replay/${number}` },
+        files: [{ name: `replay/${number}/outputs/port_replay/replay/checkpoints/09.jpg` }, { name: `replay/${number}/outputs/port_replay/replay/input-preflight.json` }],
+        verdicts: [{ evaluationSeq: number * 10 }],
+      })) }] } })
+      if (url.endsWith('/evidence/artifacts')) return respond({ artifacts: [] })
+      if (url.endsWith(`/evidence/artifacts/${json}`)) return respond({ artifact: { name: json, kind: 'json', size: 2, text: text('{}') } })
+      return respond(null, 404)
+    })
+    vi.stubGlobal('fetch', fetch)
+    render(<RunEvidence runId="run_1" nodeId="gate_replay" title="Replay" state="done" onClose={() => {}} />)
+    const thumbnail = await screen.findByRole('button', { name: 'Open 09.jpg' })
+    expect(within(thumbnail).getByRole('img')).toHaveAttribute('src', artifactRawUrl('run_1', image))
+    fireEvent.click(screen.getByRole('button', { name: json }))
+    expect(await screen.findByTestId('evidence-document')).toHaveTextContent('input-preflight.json')
+    expect(fetch).toHaveBeenCalledWith(`/api/runs/run_1/evidence/artifacts/${json}`, expect.any(Object))
+  })
+
   it('says when evidence is unavailable', async () => {
     render(<RunEvidence runId="run_1" nodeId="fmn_missing" title="Missing" state="" onClose={() => {}} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Evidence unavailable: run evidence not found')

@@ -1,6 +1,6 @@
 // Native video and lazy Three.js previews, adapted from CHROTE FileViewer
 // and ModelPreview. Archon mounts one model at a time, after opening its file or choosing a folder tile.
-import { lazy, Suspense, useEffect, useId, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useEffect, useId, useSyncExternalStore, type MouseEventHandler } from 'react'
 import { formatBytes } from '../evidence/runEvidenceApi'
 import './MediaPreview.css'
 const ModelViewer = lazy(() => import('./ModelViewer'))
@@ -16,7 +16,7 @@ function selectModel(id: string | null) {
   listeners.forEach(listener => listener())
 }
 
-function ModelTile({ src, name, size, autoLoad }: { src: string; name: string; size?: number; autoLoad?: boolean }) {
+function ModelTile({ src, name, size, autoLoad, onOpen }: { onOpen?: MouseEventHandler<HTMLButtonElement>; src: string; name: string; size?: number; autoLoad?: boolean }) {
   const id = useId() + src
   const active = useSyncExternalStore(subscribe, snapshot) === id
   useEffect(() => {
@@ -28,11 +28,12 @@ function ModelTile({ src, name, size, autoLoad }: { src: string; name: string; s
       onClick={() => selectModel(active ? null : id)}>
       <span>{name}</span><span>{size === undefined ? '3D model' : formatBytes(size)} · {active ? 'Close preview' : 'Preview 3D'}</span>
     </button> : null}
+    {onOpen ? <button type="button" className="model-tile-file" title={`Open ${name.split('/').pop()}`} onClick={onOpen}>Open file</button> : null}
     {active ? <Suspense fallback={<p role="status">Loading 3D viewer…</p>}><ModelViewer key={src} src={src} name={name} /></Suspense> : null}
   </div>
 }
 
-export default function MediaPreview({ kind, src, name, size, autoLoad = false }: { autoLoad?: boolean; kind: 'video' | 'model'; src: string; name: string; size?: number }) {
+export default function MediaPreview({ kind, src, name, size, autoLoad = false, onOpen }: { onOpen?: MouseEventHandler<HTMLButtonElement>; autoLoad?: boolean; kind: 'video' | 'model'; src: string; name: string; size?: number }) {
   if (kind === 'video') return <video className="file-video" src={src} aria-label={name} controls preload="metadata" />
-  return <ModelTile src={src} name={name} size={size} autoLoad={autoLoad} />
+  return <ModelTile src={src} name={name} size={size} autoLoad={autoLoad} onOpen={onOpen} />
 }

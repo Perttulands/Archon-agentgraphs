@@ -29,7 +29,7 @@ test('a step that looped opens its attempts as one strip that tells the loop, st
 
   // Each attempt's verdict and reason sit beside what it made; the pass stands out.
   await expect(win.getByTestId('attempt-1-verdict-gate')).toContainText('Review gate · ✕ fail')
-  await expect(win.getByTestId('attempt-1-verdict-gate')).toContainText(failReasons[0])
+  await expect(win.getByTestId('attempt-1').locator('.attempt-head')).toContainText(failReasons[0])
   await expect(win.getByTestId('attempt-5-verdict-gate')).toContainText(passReason)
   await expect(win.getByTestId('attempt-5')).toHaveClass(/settled/)
   await expect(win.getByTestId('attempts-pip-5')).toHaveClass(/settled/)

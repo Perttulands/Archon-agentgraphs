@@ -11,3 +11,7 @@
 .file-content > .model-tile { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0; }
 .file-content .model-viewer { min-height: 0; height: auto; }
 .file-content .model-viewer-stage { min-height: 100px; }
+
+.model-tile-open { min-width: 0; }
+.model-tile-open span { max-width: 100%; overflow-wrap: anywhere; }
+.model-tile-file { margin-top: 4px; padding: 3px 6px; color: var(--text-secondary); background: transparent; border: 1px solid var(--divider); border-radius: 3px; font: 11px var(--font-mono); cursor: pointer; }

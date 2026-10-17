@@ -1,8 +1,11 @@
 /* Adapted from CHROTE ModelViewer.css. */
-.model-viewer { display: flex; flex-direction: column; flex: 1; width: 100%; height: 100%; min-height: 240px; color: var(--text-secondary); }
+.model-viewer { position: relative; display: flex; flex-direction: column; flex: 1; width: 100%; height: 100%; min-height: 240px; color: var(--text-secondary); }
 .model-viewer-stage { position: relative; flex: 1; min-height: 280px; }
 .model-viewer-stage canvas { position: absolute; inset: 0; display: block; touch-action: none; }
 .model-viewer p, .model-viewer-controls { padding: 8px; font-size: 11px; }
 .model-viewer-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .model-viewer-controls button { color: var(--text-primary); background: var(--surface-secondary); border: 1px solid var(--divider); padding: 4px 8px; font: inherit; cursor: pointer; }
 .model-viewer [role="alert"] { color: var(--color-error); }
+
+/* A late texture failure explains the fallback without resizing the model. */
+.model-viewer-texture-note { position: absolute; z-index: 1; left: 0; right: 0; bottom: 42px; margin: 0; background: var(--surface-primary); }
