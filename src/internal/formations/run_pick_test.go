@@ -617,10 +617,10 @@ to = "end_done:in"
 		return "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"" + target + "\"\nrounds = 3\nwhenSpent = \"" + whenSpent + "\"\n"
 	}
 	for _, tc := range []struct{ name, toml, message string }{
-		{"a mission card", judged + card("mis_showcase", "best"), "Limit Cap picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop"},
-		{"no selecting gate", judged + card("fmn_ship", "best"), "Limit Cap picks the best attempt of Ship when spent, but no gate judges it and sends it back: wire a judge or human gate that only it feeds and whose fail returns to it, or set it to stop"},
-		{"a code gate", strings.Replace(judged, `kinds = ["formation"]`, `kinds = ["code"]`, 1) + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but its gate Review checks with code only, which cannot compare attempts: give it a judge or a human, or set it to stop"},
-		{"two selecting gates", judged + secondGate + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but Review and Second review both judge it and send it back, so neither can pick: keep one, or set it to stop"},
+		{"a mission card", judged + card("mis_showcase", "best"), "Limit Cap picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop or fail"},
+		{"no selecting gate", judged + card("fmn_ship", "best"), "Limit Cap picks the best attempt of Ship when spent, but no gate judges it and sends it back: wire a judge or human gate that only it feeds and whose fail returns to it, or set it to stop or fail"},
+		{"a code gate", strings.Replace(judged, `kinds = ["formation"]`, `kinds = ["code"]`, 1) + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but its gate Review checks with code only, which cannot compare attempts: give it a judge or a human, or set it to stop or fail"},
+		{"two selecting gates", judged + secondGate + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but Review and Second review both judge it and send it back, so neither can pick: keep one, or set it to stop or fail"},
 		{"another value", judged + card("fmn_work", "never"), `Limit Cap holds whenSpent = "never": set it to stop, best or fail`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

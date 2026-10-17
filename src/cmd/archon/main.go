@@ -1855,7 +1855,11 @@ func writeRunEnd(stdout io.Writer, status *formations.RunStatusProjection, probl
 		if problem.Type != formations.RunEventFailed && problem.Type != formations.RunEventCanceled {
 			continue
 		}
-		fmt.Fprintf(stdout, "reason\t%s\t%s\n", problem.Code, problem.Reason.Text)
+		if problem.Code != "" {
+			fmt.Fprintf(stdout, "reason\t%s\t%s\n", problem.Code, problem.Reason.Text)
+		} else {
+			fmt.Fprintf(stdout, "reason\t%s\n", problem.Reason.Text)
+		}
 		if problem.Reason.Truncated {
 			fmt.Fprintln(stdout, "Full reason is in the run evidence problems.")
 		}

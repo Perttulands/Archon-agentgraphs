@@ -500,7 +500,7 @@ func whenSpentProblem(board *BoardDocument, limit LimitNode) string {
 		return fmt.Sprintf("Limit %s holds whenSpent = %q: set it to stop, best or fail", name, limit.WhenSpent)
 	}
 	if _, ok := findMission(board, limit.Target); ok {
-		return fmt.Sprintf("Limit %s picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop", name)
+		return fmt.Sprintf("Limit %s picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop or fail", name)
 	}
 	if _, ok := findFormation(board.Formations, limit.Target); !ok {
 		return ""

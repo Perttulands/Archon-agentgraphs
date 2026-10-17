@@ -550,8 +550,11 @@ gives an attempt more time. At the deadline the step's seats stop, keeping
 partial evidence. With `warnSeconds` set, the covered seats get a warning
 pasted once when that much time is left, like an operator's message: "Archon:
 5 min left of this step's working time (Limit card Clock). When it runs out
-the step stops and the run waits for the operator. Finish your output now." A
-step's card warns each seat Archon dispatched in the attempt (a solo seat,
+the step stops and the run waits for the operator. Finish your output now."
+The ending depends on `whenSpent`: `stop` says "waits for the operator";
+`fail` says "fails, keeping the attempts as evidence"; `best` says "picks
+the best judged attempt, or waits if none is eligible". A step's card warns
+each seat Archon dispatched in the attempt (a solo seat,
 every peer, an orchestrated step's controller) once per attempt, at once when
 the attempt starts with less time left; the mission's card warns only the
 seats working when it fires, once in the run. Each warning is recorded as
@@ -658,7 +661,9 @@ complete enveloped projections from SSE after durable changes, waits through
 human gates and closes only at finality, exiting 0, or 7 for a `picked` run as
 `run wait` does. Interrupting that client stops viewing,
 not execution. Abort cancels only the selected run and waits for owned-seat
-cleanup, including seats kept on call, before returning `canceled`.
+cleanup, including seats kept on call, before returning `canceled`. An abort
+records the cancellation and seat cleanups only, never an executor failure or
+a block.
 
 ### Picking the best attempt
 
@@ -673,17 +678,18 @@ exactly one gate whose `in` port that step alone feeds and whose `fail` route
 returns to the step, decided by a judge (`formation`) or a `human`, since a
 code check cannot compare attempts. Validation reports, as `invalid_limit`, a
 best card on the mission ("Limit Cap picks the best attempt when spent, but it
-covers the whole mission: only a step's card can pick; set it to stop"), on a
+covers the whole mission: only a step's card can pick; set it to stop or fail"), on a
 step without a selecting gate ("Limit Cap picks the best attempt of Draft when
 spent, but no gate judges it and sends it back: wire a judge or human gate that
-only it feeds and whose fail returns to it, or set it to stop"), two such gates
+only it feeds and whose fail returns to it, or set it to stop or fail"), two such gates
 or a code-only gate, and any value other than `stop`, `best` or `fail`; admission
 refuses the run with the same words. `limit create|update --when-spent
 stop|best|fail` and the patch operations' `whenSpent` set it; another value is
 refused with `INVALID_LIMIT` (HTTP 400). In the cockpit the card's window sets
-it (When spent: Stop for a grant, Pick the best attempt, or Fail the run), the card reads
-"then picks the best", and Flow and the step's window say ", then the best
-attempt goes on".
+it (When spent: Stop for a grant, Pick the best attempt, or Fail the run).
+For `best`, the card reads "then picks the best", and Flow and the step's
+window say ", then the best attempt goes on". For `fail`, the card reads
+"then fails the run", and Flow and the step's window say ", then fails the run".
 
 When any knob of a best card is spent, the step runs no more and picks among
 its candidates: the attempts whose output the selecting gate judged with a
@@ -1956,9 +1962,6 @@ match the request host. Terminal bytes are the actual seat display, not the
 sanitized ledger projection. The same trusted-network access boundary applies.
 
 ### Run evidence
-
-Aborting active work records cancellation and seat cleanup, without an executor
-failure or a resumable block for the run's own context cancellation.
 
 Absolute paths in terminals, file text, briefs, outputs and notes open read-only
 file windows beside their source. Bead IDs copy on click (tooltip: "Bead ID,

@@ -108,6 +108,16 @@ func TestFinalRunStatusExplainsTerminalOutcome(t *testing.T) {
 					t.Errorf("missing %q: %s", want, &out)
 				}
 			}
+			if tc.event != "" {
+				want := "reason\t"
+				if tc.code != "" {
+					want += tc.code + "\t"
+				}
+				want += tc.reason + "\n"
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("missing exact reason line %q: %s", want, &out)
+				}
+			}
 			if tc.actor != "" && !strings.Contains(out.String(), "endedBy\t"+tc.actor) {
 				t.Errorf("missing ending actor: %s", &out)
 			}

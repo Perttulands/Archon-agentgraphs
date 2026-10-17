@@ -353,7 +353,7 @@ time runs out. By default the run blocks with `limit_reached` and a plain reason
 
 `--when-spent fail` on a step or mission card ends the run as failed at the
 spent limit, with its usage reason and every attempt's verdicts and outputs
-kept as evidence. It needs no operator grant. `stop` remains the default.
+kept as evidence. It needs no operator grant. `stop` is the default.
 
 **Best of N.** `--when-spent best` on a step's card picks the best attempt
 instead of blocking: when the card is spent, the step's gate compares the
@@ -397,9 +397,7 @@ archon $S mission validate "$M" --json
 archon $S mission arrange "$M" --json
 ```
 
-Reach zero errors before running. For unattended missions, set `whenSpent`
-on every Limit card so exhaustion follows the mission's terms instead of
-waiting for an operator grant. Findings name node IDs: unstaffed slots,
+Reach zero errors before running. Findings name node IDs: unstaffed slots,
 incomplete gates, routes that lead nowhere (`route_leads_nowhere`), an unwired
 Input card, a mission with several Input cards, `duplicate_slot_id`. Warnings
 name nodes no path from the Input card reaches (`unreachable_node`); wire a
@@ -412,17 +410,24 @@ notifications or smoke-test routing, read
 
 ## Manage a mission for the operator
 
-Clarify the mission's inputs in the conversation and prepare it for review.
-Start only on an explicit go, passing the owning Bead with `--bead`.
-Follow the run with `run wait` and read its final outcome.
-For unattended missions, set each Limit card's `whenSpent`: use `fail` to end
-on exhaustion, or `best` where a judged attempt should go on as failed work.
-Keep the admitted mission intact: make no mid-run grants or edits.
-Change the mission between runs through a retro recorded on the owning Bead.
+Clarify the mission's inputs in the conversation, and ask when an input or the
+authority to run is missing. Start only on an explicit go, passing the owning
+Bead with `--bead`, and follow the run with `run wait`.
+
+For a mission meant to run unattended:
+
+- Give each Limit card `--when-spent fail`, so exhaustion ends the run. `best`
+  still blocks when no attempt was judged, and asks the operator when its gate
+  is human.
+- Leave the admitted run as it is. A grant or a mission edit needs the
+  operator's authority; improvements land between runs, through a retro
+  recorded on the owning Bead.
+- Ask the operator only what the mission cannot settle: a missing input or
+  authority, or a taste or direction call, as one question with options and a
+  recommendation.
+
 Give the rundown from `run attempts` and the artifacts: what ran, what passed
-or failed, what was produced, and where the evidence is.
-Escalate only taste or direction calls, as one question with options and a
-recommendation.
+or failed, what it produced and where the evidence is.
 
 ## Run a mission
 

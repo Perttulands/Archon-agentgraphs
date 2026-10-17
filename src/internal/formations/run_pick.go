@@ -95,14 +95,14 @@ func selectingGate(board *BoardDocument, stepID string) (GateNode, string) {
 	}
 	switch len(found) {
 	case 0:
-		return GateNode{}, "no gate judges it and sends it back: wire a judge or human gate that only it feeds and whose fail returns to it, or set it to stop"
+		return GateNode{}, "no gate judges it and sends it back: wire a judge or human gate that only it feeds and whose fail returns to it, or set it to stop or fail"
 	case 1:
 	default:
-		return GateNode{}, fmt.Sprintf("%s and %s both judge it and send it back, so neither can pick: keep one, or set it to stop", nodeName(board, found[0].ID), nodeName(board, found[1].ID))
+		return GateNode{}, fmt.Sprintf("%s and %s both judge it and send it back, so neither can pick: keep one, or set it to stop or fail", nodeName(board, found[0].ID), nodeName(board, found[1].ID))
 	}
 	gate := found[0]
 	if !hasGateKind(gate.Kinds, "formation") && !hasGateKind(gate.Kinds, "human") {
-		return GateNode{}, fmt.Sprintf("its gate %s checks with code only, which cannot compare attempts: give it a judge or a human, or set it to stop", nodeName(board, gate.ID))
+		return GateNode{}, fmt.Sprintf("its gate %s checks with code only, which cannot compare attempts: give it a judge or a human, or set it to stop or fail", nodeName(board, gate.ID))
 	}
 	return gate, ""
 }

@@ -104,7 +104,7 @@ var nounHelps = []nounHelp{
 	}},
 	{noun: "run", summary: "runs, through the daemon", about: "A run is one start of a mission or a single step. Read and drive runs with --server.", commands: []commandHelp{
 		{"list", "[--mission <mission>] [--json]", "list runs, or one mission's, newest first: one line per run with its ID, mission, status, Bead, start and last change. --json prints each run's full projection"},
-		{"status", "<runId> [--json]", "print a run's status. A run that succeeded or was picked lists its mission outputs, one output line each with name, kind and value; pass a value to the next mission's --input. A picked run's outputs that came through a pick add picked and finding lines: failed work, not a pass"},
+		{"status", "<runId> [--json]", "print a run's status. A final run adds outcome, reason (when recorded, with a code when present) and endedBy (when known) lines. A run that succeeded or was picked lists its mission outputs, one output line each with name, kind and value; pass a value to the next mission's --input. A picked run's outputs that came through a pick add picked and finding lines: failed work, not a pass"},
 		{"attempts", "<runId> [--node <id>] [--files] [--json]", "list each attempt with its status, outputs and gate verdicts; add --files to list attempt files; JSON includes complete evidence"},
 		{"logs", "<runId> [--node <id>] [--follow] [--json]", "print a run's projection"},
 		{"follow", "<runId> [--since <seq>] [--node <id>] [--json]", "print the run as it changes until it is final; exits 7 when it ended picked"},
