@@ -594,6 +594,12 @@ func (t realSeatTransport) WaitTurn(ctx context.Context, s *nativeSeat, cwd, poi
 			if event.Err != nil {
 				return turn, event.Err
 			}
+			if event.Removed {
+				if selected != "" && (event.Path == selected || strings.HasPrefix(selected, event.Path+string(filepath.Separator))) {
+					return turn, fmt.Errorf("selected native transcript moved or removed: %s", selected)
+				}
+				continue
+			}
 			if filepath.Ext(event.Path) != ".jsonl" {
 				continue
 			}

@@ -13,7 +13,9 @@ import (
 
 type Event struct {
 	Path string
-	Err  error
+	// Removed reports a file or subtree leaving the watched tree.
+	Removed bool
+	Err     error
 }
 type Watcher struct {
 	file   *os.File
@@ -23,6 +25,7 @@ type Watcher struct {
 
 // New watches an existing directory tree and any directories subsequently added.
 func New(root string) (*Watcher, error) {
+	root = filepath.Clean(root)
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC | syscall.IN_NONBLOCK)
 	if err != nil {
 		return nil, err
@@ -38,7 +41,7 @@ func New(root string) (*Watcher, error) {
 			if !entry.IsDir() {
 				return nil
 			}
-			wd, err := syscall.InotifyAddWatch(fd, path, syscall.IN_CREATE|syscall.IN_MODIFY|syscall.IN_MOVED_TO|syscall.IN_DELETE_SELF|syscall.IN_MOVE_SELF)
+			wd, err := syscall.InotifyAddWatch(fd, path, syscall.IN_CREATE|syscall.IN_MODIFY|syscall.IN_MOVED_TO|syscall.IN_DELETE|syscall.IN_MOVED_FROM|syscall.IN_DELETE_SELF|syscall.IN_MOVE_SELF)
 			if err == nil {
 				paths[wd] = path
 			}
@@ -78,18 +81,40 @@ func New(root string) (*Watcher, error) {
 					return
 				}
 				name := strings.TrimRight(string(buf[off+syscall.SizeofInotifyEvent:end]), "\x00")
-				path := filepath.Join(paths[wd], name)
+				directory, known := paths[wd]
+				path := filepath.Join(directory, name)
 				off = end
 				if mask&syscall.IN_Q_OVERFLOW != 0 {
 					emit(Event{Err: errors.New("filesystem event overflow")})
 					return
 				}
-				if mask&(syscall.IN_DELETE_SELF|syscall.IN_MOVE_SELF) != 0 {
-					emit(Event{Err: errors.New("watched directory moved or removed")})
-					return
+				if !known || mask&syscall.IN_IGNORED != 0 {
+					continue
+				}
+				if mask&(syscall.IN_DELETE_SELF|syscall.IN_MOVE_SELF|syscall.IN_DELETE|syscall.IN_MOVED_FROM) != 0 {
+					if path == root {
+						emit(Event{Err: errors.New("transcript root moved or removed")})
+						return
+					}
+					// A sibling conversation leaving the shared root is discovery
+					// bookkeeping, not failure of every seat observing the root.
+					// Also stop watching descendants moved outside the tree.
+					for watched, candidate := range paths {
+						if candidate == path || strings.HasPrefix(candidate, path+string(filepath.Separator)) {
+							syscall.InotifyRmWatch(fd, uint32(watched))
+							delete(paths, watched)
+						}
+					}
+					if !emit(Event{Path: path, Removed: true}) {
+						return
+					}
+					continue
 				}
 				if mask&syscall.IN_ISDIR != 0 {
 					if err := add(path); err != nil {
+						if errors.Is(err, os.ErrNotExist) {
+							continue
+						}
 						emit(Event{Err: err})
 						return
 					}
