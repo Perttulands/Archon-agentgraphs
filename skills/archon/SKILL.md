@@ -576,7 +576,9 @@ Keep project deliverables and caches in their project, and declare narrowly
 scoped outputs. If `output_not_kept` names the capture budget, inspect
 `run storage "$ARCHON_RUN_ID" --json`; narrow the output or deliberately choose
 `run storage "$ARCHON_RUN_ID" --archive`, then resume. Archive retains large
-files outside the ordinary budget. `--unarchive` returns to ordinary retention;
+files outside the ordinary budget. Use it when retaining those large files is
+part of the requested work, rather than as the routine response to a full budget.
+`--unarchive` returns to ordinary retention;
 `--dispose` removes final-run artifacts while preserving history. Inspect known
 references and sizes before choosing disposal; archive cannot restore expired
 files. See [Run evidence lifecycle](../../docs/CONTRACT.md#run-evidence-lifecycle).
