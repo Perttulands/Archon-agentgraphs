@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
+import { waitForCanvasSlot, waitForStaffingPlacement } from './staffing-readiness'
 
 /* Where the staffing sentence opens (archon-o7p.17, the placement rethink after
  * rv-slots5): like a dropdown, directly below the clicked slot's row or word
@@ -20,28 +21,33 @@ const GAP = 4
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number }
 
 /** Records when the canvas moves and when the sentence first shows, from the next press on. */
-async function watchOpening(page: Page) {
-  // The view first settles from its fit on load.
-  await expect.poll(() => page.evaluate(async () => {
-    const world = document.querySelector<HTMLElement>('.world')
-    const before = world?.style.transform
-    await new Promise(resolve => setTimeout(resolve, 250))
-    return world?.style.transform === before
-  })).toBe(true)
+async function watchOpening(page: Page, slot: Locator) {
+  await waitForCanvasSlot(page, slot)
   await page.evaluate(() => {
-    const w = window as unknown as { __opening: Opening }
+    const w = window as unknown as { __opening: Opening; __stopOpening?: () => void }
+    w.__stopOpening?.()
     w.__opening = { moves: 0, started: 0, ended: 0, shown: 0 }
     const world = document.querySelector('.world')
+    const moves = new MutationObserver(() => { w.__opening.moves++ })
+    const started = (event: Event) => { if (event.target === world) w.__opening.started ||= performance.now() }
+    const ended = (event: Event) => { if (event.target === world) w.__opening.ended ||= performance.now() }
     if (world) {
-      new MutationObserver(() => { w.__opening.moves++ }).observe(world, { attributes: true, attributeFilter: ['style'] })
-      world.addEventListener('transitionrun', event => { if (event.target === world) w.__opening.started ||= performance.now() })
-      world.addEventListener('transitionend', event => { if (event.target === world) w.__opening.ended ||= performance.now() })
+      moves.observe(world, { attributes: true, attributeFilter: ['style'] })
+      world.addEventListener('transitionrun', started)
+      world.addEventListener('transitionend', ended)
     }
     const seen = () => {
       const win = document.querySelector('.staffing-window')
       if (win && !win.classList.contains('placing') && !w.__opening.shown) w.__opening.shown = performance.now()
     }
-    new MutationObserver(seen).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })
+    const shown = new MutationObserver(seen)
+    shown.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })
+    w.__stopOpening = () => {
+      moves.disconnect()
+      shown.disconnect()
+      world?.removeEventListener('transitionrun', started)
+      world?.removeEventListener('transitionend', ended)
+    }
   })
 }
 
@@ -54,8 +60,7 @@ async function opening(page: Page) {
 /** The open sentence, the row or word it belongs to, and the bounds it must keep to. */
 async function measure(page: Page, anchor: Locator, boundsSelector: string | null) {
   const sentence = page.locator('.staffing-window')
-  await expect(sentence).not.toHaveClass(/placing/)
-  await sentence.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
+  await waitForStaffingPlacement(sentence)
   const box = async (locator: Locator): Promise<Box> => locator.evaluate(element => {
     const { left, top, right, bottom, width, height } = element.getBoundingClientRect()
     return { left, top, right, bottom, width, height }
@@ -84,6 +89,7 @@ function expectDrop({ win, anchor, bounds }: { win: Box; anchor: Box; bounds: Bo
 
 /** Rows cut by the list's edges, and the lines it shows whole. */
 async function rows(page: Page) {
+  await waitForStaffingPlacement(page.locator('.staffing-window'))
   return page.locator('.staffing-window .staffing-list').evaluate(list => {
     const l = list.getBoundingClientRect()
     const all = [...list.querySelectorAll<HTMLElement>('.staffing-row')]
@@ -106,8 +112,8 @@ async function rows(page: Page) {
 
 /** Drags empty canvas so the slot's edge meets the canvas's own edge, at the zoom it has. */
 async function panSlotTo(page: Page, slot: Locator, edge: 'bottom' | 'right' | 'top') {
+  await waitForCanvasSlot(page, slot)
   const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
-  await expect(slot).toBeVisible()
   const box = (await slot.boundingBox())!
   const dx = edge === 'right' ? canvas.x + canvas.width - 8 - (box.x + box.width) : 0
   const dy = edge === 'bottom' ? canvas.y + canvas.height - 8 - (box.y + box.height) : edge === 'top' ? canvas.y + 8 - box.y : 0
@@ -131,10 +137,13 @@ async function panSlotTo(page: Page, slot: Locator, edge: 'bottom' | 'right' | '
   await page.mouse.move(start!.x + dx / 2, start!.y + dy / 2, { steps: 4 })
   await page.mouse.move(start!.x + dx, start!.y + dy, { steps: 4 })
   await page.mouse.up()
-  const after = (await slot.boundingBox())!
-  if (edge === 'bottom') expect(Math.abs(after.y + after.height - (canvas.y + canvas.height - 8))).toBeLessThanOrEqual(2)
-  if (edge === 'top') expect(Math.abs(after.y - (canvas.y + 8))).toBeLessThanOrEqual(2)
-  if (edge === 'right') expect(Math.abs(after.x + after.width - (canvas.x + canvas.width - 8))).toBeLessThanOrEqual(2)
+  await expect.poll(async () => {
+    const after = await slot.boundingBox()
+    if (!after) return Infinity
+    if (edge === 'bottom') return Math.abs(after.y + after.height - (canvas.y + canvas.height - 8))
+    if (edge === 'top') return Math.abs(after.y - (canvas.y + 8))
+    return Math.abs(after.x + after.width - (canvas.x + canvas.width - 8))
+  }, { message: `slot reaches the ${edge} edge after the canvas pan` }).toBeLessThanOrEqual(2)
 }
 
 /**
@@ -144,7 +153,7 @@ async function panSlotTo(page: Page, slot: Locator, edge: 'bottom' | 'right' | '
  */
 async function checkCanvasSlot(page: Page, testId: string, label: string, where: string) {
   const slot = page.getByTestId(testId)
-  await watchOpening(page)
+  await watchOpening(page, slot)
   await slot.locator('.slot-ring').click()
   const sentence = page.getByRole('dialog', { name: `Staff ${label}` })
   await expect(sentence).toBeVisible()
@@ -193,8 +202,9 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 2560, height: 1440 }
       await page.setViewportSize(size)
       await cockpitFixture(page, { roles, extraAgents: 30 })
       await page.goto('/')
-      await expect(page.locator('.zoomlevel')).toHaveText('100%')
       const worker = page.getByTestId('slot-execution-worker')
+      await waitForCanvasSlot(page, worker)
+      await expect(page.locator('.zoomlevel')).toHaveText('100%')
       await panSlotTo(page, worker, edge)
       await checkCanvasSlot(page, 'slot-execution-worker', 'Worker 1', `${size.width} ${edge}`)
       if (edge === 'bottom') {

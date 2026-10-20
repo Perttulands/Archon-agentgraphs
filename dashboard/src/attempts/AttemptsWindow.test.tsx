@@ -54,7 +54,8 @@ describe('AttemptsWindow', () => {
     expect(screen.getByTestId('attempt-2-verdict-review')).toHaveTextContent('Review gate · ✕ fail')
     expect(screen.getByTestId('attempt-2').querySelector('.attempt-head')).toHaveTextContent('reason 2')
     expect(screen.getByTestId('attempt-3')).toHaveClass('settled')
-    expect(focused()).toBe('3')
+    // Attempt columns render before the effect chooses the settled attempt.
+    await waitFor(() => expect(focused()).toBe('3'))
 
     press('ArrowLeft')
     expect(focused()).toBe('2')
@@ -97,6 +98,7 @@ describe('AttemptsWindow', () => {
   it('puts two attempts side by side and steps the focused side', async () => {
     render(<Window />)
     await screen.findByTestId('attempt-4')
+    await waitFor(() => expect(focused()).toBe('3'))
     press('c')
     expect(shown()).toEqual(['2', '3'])
     expect(screen.getByTestId('attempts-compare')).toHaveAttribute('aria-pressed', 'true')
@@ -122,6 +124,7 @@ describe('AttemptsWindow', () => {
   it('compares any two: each side chooses its own, shift sets the one beside', async () => {
     render(<Window />)
     await screen.findByTestId('attempt-4')
+    await waitFor(() => expect(focused()).toBe('3'))
     // From the strip, a shift-click puts an attempt beside the focused one, in the loop's order.
     fireEvent.click(screen.getByTestId('attempts-pip-1'), { shiftKey: true })
     expect(shown()).toEqual(['1', '3'])

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { cockpitFixture } from './cockpit-fixture'
+import { waitForCanvasSlot, waitForStaffingPlacement } from './staffing-readiness'
 
 /* Staffing a slot is a sentence at the slot (archon-o7p.17, variant A of
  * archon-n7u.56): every word its own control, typing, 1-6 for the effort and
@@ -255,7 +256,11 @@ test('a wrong slot is fixed in one drag that swaps, one Ctrl+Z puts both back, a
     await page.mouse.move(to.x, to.y, { steps: 12 })
     await page.mouse.up()
   }
-  const center = async (target: typeof worker) => { const box = (await target.boundingBox())!; return { x: box.x + box.width / 2, y: box.y + box.height / 2 } }
+  const center = async (target: typeof worker) => {
+    await waitForCanvasSlot(page, target)
+    const box = (await target.boundingBox())!
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  }
 
   await drag(await center(controller), { x: 1000, y: 950 })
   await expect(page.getByTestId('staffing-stamp')).toHaveText('Not on a slot, so nothing changed.')
@@ -278,6 +283,8 @@ test('a role dragged from the rail lands by the same rule, previews on the slot,
   await page.getByTestId('roles-toggle').click()
   const scout = page.getByTestId('roster-agent-scout')
   const worker = page.getByTestId('slot-execution-worker')
+  await expect(scout).toBeVisible()
+  await waitForCanvasSlot(page, worker)
   const from = (await scout.boundingBox())!
   const to = (await worker.boundingBox())!
   await page.mouse.move(from.x + 40, from.y + 10)
@@ -335,8 +342,7 @@ test('changing what a slot runs moves no other slot or card', async ({ page }) =
     return `${(element as HTMLElement).dataset.testid || (element as HTMLElement).dataset.node}:${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`
   }))
   const controller = page.getByTestId('slot-execution-controller')
-  await expect(controller).toBeVisible()
-  await page.waitForTimeout(500)
+  await waitForCanvasSlot(page, controller)
   const before = await rects()
   expect(before).toHaveLength(10)
   await controller.locator('[data-part=role]').click()
@@ -344,8 +350,7 @@ test('changing what a slot runs moves no other slot or card', async ({ page }) =
   // A role landing on a staffed slot keeps its settings and offers the policy's effort beside the label.
   await expect(caption(page, 'slot-execution-controller')).toHaveAttribute('data-staffing', 'Final Reviewer | Claude Code · default model · medium')
   await expect(controller.getByTestId('staffing-offer')).toHaveText('use xhigh?')
-  await page.waitForTimeout(700)
-  expect(await rects()).toEqual(before)
+  await expect.poll(rects).toEqual(before)
 })
 
 test('an effort chosen in the open sentence counts as stated: a role landing on an empty slot keeps it and offers the policy, as typed words do', async ({ page }) => {
@@ -447,6 +452,7 @@ test('a long role sentence wraps what the slot runs as one group, so the effort 
   await page.goto('/')
   await page.getByTestId('slot-execution-w1').locator('.slot-ring').click()
   const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
+  await waitForStaffingPlacement(sentence)
   const top = async (selector: string) => Math.round((await sentence.locator(selector).boundingBox())!.y)
   const line = await top('[data-token=effort]')
   expect(Math.abs(await top('[data-token=model]') - line)).toBeLessThanOrEqual(3)
@@ -466,7 +472,7 @@ test('the node window\'s staffing words open the same sentence beside it', async
   const sentence = page.getByRole('dialog', { name: 'Staff Worker 1' })
   await expect(sentence.getByRole('listbox', { name: 'Choose effort' })).toBeVisible()
   // It drops from the word clicked, over its own window if need be, never over the word (measured once it has appeared).
-  await sentence.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
+  await waitForStaffingPlacement(sentence)
   const [word, box] = [(await staffing.getByRole('button', { name: 'Change the effort of Worker 1: medium' }).boundingBox())!, (await sentence.boundingBox())!]
   const gap = Math.hypot(Math.max(0, word.x - (box.x + box.width), box.x - (word.x + word.width)), Math.max(0, word.y - (box.y + box.height), box.y - (word.y + word.height)))
   expect(gap).toBeLessThanOrEqual(12)
@@ -498,6 +504,7 @@ test('the rail states in words which roles are in use and opens a role in a wind
     'Execution · Worker 1Codex · default model · medium',
     'Peer review · ReviewerCodex · default model · medium',
   ])
+  await role.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
   const [row, window] = [(await codex.boundingBox())!, (await role.boundingBox())!]
   // Beside the row, never over it.
   expect(window.x >= row.x + row.width - 1 || window.x + window.width <= row.x + 1 || window.y >= row.y + row.height - 1 || window.y + window.height <= row.y + 1).toBe(true)
