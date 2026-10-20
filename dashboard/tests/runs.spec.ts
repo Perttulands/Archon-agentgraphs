@@ -20,9 +20,9 @@ async function cancelableRun(page: Page) {
     if (path.endsWith('/abort')) {
       aborts.push(route.request().postDataJSON())
       canceled = true
-      return respond(ended())
+      return respond({ ...ended(), events: [...events, { seq: 4, type: 'run_canceled' }] })
     }
-    if (path === '/api/runs/run_browser') return respond(canceled ? ended() : waiting)
+    if (path === '/api/runs/run_browser') return respond({ ...(canceled ? ended() : waiting), events: canceled ? [...events, { seq: 4, type: 'run_canceled' }] : events })
     if (path.endsWith('/events')) return respond({ events: canceled ? [...events, { seq: 4, type: 'run_canceled' }] : events })
     if (path.endsWith('/evidence/problems')) {
       const reason = (aborts[aborts.length - 1] as { reason?: string } | undefined)?.reason || ''

@@ -4,20 +4,21 @@ import { arrangedLayoutNodes } from '../src/components/formationsArrange'
 
 /* Runs are listed under their mission and open onto what they produced
  * (archon-o7p.2). The routes answer as archond does: the run list holds the
- * mission's own runs with their driver, times and inputs, an artifact preview
+ * mission's own runs with their driver, times and input excerpts, an artifact preview
  * names its absolute path, and the mission as a run ran it is evidence. */
 
 const artifactRoot = '/srv/scratch/archon-state/.archon/artifacts/run_browser'
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+// The shared discovery index carries excerpts and sessions, never event histories.
 const projection = (runId: string, status: string, final: boolean, extra: Record<string, unknown>) => ({
   runId, status, final, missionSlug: 'browser', missionId: 'brd_browser', missionRev: 1, inputCardId: 'mission', eventCount: 7,
-  epoch: 0, resumeAllowed: false, humanChannel: 'notify', waitingGates: [], onCallSeats: [], events: [], ...extra,
+  epoch: 0, resumeAllowed: false, humanChannel: 'notify', inputExcerpt: '', sessions: [], ...extra,
 })
 const runs = [
   projection('run_browser', 'succeeded', true, { startedAt: ago(90), updatedAt: ago(86), startedBy: 'agent:driver',
-    inputs: [{ name: 'brief', kind: 'text', value: 'Verify the retry budget\nand log the second failure' }] }),
+    inputExcerpt: 'Verify the retry budget and log the second failure' }),
   projection('run_01OLDER', 'failed', true, { startedAt: ago(300), updatedAt: ago(299), startedBy: 'human:ui', missionRev: 1,
-    inputs: [{ name: 'brief', kind: 'text', value: 'First attempt at the review' }] }),
+    inputExcerpt: 'First attempt at the review' }),
 ]
 
 for (const entry of ['list', 'link'] as const) {
@@ -31,8 +32,8 @@ for (const entry of ['list', 'link'] as const) {
     await page.route('**/api/runs**', async route => {
       const url = new URL(route.request().url())
       const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
-      if (url.pathname === '/api/runs' && url.searchParams.get('mission') === 'browser') return respond(missionRuns)
-      if (url.pathname === '/api/runs/run_browser') return respond(missionRuns[0])
+      if (url.pathname === '/api/runs') return respond(missionRuns)
+      if (url.pathname === '/api/runs/run_browser') return respond({ ...missionRuns[0], events: fixture.events() })
       if (url.pathname === '/api/runs/run_browser/evidence/artifacts/review.md') return respond({ artifact: { name: 'review.md', size: reviewMarkdown.length,
         modifiedAt: '2026-09-16T00:00:00Z', kind: 'markdown', path: `${artifactRoot}/review.md`, text: { text: reviewMarkdown, bytes: reviewMarkdown.length } } })
       if (url.pathname === '/api/runs/run_browser/evidence/mission') return respond({ mission: { missionRev: 2, graph: { ...fixture.board(), rev: 2, formations: fixture.board().formations.map(node => ({...node, title: 'Frozen '+node.title})) }, text: { text: 'schema = 1\nslug = "browser"\nrev = 2\n', bytes: 36 } } })
@@ -119,7 +120,7 @@ test('an old run link is rejected when its slug now belongs to a recreated missi
   fixture.board().rev = 3
   await page.route('**/api/runs**', route => {
     const path = new URL(route.request().url()).pathname
-    if (path === '/api/runs/run_browser') return route.fulfill({ json: { success: true, data: { ...runs[0], missionRev: 2 } } })
+    if (path === '/api/runs/run_browser') return route.fulfill({ json: { success: true, data: { ...runs[0], missionRev: 2, events: fixture.events() } } })
     if (path === '/api/runs/run_browser/evidence/mission') return route.fulfill({ json: { success: true, data: { mission: { missionRev: 2, graph: frozen, text: { text: '', bytes: 0 } } } } })
     return route.fallback()
   })
@@ -136,7 +137,7 @@ test('a run waiting for you is counted and stands out on the bar and the canvas'
   await cockpitFixture(page, { waitingHuman: true })
   const waiting = projection('run_browser', 'waiting_human', false, { startedAt: ago(12), updatedAt: ago(10), startedBy: 'agent:driver',
     waitingGates: [{ gateId: 'loose', requestedSeq: 3, requestedAt: ago(10), askedSeats: [] }] })
-  await page.route('**/api/runs?needs=you', route => route.fulfill({ json: { success: true, data: [waiting] } }))
+  await page.route('**/api/runs', route => route.fulfill({ json: { success: true, data: [waiting] } }))
   await page.goto('/?mission=browser')
   await expect(page.getByTestId('nav-group-needs-you').locator('.nav-row-sub')).toContainText(['Peer and judge'])
   await expect(page).toHaveTitle('(1) Peer and judge · Archon')
@@ -155,13 +156,13 @@ test('runs of a TOML mission keep their start, status and Bead visible when the 
   const fixture = await cockpitFixture(page, { tomlMission: true })
   const subject = 'The same character request '.repeat(12)
   const recent = projection('run_01LATEST', 'succeeded', true, { startedAt: ago(10), updatedAt: ago(8), startedBy: 'agent:identity', beadId: 'archon-identity',
-    inputs: [{ name: 'subject', kind: 'text', value: subject }, { name: 'reference', kind: 'file', value: '/references/plate.png' }] })
+    inputExcerpt: `${subject.slice(0, 89)}…` })
   const older = projection('run_01BEFORE', 'failed', true, { ...recent, runId: 'run_01BEFORE', status: 'failed', startedAt: ago(20), updatedAt: ago(18) })
   await page.route('**/api/runs**', route => {
     const path = new URL(route.request().url()).pathname
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
     if (path === '/api/runs') return respond([recent, older])
-    if (path === '/api/runs/run_01LATEST') return respond(recent)
+    if (path === '/api/runs/run_01LATEST') return respond({ ...recent, events: fixture.events().map(event => ({ ...event, runId: recent.runId })) })
     if (path === '/api/runs/run_01LATEST/evidence/mission') return respond({ mission: { missionRev: 1, graph: fixture.board(), text: { text: '', bytes: 0 } } })
     return route.fallback()
   })
@@ -189,7 +190,7 @@ for (const view of ['Canvas', 'Flow'] as const) {
     const pending = new Promise<void>(resolve => { release = resolve })
     await page.route('**/api/runs**', async route => {
       const url = new URL(route.request().url())
-      if (url.pathname === '/api/runs' && url.searchParams.get('mission') === 'browser')
+      if (url.pathname === '/api/runs')
         return route.fulfill({ json: { success: true, data: [runs[0]] } })
       if (url.pathname === '/api/runs/run_browser') await pending
       return route.fallback()

@@ -47,17 +47,18 @@ test('Flow opens windows beside the clicked title or route link, and its run poi
   await page.setViewportSize({ width: 1440, height: 900 })
   const fixture = await scoutingFixture(page)
   const gate = scouting.mission.gates.find((node: Node) => node.title === 'Adversarial review')
-  const run = { runId: 'run_scouting', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'scouting', inputCardId: scouting.mission.inputCards[0].id, eventCount: 2 }
+  const run = { missionId: scouting.mission.id, inputExcerpt: '', sessions: [], runId: 'run_scouting', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'scouting', inputCardId: scouting.mission.inputCards[0].id, eventCount: 2 }
+  const events = [
+    { runId: run.runId, seq: 1, type: 'gate_evaluating', nodeId: gate.id, gateId: gate.id },
+    { runId: run.runId, seq: 2, type: 'run_blocked', nodeId: gate.id, gateId: gate.id },
+  ]
   const reply = (data: unknown) => ({ json: { success: true, data } })
   // A blocked run on Adversarial review, added after the fixture so these routes answer first.
   await page.route(url => url.pathname.startsWith('/api/runs'), route => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/runs') return route.fulfill(reply([run]))
-    if (path === `/api/runs/${run.runId}`) return route.fulfill(reply({ status: run }))
-    if (path.endsWith('/events')) return route.fulfill(reply({ events: [
-      { runId: run.runId, seq: 1, type: 'gate_evaluating', nodeId: gate.id, gateId: gate.id },
-      { runId: run.runId, seq: 2, type: 'run_blocked', nodeId: gate.id, gateId: gate.id },
-    ] }))
+    if (path === `/api/runs/${run.runId}`) return route.fulfill(reply({ ...run, events }))
+    if (path.endsWith('/events')) return route.fulfill(reply({ events }))
     if (path.endsWith('/evidence/problems')) return route.fulfill(reply({ problems: [
       { seq: 2, type: 'run_blocked', nodeIds: [gate.id], reason: { text: 'invalid judge result: missing verdict block', bytes: 42 }, resumeAllowed: false },
     ] }))
@@ -189,14 +190,14 @@ for (const width of [1920, 2560]) {
 test('choosing another mission run keeps Flow and Canvas across reloads', async ({ page }) => {
   const fixture = await cockpitFixture(page, { succeeded: true })
   const other = { ...fixture.board(), id: 'other-mission', slug: 'other', title: 'Other mission' }
-  const run = { runId: 'run_other', missionId: other.id, missionSlug: 'other', inputCardId: 'mission', status: 'succeeded', final: true, eventCount: 0 }
+  const run = { runId: 'run_other', missionId: other.id, missionSlug: 'other', inputCardId: 'mission', status: 'succeeded', final: true, eventCount: 0, inputExcerpt: '', sessions: [] }
   await page.route('**/api/**', route => {
     const url = new URL(route.request().url())
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data }, headers: { ETag: 'other-etag' } })
     if (url.pathname === '/api/missions') return respond({ missions: [fixture.board(), other] })
     if (url.pathname === '/api/missions/other') return respond({ mission: other })
     if (url.pathname === '/api/runs') return respond([run])
-    if (url.pathname === '/api/runs/run_other') return respond(run)
+    if (url.pathname === '/api/runs/run_other') return respond({ ...run, events: [] })
     if (url.pathname === '/api/runs/run_other/events') return respond({ events: [] })
     return route.fallback()
   })

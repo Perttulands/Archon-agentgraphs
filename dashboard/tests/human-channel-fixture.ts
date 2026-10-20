@@ -71,6 +71,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   ]
   const waitingOn = [{ gateId: answerGate.id, requestedSeq }]
   let run = {
+    missionId: scouting.mission.id, inputExcerpt: '', sessions: peers.slots!.map(slot => ({ nodeId: peers.id, slotId: slot.id, sessionName: `archon-${talkRunId}-${slot.id}` })),
     runId: talkRunId, status: 'waiting_human', final: false, missionSlug: 'scouting', inputCardId, eventCount: 13, humanChannel: 'session',
     waitingGates: [{ gateId: answerGate.id, requestedSeq, askedSeats: asked, ...(options.fallbackReason ? { fallbackReason: options.fallbackReason } : {}) }],
     onCallSeats: asked.map(seat => ({ nodeId: seat.nodeId, slotId: seat.slotId, createdSeq: seat.createdSeq, keptSeq: 9, waitingOn })),
@@ -100,7 +101,7 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
     const path = new URL(route.request().url()).pathname
     if (route.request().method() !== 'GET') return route.fallback()
     if (path === '/api/runs') return route.fulfill(respond([run]))
-    if (path === `/api/runs/${talkRunId}`) return route.fulfill(respond(run))
+    if (path === `/api/runs/${talkRunId}`) return route.fulfill(respond({ ...run, events }))
     if (path === `/api/runs/${talkRunId}/events`) return route.fulfill(respond({ events }))
     if (path === `/api/runs/${talkRunId}/gates/${answerGate.id}/request`) return route.fulfill(respond({ request: {
       gateId: answerGate.id, requestedSeq, criterion: '',
@@ -148,5 +149,5 @@ export async function talkRunFixture(page: Page, options: { fallbackReason?: str
   }
   /** The seat's session ends, as a kept seat does once idle after the decision. */
   const endSeat = async (createdSeq: number) => { for (const socket of sockets.get(createdSeq) || []) await socket.close({ code: 1000 }) }
-  return { ...fixture, typed, resizes, handshakes, decide, endSeat }
+  return { ...fixture, typed, resizes, handshakes, decide, endSeat, runSnapshot: () => ({ ...run, events }) }
 }

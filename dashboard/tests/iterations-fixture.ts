@@ -216,7 +216,7 @@ export async function iterationsFixture(page: Page, scenario: IterationsScenario
     const waiting = scenario === 'pick' && !picked
     return {
       runId: 'run_browser', status: final ? 'succeeded' : waiting ? 'waiting_human' : 'running', final, missionSlug: 'browser', inputCardId: 'mission',
-      eventCount: ledger.length, cwd: runCwd, ...(waiting ? { waitingGates: [{ gateId: 'gate', requestedSeq: requestedSeq(), pick: pendingPick }] } : {}),
+      eventCount: ledger.length, events: ledger, cwd: runCwd, ...(waiting ? { waitingGates: [{ gateId: 'gate', requestedSeq: requestedSeq(), pick: pendingPick }] } : {}),
     }
   }
 
@@ -228,6 +228,12 @@ export async function iterationsFixture(page: Page, scenario: IterationsScenario
     const method = route.request().method()
     if (path === '/api/missions') return route.fulfill(respond({ missions: [mission] }))
     if (path === '/api/missions/browser' && method === 'GET') return route.fulfill({ ...respond({ mission }), headers: { ETag: 'fixture-etag' } })
+    if (path === '/api/runs' && method === 'GET') {
+      const run = status()
+      return route.fulfill(respond([{ runId: run.runId, status: run.status, final: run.final, missionId: mission.id,
+        missionSlug: run.missionSlug, inputCardId: run.inputCardId, eventCount: run.eventCount,
+        waitingGates: run.waitingGates, inputExcerpt: '', sessions: [] }]))
+    }
     if (path === '/api/runs/run_browser') return route.fulfill(respond(status()))
     if (path === '/api/runs/run_browser/events') return route.fulfill(respond({ events: events() }))
     if (path === '/api/runs/run_browser/evidence/attempts') {

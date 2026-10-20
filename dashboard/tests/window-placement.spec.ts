@@ -149,7 +149,7 @@ test('a produced file opened from attempts leaves the dock and navigation clear'
   fixture.board().rev = 3
   await page.route('**/api/runs/run_browser', route => route.fulfill({ json: { success: true, data: {
     runId: 'run_browser', status: 'succeeded', final: true, missionSlug: 'browser', missionId: 'brd_browser',
-    missionRev: 2, inputCardId: 'mission', eventCount: 7,
+    missionRev: 2, inputCardId: 'mission', eventCount: 7, events: fixture.events(),
   } } }))
   await page.route('**/api/runs/run_browser/evidence/mission', route => route.fulfill({ json: { success: true, data: {
     mission: { missionRev: 2, graph: { ...fixture.board(), rev: 2 } },

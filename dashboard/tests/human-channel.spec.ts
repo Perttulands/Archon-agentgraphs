@@ -6,8 +6,8 @@ for (const failure of [409, 500]) test(`an external answer keeps the draft visib
   const fixture = await talkRunFixture(page)
   let answered = false
   const text = (value: string) => ({ text: value, bytes: value.length })
-  await page.route(`**/api/runs/${talkRunId}/events`, route => answered
-    ? route.fulfill({ json: { success: true, data: { events: [
+  await page.route(`**/api/runs/${talkRunId}`, route => answered
+    ? route.fulfill({ json: { success: true, data: { ...fixture.runSnapshot(), events: [
       { seq: 11, type: 'human_input_requested', nodeId: answerGate.id, gateId: answerGate.id },
       { seq: 14, type: 'human_verdict_recorded', nodeId: answerGate.id, gateId: answerGate.id, requestedSeq: 11 },
     ] } } }) : route.fallback())
