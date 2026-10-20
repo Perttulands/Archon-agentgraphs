@@ -181,12 +181,12 @@ func TestHumanGateRoutesNameAJoinThatWaitsAndCountJudges(t *testing.T) {
 	rounds := 20
 	board.Limits = []LimitNode{{ID: "lim_mission", Target: "mis_note", Rounds: &rounds}}
 	approve := HumanGateRoutes(board, draftAttempts(1), "gate_review", time.Time{})[0]
-	if len(approve.Targets) != 2 || !approve.Targets[0].WaitsForInputs || approve.RoundsNeeded != 2 {
+	if len(approve.Targets) != 2 || !approve.Targets[0].WaitsForInputs || approve.RoundsNeeded != 1 {
 		t.Fatalf("approve = %+v", approve)
 	}
 	facts := draftAttempts(1)
-	facts = append(facts, RunEvent{Seq: len(facts) + 1, Type: RunEventNodeOutput, NodeID: "fmn_facts"})
-	if approve := HumanGateRoutes(board, facts, "gate_review", time.Time{})[0]; approve.Targets[0].WaitsForInputs {
+	facts = append(facts, RunEvent{Seq: len(facts) + 1, Type: RunEventNodeOutput, NodeID: "fmn_facts", Data: branchOutputData("out")})
+	if approve := HumanGateRoutes(board, facts, "gate_review", time.Time{})[0]; approve.Targets[0].WaitsForInputs || approve.RoundsNeeded != 2 {
 		t.Fatalf("approve once Facts delivered = %+v", approve)
 	}
 }

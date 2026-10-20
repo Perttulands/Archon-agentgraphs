@@ -67,13 +67,24 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 			missionTime = timeUse(board, events, limit, now)
 		}
 	}
+	fed := runPaths(board, events).fed
 	routes := make([]GateRoute, 0, 2)
 	for _, verdict := range []string{"pass", "fail"} {
 		route := GateRoute{Verdict: verdict, Targets: []GateRouteTarget{}}
 		needed := 0
 		connections := outgoingConnectionsFromPort(board.Connections, gateID, verdict)
+		// Overlay every contemplated delivery before deduplicating targets: a
+		// single verdict may supply several ports of the same join.
+		planned := map[string]map[string]bool{}
 		for _, connection := range connections {
 			nodeID, portID := endpointParts(connection.To)
+			if planned[nodeID] == nil {
+				planned[nodeID] = map[string]bool{}
+			}
+			planned[nodeID][portID] = true
+		}
+		for _, connection := range connections {
+			nodeID, _ := endpointParts(connection.To)
 			if routeHasTarget(route.Targets, nodeID) {
 				continue
 			}
@@ -87,6 +98,10 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 						target.Rounds = use
 					}
 					target.Time = timeUse(board, events, limit, now)
+				}
+				target.WaitsForInputs = formationWaitsForOtherInputs(formation, fed[nodeID], planned[nodeID])
+				if target.WaitsForInputs {
+					break // no attempt or limit is spent before the join is ready
 				}
 				// The engine's own rule, so the panel says what the engine will do.
 				starts := 1
@@ -102,7 +117,6 @@ func HumanGateRoutes(board *BoardDocument, events []RunEvent, gateID string, now
 					}
 				}
 				needed += starts
-				target.WaitsForInputs = formationWaitsForOtherInputs(board, events, nodeID, portID)
 			case "gate":
 				// A judge gate starts each formation of its judge chain.
 				needed += len(judgeChainForGate(board, nodeID))
@@ -166,43 +180,12 @@ func routeEndsRun(board *BoardDocument, events []RunEvent, gateID string, target
 	return len(finish.runnable) == 0 && (fails || len(finish.starved) == 0)
 }
 
-// formationWaitsForOtherInputs reports whether a formation, given this input
-// port, still lacks another input: one whose feeding steps have produced
-// nothing in the run so far.
-func formationWaitsForOtherInputs(board *BoardDocument, events []RunEvent, formationID, portID string) bool {
-	formation, ok := findFormation(board.Formations, formationID)
-	if !ok {
-		return false
-	}
-	produced := map[string]bool{}
-	for _, event := range events {
-		switch event.Type {
-		case RunEventNodeOutput:
-			produced[event.NodeID] = true
-		case RunEventGateVerdict:
-			gateID := event.GateID
-			if gateID == "" {
-				gateID = event.NodeID
-			}
-			produced[gateID+":"+stringFromEventData(event, "routePort")] = true
-		}
-	}
+// formationWaitsForOtherInputs applies the engine's delivered-port state plus
+// all ports supplied by the contemplated verdict. Inputs persist between
+// attempts, as they do in the engine.
+func formationWaitsForOtherInputs(formation FormationNode, fed, planned map[string]bool) bool {
 	for _, input := range formation.Inputs {
-		if input.ID == portID {
-			continue
-		}
-		fed := false
-		for _, connection := range board.Connections {
-			if connection.To != formationID+":"+input.ID {
-				continue
-			}
-			fromNode, _ := endpointParts(connection.From)
-			if produced[fromNode] || produced[connection.From] {
-				fed = true
-				break
-			}
-		}
-		if !fed {
+		if !fed[input.ID] && !planned[input.ID] {
 			return true
 		}
 	}
