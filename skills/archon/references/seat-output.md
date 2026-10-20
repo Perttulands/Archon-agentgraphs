@@ -18,7 +18,8 @@ and only its declared output port IDs, then this run's exact sentinel:
   `<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>/`, named in its
   brief. Write selected evidence there; keep project deliverables, caches and
   build trees in the project workspace. Ordinary runs have a 32 MiB total
-  file/folder capture budget. The directory is never shared with another attempt.
+  file/folder capture budget and a 4,096-entry cap (files, directories and links).
+  The directory is never shared with another attempt.
 - A port's kind decides what its payload is:
   - `text` (the default): `text`, or `ref` naming the absolute path of a
     text file the seat wrote, which Archon reads as the routed text. To route

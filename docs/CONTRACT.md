@@ -2082,6 +2082,8 @@ sanitized ledger projection. The same trusted-network access boundary applies.
 
 Archon keeps compact history separately from temporary files. New runs use a
 32 MiB evidence budget per run and a 256 MiB pool for ordinary completed runs.
+Ordinary snapshots and retained evidence also have a 4,096-entry limit per run
+(files, directories and links), so tiny files cannot evade the byte budget.
 These are logical-byte capture and retention budgets, not filesystem quotas or
 limits on what a seat may do. Active and blocked missions can still create
 large working files; the prompt directs those files into the project workspace.
@@ -2100,7 +2102,8 @@ JSON reports (at most 256 KiB each), within the per-run budget. Other working
 files expire. Older ordinary completed evidence expires when the pool exceeds
 256 MiB. Nonfinal runs and source runs referenced by nonfinal runs are protected;
 protected and explicitly archived bytes may exceed the ordinary pool. Reference
-discovery covers recorded paths, not every possible external consumer. Export
+discovery covers ledger paths and admitted frozen mission references, including
+future steps, not every possible external consumer. Export
 work that must outlive this temporary evidence into its owning project.
 
 `archon --server <url> run storage <runId> [--json]` reads size, policy,

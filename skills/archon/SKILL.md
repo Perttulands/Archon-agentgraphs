@@ -570,7 +570,7 @@ evidence and gate evidence; ambiguous relative names stay text. The Produced
 menu groups files in run order and lists kept copies once. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 
-Run artifacts are temporary evidence. New runs keep at most 32 MiB ordinarily,
+Run artifacts are temporary evidence. New runs keep at most 32 MiB and 4,096 entries ordinarily,
 with a 256 MiB completed-evidence pool; history remains after files expire.
 Keep project deliverables and caches in their project, and declare narrowly
 scoped outputs. If `output_not_kept` names the capture budget, inspect
