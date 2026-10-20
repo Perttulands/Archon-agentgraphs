@@ -35,8 +35,6 @@ import {
   fetchRunEscalations,
   fetchRunEvents,
   fetchAllRuns,
-  fetchBoardRuns,
-  fetchRunsNeedingYou,
   fetchRunStatus,
   missingLayoutForBoard,
   patchBoardNote,
@@ -55,7 +53,7 @@ import {
   projectNodeStates,
   runCurrentPoints,
   runStatusFromResponse,
-  upsertRunEvent,
+  acceptsRunSnapshot,
 } from './formationsRunState'
 import { chooseBoardRun, readRunLink, runLinkSearch, runStatusLabel } from './formationsRunDiscovery'
 import { RunRevisionNote, RunWhen } from './RunList'
@@ -308,19 +306,17 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // A link's ?mission=&run= and the run picker pin a run to its mission.
   const initialRunLink = useRef(readRunLink(window.location.search)).current
   const [pinnedRun, setPinnedRun] = useState({ slug: initialRunLink.board, runId: initialRunLink.run })
-  const [boardRuns, setBoardRuns] = useState<RunStatusProjection[]>([])
   // Every mission's runs, for the navigator.
   const [allRuns, setAllRuns] = useState<ListedRun[]>([])
   // The mission the operator chose to edit: its open runs stay in the navigator instead of taking the canvas.
   const [putAway, setPutAway] = useState('')
-  const putAwayRef = useRef(putAway)
-  putAwayRef.current = putAway
   // A session chosen in the navigator opens its terminal once its run is shown.
   const pendingNode = useRef<{ runId: string; nodeId: string } | null>(null)
   /** The card the run on the canvas is at, which a legible fit centres. */
   const fitFocusRef = useRef('')
   // Every mission's runs that need the operator, for the picker counts and the page title.
-  const [needsYou, setNeedsYou] = useState<RunStatusProjection[]>([])
+  const boardRuns = useMemo(() => allRuns.filter(run => run.missionSlug === selectedSlug), [allRuns, selectedSlug])
+  const needsYou = useMemo(() => allRuns.filter(run => !run.final && (run.status === 'waiting_human' || run.status === 'blocked')), [allRuns])
   // Link problems outlive the board loads that clear ordinary errors.
   const [linkError, setLinkError] = useState('')
   const activeRunRef = useRef<RunStatusProjection | null>(null)
@@ -684,80 +680,27 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [active])
 
-  // ----- run discovery -----
-  // The daemon lists every run of the board, so runs started outside this
-  // browser appear. A run this browser started earlier is the last fallback.
+  // One index serves navigation, mission discovery and attention counts.
   useEffect(() => {
-    if (!selectedSlug) return
-    if (activeRunRef.current?.missionSlug && activeRunRef.current.missionSlug !== selectedSlug) {
-      setActiveRun(null)
-      setRunEvents([])
-    }
-    setBoardRuns(runs => (runs.some(run => run.missionSlug !== selectedSlug) ? [] : runs))
-    const pinnedRunId = pinnedRun.slug === selectedSlug ? pinnedRun.runId : ''
+    if (!active) return
     let cancelled = false
-    const discover = async () => {
-      let runs: RunStatusProjection[] = []
+    let timer = 0
+    const poll = async () => {
       try {
-        runs = await fetchBoardRuns(selectedSlug)
-      } catch {
-        /* keep the shown run; the next poll retries */
-      }
-      if (cancelled) return
-      setBoardRuns(runs)
-      if (!pinnedRunId && putAwayRef.current === selectedSlug) return
-      const stored = window.localStorage.getItem(activeRunStorageKey(selectedSlug)) || ''
-      const runId = chooseBoardRun({ slug: selectedSlug, runs, pinnedRunId, current: activeRunRef.current }) || stored
-      if (!runId || runId === activeRunRef.current?.runId) return
-      const dropPin = (message: string) => {
-        setPinnedRun({ slug: '', runId: '' })
-        setLinkError(message)
-      }
-      try {
-        const status = runStatusFromResponse(await fetchRunStatus(runId))
-        if (cancelled) return
-        if (status.missionSlug && status.missionSlug !== selectedSlug) {
-          if (runId === pinnedRunId) dropPin(`Run ${runId} belongs to mission "${status.missionSlug}", not "${selectedSlug}"`)
-          return
-        }
-        try {
-          const events = await fetchRunEvents(runId)
-          if (!cancelled) {
-            setRunEvents(events)
-            setActiveRun(status)
-          }
-        } catch (err) {
-          if (!cancelled) {
-            setRunEvents([])
-            setActiveRun(status)
-            setError(err instanceof Error ? err.message : 'Failed to load run events')
-          }
-        }
-        try {
-          const open = await fetchRunEscalations(runId)
-          if (!cancelled) setEscalations(open)
-        } catch {
-          /* escalations are best-effort; never block showing a run */
-        }
-        if (status.final && runId === stored) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
-      } catch (err) {
-        if (cancelled) return
-        if (runId === pinnedRunId) dropPin(`Run ${runId} from the link was not found`)
-        else setError(err instanceof Error ? err.message : 'Failed to load run')
-      }
+        const runs = await fetchAllRuns()
+        if (!cancelled) setAllRuns(runs)
+      } catch { /* retain the last index during transient failures */ }
+      finally { if (!cancelled) timer = window.setTimeout(poll, 5000) }
     }
-    void discover()
-    const timer = active ? window.setInterval(discover, 5000) : undefined
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [active, pinnedRun, putAway, selectedSlug])
-
-  useEffect(() => {
-    let cancelled = false
-    const poll = () => fetchAllRuns().then(runs => { if (!cancelled) setAllRuns(runs) }).catch(() => undefined)
     void poll()
-    const timer = active ? window.setInterval(poll, 5000) : undefined
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [active, activeRun?.runId, activeRun?.status])
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [active])
+
+  const pinnedRunId = pinnedRun.slug === selectedSlug ? pinnedRun.runId : ''
+  const selectedRunId = selectedSlug && (pinnedRunId || putAway !== selectedSlug)
+    ? chooseBoardRun({ slug: selectedSlug, runs: boardRuns, pinnedRunId, current: activeRun })
+      || window.localStorage.getItem(activeRunStorageKey(selectedSlug)) || ''
+    : ''
 
   // A mission created again under a deleted one's slug does not take its runs
   // (archon-n7u.15): a linked or remembered run of the earlier mission is put away.
@@ -772,23 +715,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     setRunEvents([])
   }, [activeRun?.missionId, activeRun?.missionSlug, activeRun?.runId, currentBoard?.id, currentBoard?.slug, pinnedRun.runId])
 
-  // Runs of any mission that need the operator (archon-n7u.29): counted on
-  // the mission picker and in the page title, and offered from the run bar.
-  useEffect(() => {
-    let cancelled = false
-    const poll = async () => {
-      try {
-        const runs = await fetchRunsNeedingYou()
-        if (!cancelled) setNeedsYou(runs)
-      } catch {
-        /* keep the last counts; the next poll retries */
-      }
-    }
-    void poll()
-    const timer = active ? window.setInterval(poll, 5000) : undefined
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [active, activeRun?.status, activeRun?.runId])
-
   useEffect(() => {
     if (!active) return
     document.title = pageTitle(runsOfLiveMissions(needsYou, boards), board?.title || '')
@@ -802,33 +728,45 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (search !== window.location.search) window.history.replaceState(window.history.state, '', `${window.location.pathname}${search}${window.location.hash}`)
   }, [pinnedRun, selectedSlug])
 
-  // ----- run polling -----
+  // A selected run has one serial detail stream. Its response already contains events.
   useEffect(() => {
-    if (!activeRun?.runId || activeRun.final) return
+    if (!active || !selectedRunId) return
     let cancelled = false
+    let timer = 0
     const tick = async () => {
+      let final = false
       try {
-        const status = runStatusFromResponse(await fetchRunStatus(activeRun.runId))
+        const status = runStatusFromResponse(await fetchRunStatus(selectedRunId))
         if (cancelled) return
-        const events = await fetchRunEvents(activeRun.runId)
-        if (cancelled) return
-        setRunEvents(prev => events.reduce((acc, event) => upsertRunEvent(acc, event), prev))
-        setActiveRun(status)
-        try {
-          const open = await fetchRunEscalations(activeRun.runId)
-          if (!cancelled) setEscalations(open)
-        } catch {
-          /* escalations are best-effort; a transient failure must not drop the run poll */
+        if (status.missionSlug && status.missionSlug !== selectedSlug) {
+          setPinnedRun({ slug: '', runId: '' })
+          setLinkError(`Run ${selectedRunId} belongs to mission "${status.missionSlug}", not "${selectedSlug}"`)
+          return
         }
-        if (status.final && selectedSlug) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
-      } catch {
-        /* transient */
+        const previous = activeRunRef.current
+        if (!acceptsRunSnapshot(previous, status, selectedRunId)) return
+        activeRunRef.current = status
+        setActiveRun(status)
+        setRunEvents(status.events || [])
+        final = status.final
+        try {
+          const open = await fetchRunEscalations(selectedRunId)
+          if (!cancelled) setEscalations(open)
+        } catch { /* detail remains usable if escalation refresh fails */ }
+        if (final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
+      } catch (err) {
+        if (cancelled) return
+        if (selectedRunId === pinnedRunId) {
+          setPinnedRun({ slug: '', runId: '' })
+          setLinkError(`Run ${selectedRunId} from the link was not found`)
+        } else setError(err instanceof Error ? err.message : 'Failed to load run')
+      } finally {
+        if (!cancelled && !final) timer = window.setTimeout(tick, 1200)
       }
     }
     void tick()
-    const timer = window.setInterval(tick, 1200)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [activeRun?.runId, activeRun?.final, selectedSlug])
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [active, selectedRunId, selectedSlug, pinnedRunId])
 
   // ----- positioned nodes -----
   const layoutByNode = useMemo(() => {
@@ -984,8 +922,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       }
     }
     world.addEventListener('transitionend', onTransitionEnd)
-    return () => world.removeEventListener('transitionend', onTransitionEnd)
-  }, [])
+    const frame = requestAnimationFrame(() => setGeometryTick(tick => tick + 1))
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => setGeometryTick(tick => tick + 1))
+    world.querySelectorAll('[data-node]').forEach(card => observer?.observe(card))
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+      world.removeEventListener('transitionend', onTransitionEnd)
+    }
+  }, [board, layout, boardView])
 
   // ----- mutations -----
   // Writes one board edit and adopts the result; a failure throws.
@@ -3309,7 +3254,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     waitingGates: waitingGateIds,
     gatesOf: nodeId => board?.connections.filter(edge => edge.from.split(':')[0] === nodeId && board.gates?.some(gate => gate.id === edge.to.split(':')[0] && nodeStates.get(gate.id) === 'failed')).map(edge => edge.to.split(':')[0]) || [],
     titleOf: nodeId => producedValue?.byNode.get(nodeId)?.definition?.title || (board ? nodeTitle(board, nodeId) : nodeId),
-  } : null), [activeRun, board, nodeAttempts, producedValue, runVersion, waitingGateIds])
+  } : null), [activeRun, board, nodeAttempts, nodeStates, producedValue, runVersion, waitingGateIds])
   const stepPick = useMemo<StepPick | null>(() => (pendingPick && pendingHumanGate && answerWindowOpen ? {
     nodeId: pendingPick.nodeId,
     gateId: pendingHumanGate.gateId,
@@ -3552,7 +3497,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   {mission.outputs?.length ? <div className="minputs moutputs" data-testid={`mission-outputs-${mission.id}`} title="What a succeeded run delivers">Outputs · {mission.outputs.map(output => output.name).join(' · ')}</div> : null}
                   <div className={`mchannel ${humanChannelOf(mission)}`} title="How this mission's human gates reach you">Human gates · {humanChannelLabel(humanChannelOf(mission))}</div>
                   <ReferencedFiles nodeId={mission.id} files={nodeFileRefs(board, mission.id)} max={2} onMore={openReferencedFilesMenu} className="card-refs" />
-                  <div className="mstatus">{state ? state : ''}</div>
+                  <div className="mstatus">{state === 'done' ? 'Done' : state ? state[0].toUpperCase() + state.slice(1) : ''}</div>
                   <span className={`port pout ready${hoverPort === `${mission.id}:out` ? ' snaptarget' : ''}`} data-port-out={`${mission.id}:out`} title="Starts the chain — drag to a step" onPointerDown={event => beginWire(event, `${mission.id}:out`, 'wire')} />
                 </div>
               )

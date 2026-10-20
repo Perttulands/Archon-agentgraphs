@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   activeRunStorageKey,
+  acceptsRunSnapshot,
   runEventReportRef,
   runEventResumeAllowed,
   runEventText,
@@ -337,5 +338,16 @@ describe('formations run-state helpers', () => {
     expect(runStatusFromResponse(flat).runId).toBe('run_flat')
     expect(runStatusFromResponse(nested).runId).toBe('run_nested')
     expect(activeRunStorageKey('session-search')).toBe('archon.activeRun.session-search')
+  })
+})
+
+describe('authoritative run snapshots', () => {
+  it('accepts unchanged and advancing snapshots, but rejects old responses and another run', () => {
+    const current = { runId: 'a', eventCount: 5000 } as RunStatusProjection
+    expect(acceptsRunSnapshot(current, { ...current }, 'a')).toBe(true)
+    expect(acceptsRunSnapshot(current, { ...current, eventCount: 5001 }, 'a')).toBe(true)
+    expect(acceptsRunSnapshot(current, { ...current, eventCount: 4999 }, 'a')).toBe(false)
+    expect(acceptsRunSnapshot(current, { ...current }, 'b')).toBe(false)
+    expect(acceptsRunSnapshot(current, { runId: 'b', eventCount: 1 } as RunStatusProjection, 'b')).toBe(true)
   })
 })

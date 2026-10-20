@@ -322,7 +322,29 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     // Once the mission holds Limit cards its writes carry its own ETag, so the
     // cockpit fetches validation again after each one, as against the daemon.
     const etag = () => path.startsWith('/api/missions/browser') && currentBoard.limits?.length ? currentBoard.etag : 'fixture-etag'
-    const respond = (data: unknown) => route.fulfill({ json: { success: true, data }, headers: { ETag: etag() } })
+    // A pick ends in the gate's pass with the picked attempt, as an ordinary pass routes.
+    const pickEvents = [{ seq: blockEvents.length + 2, type: 'pick_started', nodeId: 'gate', gateId: 'gate' },
+      { seq: blockEvents.length + 3, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'pass' }]
+    const eventSnapshot = () => {
+      if (options.blockedAtLimit) return granted
+      ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, { seq: blockEvents.length + 2, type: 'node_started', nodeId: 'execution', attempt: timeBlock ? 2 : 3 }]
+      : picked ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, ...pickEvents]
+        : blockEvents
+      if (options.waitingHuman) return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
+      { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' },
+      ...(options.secondGate ? [{ seq: 4, type: 'human_input_requested', nodeId: 'second', gateId: 'second' }] : [])]
+      if (options.blockedAtJudge) return blockedAtJudgeEvents
+      if (options.canceled) return [
+      { seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
+      { seq: 3, type: 'run_canceled', nodeId: 'execution', reason: 'Stopped by the operator.' },
+    ]
+      if (options.failedGate) return [...succeededEvents.slice(0, 3),
+      { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail', reason: 'Review needs another attempt.' },
+      { seq: 5, type: 'run_failed', nodeId: 'gate', gateId: 'gate' }]
+      if (options.succeeded) return options.picked ? pickedEvents : succeededEvents
+      return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }]
+    }
+    const respond = (data: unknown) => route.fulfill({ json: { success: true, data: path === '/api/runs/run_browser' ? { ...(data as object), events: eventSnapshot().map(event => ({ ...event, runId: 'run_browser' })) } : data }, headers: { ETag: etag() } })
     const refuseLimit = (target: string | undefined, knobs: Knobs) => {
       const message = limitRefusal(target, knobs)
       return message ? route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_LIMIT', message } } }) : null
@@ -331,6 +353,8 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       themeFetches++
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
     }
+    if (path.endsWith('/events')) return respond({ events: eventSnapshot().map(event => ({ ...event, runId: 'run_browser' })) })
+    if (path === '/api/runs') return respond([])
     if (path === '/api/missions') return respond({ missions: [boardState()] })
     if (path.endsWith('/notes')) return respond({ notes: { schema: 2, missionId: board.id, rev: 1,
       mission: [{ id: 'nte_board', author: 'human:ui', createdAt: '2026-09-12T00:00:00Z', text: 'Keep the current graph and harness identities.' }],
@@ -622,36 +646,23 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (path === '/api/runs/run_browser' && options.blockedAtLimit) return respond(granted || picked
       ? { runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length + (picked ? 3 : 2), cwd: runCwd }
       : { runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: true, resumePolicy: timeBlock ? 'grant' : 'grant_or_pick', missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length, cwd: runCwd })
-    // A pick ends in the gate's pass with the picked attempt, as an ordinary pass routes.
-    const pickEvents = [{ seq: blockEvents.length + 2, type: 'pick_started', nodeId: 'gate', gateId: 'gate' },
-      { seq: blockEvents.length + 3, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'pass' }]
-    if (path.endsWith('/events') && options.blockedAtLimit) return respond({ events: granted
-      ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, { seq: blockEvents.length + 2, type: 'node_started', nodeId: 'execution', attempt: timeBlock ? 2 : 3 }]
-      : picked ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, ...pickEvents]
-        : blockEvents })
+
     if (options.blockedAtLimit && path === '/api/runs/run_browser/evidence/problems') return respond({ problems: [
       { seq: blockEvents.length - 1, type: 'error', code: 'limit_reached', nodeIds: ['execution'], reason: { text: blockReason, bytes: blockReason.length }, limit: blockUse },
       { seq: blockEvents.length, type: 'run_blocked', code: 'limit_reached', nodeIds: ['execution'], reason: { text: blockReason, bytes: blockReason.length }, resumeAllowed: true, limit: blockUse, ...(granted || picked ? { resumedSeq: blockEvents.length + 1 } : {}) },
     ] })
     if (path === '/api/runs/run_browser' && options.blockedAtJudge) return respond({ runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 8, cwd: runCwd })
     if (path === '/api/runs/run_browser') return respond({ runId: 'run_browser', status: 'running', final: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: 2, cwd: runCwd })
-    if (path.endsWith('/events') && options.waitingHuman) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
-      { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' },
-      ...(options.secondGate ? [{ seq: 4, type: 'human_input_requested', nodeId: 'second', gateId: 'second' }] : [])] })
+
     if (path === '/api/runs/run_browser/gates/second/request') return respond({ request: { gateId: 'second', requestedSeq: 4, criterion: 'A second operator look',
       input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: 'Execution so far.' },
       routes: [{ verdict: 'pass', targets: [{ nodeId: 'end_done', title: 'Done', kind: 'end', outcome: 'done' }] },
         { verdict: 'fail', targets: [{ nodeId: 'end_rejected', title: 'Rejected', kind: 'end', outcome: 'rejected' }] }] } })
-    if (path.endsWith('/events') && options.blockedAtJudge) return respond({ events: blockedAtJudgeEvents })
-    if (path.endsWith('/events') && options.canceled) return respond({ events: [
-      { seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
-      { seq: 3, type: 'run_canceled', nodeId: 'execution', reason: 'Stopped by the operator.' },
-    ] })
-    if (path.endsWith('/events') && options.failedGate) return respond({ events: [...succeededEvents.slice(0, 3),
-      { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail', reason: 'Review needs another attempt.' },
-      { seq: 5, type: 'run_failed', nodeId: 'gate', gateId: 'gate' }] })
-    if (path.endsWith('/events') && options.succeeded) return respond({ events: options.picked ? pickedEvents : succeededEvents })
-    if (path.endsWith('/events')) return respond({ events: [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }] })
+
+
+
+
+
     if (path === '/api/runs/run_browser/gates/loose/request') return respond({ request: { gateId: 'loose', requestedSeq: 3, criterion: board.gates[1].criterion,
       input: { fromNodeId: 'execution', fromPortId: 'out', truncated: false, text: Array.from({ length: 60 }, (_, i) => `${i + 1}. A question the operator should answer before the brief is written.`).join('\n') },
       // The disconnected gate: as the daemon derives it while Execution is still open, each

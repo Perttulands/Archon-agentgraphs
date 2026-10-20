@@ -342,3 +342,8 @@ export function openHumanGateIds(events: RunEvent[]): string[] {
   }
   return open.map(item => item.gateId)
 }
+
+/** A status response owns its entire ordered event snapshot. Never fold it event by event. */
+export function acceptsRunSnapshot(current: RunStatusProjection | null, next: RunStatusProjection, requestedRunId: string): boolean {
+  return next.runId === requestedRunId && (current?.runId !== next.runId || next.eventCount >= current.eventCount)
+}

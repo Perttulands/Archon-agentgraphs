@@ -270,6 +270,9 @@ export interface CodeGateProfileDescriptor {
 }
 
 export interface RunStatusProjection {
+  events?: RunEvent[]
+  inputExcerpt?: string
+  sessions?: { sessionName: string; nodeId: string; slotId: string }[]
   cwd?: string
   beadId?: string
   /** The values the run supplied, in the mission's declared order. */

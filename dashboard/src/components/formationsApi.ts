@@ -309,21 +309,9 @@ export async function startRun(etag: string, body: { mission: string; inputCardI
   return { runId: result.data.runId, status: runStatusFromResponse(await fetchRunStatus(result.data.runId)) }
 }
 
-/** Lists a mission's runs from the daemon; a response without a run list yields none. */
-export async function fetchBoardRuns(slug: string): Promise<RunStatusProjection[]> {
-  const result = await fetchApi<RunStatusProjection[]>(`/api/runs?mission=${encodeURIComponent(slug)}`)
-  return Array.isArray(result.data) ? result.data.filter(run => run.missionSlug === slug) : []
-}
-
-/** Every mission's runs, each with its ledger events. */
+/** Compact shared run index, without event histories. */
 export async function fetchAllRuns(): Promise<RunStatusProjection[]> {
   const result = await fetchApi<RunStatusProjection[]>('/api/runs')
-  return Array.isArray(result.data) ? result.data : []
-}
-
-/** The open runs of every mission that need the operator: waiting at a gate or blocked (archon-n7u.29). */
-export async function fetchRunsNeedingYou(): Promise<RunStatusProjection[]> {
-  const result = await fetchApi<RunStatusProjection[]>('/api/runs?needs=you')
   return Array.isArray(result.data) ? result.data : []
 }
 

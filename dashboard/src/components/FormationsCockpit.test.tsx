@@ -584,6 +584,7 @@ function installFetchMock(options: {
         missionSlug: board.slug,
         inputCardId: mission.id,
         eventCount: options.runEvents?.length || 0,
+        events: options.runEvents || [],
       } })
     }
     if (url === '/api/gate-profiles') {
@@ -1453,10 +1454,10 @@ describe('FormationsCockpit reference parity', () => {
     let timerId = 0
     const originalTimeout = window.setTimeout
     vi.spyOn(window, 'setTimeout').mockImplementation((handler, timeout, ...args) => {
-      if (timeout !== 600) return originalTimeout(handler, timeout, ...args)
+      if (timeout !== 600) return originalTimeout(handler, timeout, ...args) as unknown as ReturnType<typeof setTimeout>
       timerId += 1
       if (timeout === 600) changePolls.push(() => handler())
-      return timerId as unknown as ReturnType<typeof setInterval>
+      return timerId as unknown as ReturnType<typeof setTimeout>
     })
     const withoutTool = {
       ...initialBoard,
@@ -2695,7 +2696,7 @@ describe('FormationsCockpit reference parity', () => {
       return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ success: true, data }) } as unknown as Response)
     }) as typeof fetch
     await renderCockpit()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/runs/run_legacy/events', expect.anything()))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/runs/run_legacy', expect.anything()))
     fireEvent.click(await screen.findByTestId('inspect-node-fmn_frame'))
     const dialog = await screen.findByRole('dialog', { name: /Run evidence/ })
     expect(within(dialog).getByTestId('node-evidence-state')).toHaveTextContent('done')
@@ -2769,6 +2770,7 @@ describe('FormationsCockpit reference parity', () => {
         json: () => Promise.resolve(status < 300 ? { success: true, data } : { success: false, error: { code: 'NOT_FOUND', message: 'Not Found' } }),
         text: () => Promise.resolve(''),
       })
+      if (url === '/api/runs' && (!init?.method || init.method === 'GET')) return reply(runs)
       const listed = url.match(/^\/api\/runs\?mission=([^&]+)$/)
       if (listed) return reply(runs.filter(run => run.missionSlug === decodeURIComponent(listed[1])))
       if (url === '/api/runs?needs=you') return reply(runs.filter(run => !run.final && (run.status === 'waiting_human' || run.status === 'blocked')))
@@ -2776,7 +2778,7 @@ describe('FormationsCockpit reference parity', () => {
       if (runURL) {
         const run = runs.find(item => item.runId === runURL[1])
         if (!run) return reply(null, 404)
-        if (!runURL[2]) return reply({ status: run })
+        if (!runURL[2]) return reply({ status: { ...run, events: events[run.runId] || [] } })
         if (runURL[2] === '/evidence/mission') return reply({ mission: { graph: { ...makeBoard(), rev: run.missionRev }, missionRev: run.missionRev, text: { text: '', bytes: 0 } } })
         if (runURL[2] === '/events') return reply({ events: events[run.runId] || [] })
         if (runURL[2] === '/escalations') return reply({ escalations: [] })
@@ -2801,7 +2803,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(await screen.findByTestId('run-banner')).toHaveTextContent('Waiting for your answer')
     const panel = await screen.findByRole('dialog', { name: 'Answer gate Review' })
     await waitFor(() => expect(within(panel).getByText('Question for run_01CLI')).toBeInTheDocument())
-    expect(fetch).toHaveBeenCalledWith('/api/runs?mission=test-board', expect.anything())
+    expect(fetch).toHaveBeenCalledWith('/api/runs', expect.anything())
     // The navigator lists it under its mission.
     expect(screen.getByTestId('nav-run-run_01CLI')).toHaveTextContent('your answer')
 

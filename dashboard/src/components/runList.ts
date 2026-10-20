@@ -41,6 +41,7 @@ export function runSpan(run: RunStatusProjection, now = new Date()): string {
 
 /** The start of what the run was given, on one line. */
 export function runInputExcerpt(run: RunStatusProjection, max = 90): string {
+  if (run.inputExcerpt !== undefined) return run.inputExcerpt
   const inputs = run.inputs || []
   const first = inputs.find(input => input.kind === 'text') || inputs[0]
   if (!first) return ''

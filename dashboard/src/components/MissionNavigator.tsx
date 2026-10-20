@@ -8,8 +8,8 @@ import type { BoardSummary, RunStatusProjection } from './formationsTypes'
 import { runInputExcerpt, runsInListOrder, shortTime } from './runList'
 import './missionNavigator.css'
 
-/** A run as the run list returns it: the projection plus its ledger events. */
-export type ListedRun = RunStatusProjection & { events?: Array<{ type: string; nodeId?: string; slotId?: string; sessionName?: string; outcome?: string }> }
+/** Compact run index entry; event histories belong to selected detail. */
+export type ListedRun = RunStatusProjection
 
 const RUNS_SHOWN = 5
 
@@ -32,12 +32,7 @@ const needsOperator = (run: RunStatusProjection) => !run.final && (run.status ==
 
 /** The sessions a run still holds, in the order they were created: a seat's cleanup ends its session unless it is kept on call. */
 export function runSessions(run: ListedRun): Array<{ sessionName: string; nodeId: string; slotId: string }> {
-  const seen = new Map<string, { sessionName: string; nodeId: string; slotId: string }>()
-  for (const event of run.events || []) {
-    if (event.type === 'seat_created' && event.sessionName && event.nodeId) seen.set(event.sessionName, { sessionName: event.sessionName, nodeId: event.nodeId, slotId: event.slotId || '' })
-    else if (event.type === 'seat_cleanup' && event.sessionName && event.outcome !== 'kept_on_call') seen.delete(event.sessionName)
-  }
-  return [...seen.values()]
+  return run.sessions || []
 }
 
 export default function MissionNavigator({ missions, loaded, runs, selectedSlug, shownRunId, busy, readOnly, stepTitle, onEdit, onRun, onSession, onNew, onRename, onDelete }: {
