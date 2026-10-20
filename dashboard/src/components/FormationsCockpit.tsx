@@ -2106,7 +2106,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       return
     }
     const frame = window.requestAnimationFrame(() => {
-      fitView({ whole: !layout.nodes.length })
+      fitView()
       fittedBoardRef.current = shown
     })
     return () => window.cancelAnimationFrame(frame)
