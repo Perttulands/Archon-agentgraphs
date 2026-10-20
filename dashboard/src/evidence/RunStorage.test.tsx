@@ -99,3 +99,23 @@ it('protects final files while an agent seat is still present or uncertain', asy
  await screen.findByText(/Agent seats still present or their absence is unconfirmed: #17/)
  expect(screen.queryByRole('button', { name: 'Review disposal' })).toBeNull()
 })
+
+it('refreshes durable partial cleanup after a failed disposal while preserving its action error', async () => {
+ let report = initial
+ vi.stubGlobal('fetch', vi.fn(async (_url, options) => {
+  if (options?.method === 'POST') {
+   report = { ...initial, state: 'partial', bytes: 1024, retainedBytes: 0, lastError: 'directory could not be removed' }
+   return { ok: false, json: async () => ({ success: false, error: { code: 'INTERNAL', message: 'disposal interrupted' } }) } as Response
+  }
+  return response(report)
+ }))
+ render(<RunStorage {...props} />)
+ await screen.findByRole('button', { name: 'Review disposal' })
+ fireEvent.click(screen.getByRole('button', { name: 'Review disposal' }))
+ fireEvent.click(screen.getByRole('button', { name: 'Dispose run files' }))
+ await screen.findByText('Ordinary evidence · Cleanup incomplete')
+ expect(screen.getByText(/Storage unavailable: disposal interrupted/)).toBeInTheDocument()
+ expect(screen.getByText(/Storage cleanup incomplete: directory could not be removed/)).toBeInTheDocument()
+ expect(screen.getByText('1.0 KiB')).toBeInTheDocument()
+ expect(screen.getByRole('button', { name: 'Archive evidence' })).toBeDisabled()
+})

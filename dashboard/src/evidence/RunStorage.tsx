@@ -33,7 +33,17 @@ export default function RunStorage({ runId, final, state, onChange }: { runId: s
       if (owner.current !== token) return
       setReport(next); setReview(''); onChange()
     } catch (reason) {
-      if (owner.current === token) setError({ runId, text: reason instanceof Error ? reason.message : String(reason) })
+      if (owner.current !== token) return
+      const actionError = reason instanceof Error ? reason.message : String(reason)
+      setError({ runId, text: actionError })
+      // A failed deletion can still have durably removed some files. Read its
+      // manifest again without hiding the command error or claiming retention.
+      try {
+        const next = await fetchRunStorage(runId)
+        if (owner.current === token) { setReport(next); onChange() }
+      } catch (refreshError) {
+        if (owner.current === token) setError({ runId, text: `${actionError}. Storage refresh failed: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}; accounting may be out of date.` })
+      }
     } finally { if (owner.current === token) setBusy('') }
   }
   const protectedBy = storage?.protectedBy || []
