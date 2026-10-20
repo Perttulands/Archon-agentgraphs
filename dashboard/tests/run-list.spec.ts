@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { cockpitFixture, reviewMarkdown } from './cockpit-fixture'
+import { arrangedLayoutNodes } from '../src/components/formationsCanvas'
 
 /* Runs are listed under their mission and open onto what they produced
  * (archon-o7p.2). The routes answer as archond does: the run list holds the
@@ -62,11 +63,12 @@ for (const entry of ['list', 'link'] as const) {
     await expect(page.getByTitle('Start mission', { exact: true }).first()).toBeDisabled()
     await expect(page.getByTitle('Run formation', { exact: true }).first()).toBeDisabled()
     await expect(page.locator('.formation').first()).toContainText('Frozen')
-    // The frozen cards stay where the mission's layout puts them, not on fallback positions.
+    // Frozen geometry comes from its own graph, never the current saved layout.
     const first = page.locator('.formation').first()
     const saved = await page.evaluate(async id => (await (await fetch('/api/missions/browser/layout')).json()).data.layout.nodes.find((node: { id: string }) => node.id === id), await first.getAttribute('data-node'))
-    await expect(first).toHaveCSS('left', `${saved.x}px`)
-    await expect(first).toHaveCSS('top', `${saved.y}px`)
+    const arranged = arrangedLayoutNodes(fixture.board()).find(node => node.id === saved.id)!
+    await expect(first).toHaveCSS('left', `${arranged.x}px`)
+    await expect(first).toHaveCSS('top', `${arranged.y}px`)
     // A frozen card does not move, and a click on it still opens its window, read only.
     await first.locator('.tt').click()
     const frozenStep = page.getByRole('dialog', { name: /^Formation · / })
@@ -103,6 +105,9 @@ for (const entry of ['list', 'link'] as const) {
     await expect(page.getByTestId('canvas-dock')).toHaveCount(0)
     await page.getByRole('radio', { name: 'Canvas', exact: true }).click()
     await expect(page.getByTestId('new-formation')).toBeEnabled()
+    await expect(first).toHaveCSS('left', `${saved.x}px`)
+    await expect(first).toHaveCSS('top', `${saved.y}px`)
+    expect(fixture.writes).toEqual([])
   })
 }
 
@@ -122,6 +127,9 @@ test('an old run link is rejected when its slug now belongs to a recreated missi
   await expect(page.getByTestId('formations-error')).toContainText('belongs to an earlier mission "browser" that was deleted')
   await expect(page.getByTestId('run-banner')).toHaveCount(0)
   await expect(page.getByTestId('new-formation')).toBeEnabled()
+    await expect(first).toHaveCSS('left', `${saved.x}px`)
+    await expect(first).toHaveCSS('top', `${saved.y}px`)
+    expect(fixture.writes).toEqual([])
 })
 
 // Every run that needs the operator is counted on the mission picker and in

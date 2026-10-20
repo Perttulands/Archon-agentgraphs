@@ -1014,7 +1014,9 @@ preference migrates once from the first opened mission, then is removed. The run
 the shown run started, how long it took and who drives it; a run waiting at a
 gate says since when; and a run that ran an
 earlier revision draws its frozen graph and run states on Canvas and Flow,
-read only, with its cards where the current mission has them, and the dock
+read only. Runs without their own saved geometry use a deterministic compact
+arrangement of their frozen nodes; viewing a run never writes a layout or
+borrows positions from a newer mission revision. The dock
 names the revision shown and offers Edit current mission. Every run that needs
 the operator, waiting at a human gate or blocked, is counted (archon-n7u.29):
 in the navigator's Needs you group, above the missions and across all of them,

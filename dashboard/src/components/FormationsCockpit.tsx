@@ -168,7 +168,7 @@ import type {
 
 /** A staffing drag: a role from the rail, or a slot's staffing; a press without a move on a slot opens its sentence. */
 /** The smallest scale a mission opens at: below it card text is too small to read. */
-const LEGIBLE_SCALE = 0.8
+const LEGIBLE_SCALE = 1
 type StaffPayload = { kind: 'role'; roleId: string } | { kind: 'character'; character: Character } | { kind: 'slot'; from: SlotRef }
 type DragStaff = { payload: StaffPayload | null; slot?: { ref: SlotRef; part: Part | null; anchor: HTMLElement }; click?: () => void; startX: number; startY: number; moved: boolean; scene?: GhostScene; sceneView?: string }
 /** The canvas as a drag starts: the cards and notes a ghost keeps off, each slot's box and its card's, and the canvas. Measured once per drag. */
@@ -294,8 +294,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const historicalRef = useRef(historical)
   historicalRef.current = historical
   const board = historical ? (frozen && frozen.runId === activeRun?.runId ? frozen.graph : null) : currentBoard
-  // A frozen run keeps the positions its cards have on the current mission; node IDs survive revisions.
-  const layout = useMemo(() => historical && board ? { ...missingLayoutForBoard(board), nodes: currentLayout?.nodes ?? [] } : currentLayout, [historical, board, currentLayout])
+  // Old runs have no saved geometry: arrange their own frozen nodes, without writing a layout.
+  const layout = useMemo(() => historical && board ? missingLayoutForBoard(board) : currentLayout, [historical, board, currentLayout])
   useEffect(() => {
     if (!historical || !activeRun) return
     let cancelled = false
@@ -3863,7 +3863,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
           <div className="zoomctl">
             <button onClick={() => zoomBy(1.2)} title="Zoom in">+</button>
             <button onClick={() => zoomBy(1 / 1.2)} title="Zoom out">−</button>
-            <button onClick={() => void arrangeBoard()} title="Arrange cards by graph flow (persists layout, Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
+            <button onClick={() => void arrangeBoard()} title="Replace saved positions with compact reading rows (Ctrl+Z to undo)" data-testid="arrange-layout">ARRANGE</button>
             <button onClick={() => fitView({ smooth: true, whole: true })} title="Fit">FIT</button>
           </div>
           <aside className="roster floating" data-window-avoid data-testid="agent-roster" aria-label="Agent roster" hidden={!rosterOpen || historical} onPointerDown={event => event.stopPropagation()}>
