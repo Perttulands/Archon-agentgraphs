@@ -54,3 +54,11 @@ a.evidence-meta:hover { color: var(--accent); }
 
 /* A block the run later resumed past is history, not why the run stopped. */
 .node-evidence-verdict.fail.resumed{opacity:.72;}
+
+.run-storage p { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.storage-accounting { display: grid; gap: 4px; font-size: 11px; }
+.storage-accounting > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.storage-accounting dt { color: var(--text-secondary); }
+.storage-accounting dd { margin: 0; }
+.storage-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.storage-review { margin-top: 8px; padding: 8px; border: 1px solid var(--divider); }

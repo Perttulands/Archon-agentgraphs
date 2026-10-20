@@ -1,0 +1,28 @@
+import { expect, test } from '@playwright/test'
+import { cockpitFixture } from './cockpit-fixture'
+
+test('run storage opens without selecting a node, archives visibly and disposes only after inline review', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await cockpitFixture(page, { succeeded: true })
+  await page.goto('/?mission=browser&run=run_browser')
+  await page.getByRole('button', { name: 'Run evidence', exact: true }).click()
+  const evidence = page.getByRole('dialog', { name: 'Run evidence · Run' })
+  const storage = evidence.getByRole('region', { name: 'Run storage' })
+  await expect(storage).toContainText('32.0 MiB / run · 256.0 MiB completed pool')
+  await expect(storage).toContainText('12.0 MiB')
+  await storage.getByRole('button', { name: 'Archive evidence' }).click()
+  await expect(storage).toContainText('Archived · excluded from the ordinary budget')
+  await page.screenshot({ path: test.info().outputPath('archived-storage.png') })
+  await expect(storage).toContainText('12.0 MiB')
+  await storage.getByRole('button', { name: 'Return to ordinary policy' }).click()
+  await storage.getByRole('button', { name: 'Review disposal' }).click()
+  await expect(storage.getByRole('button', { name: 'Dispose run files' })).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await storage.getByRole('button', { name: 'Dispose run files' }).click()
+  await expect(storage).toContainText('Evidence expired')
+  await expect(evidence.getByRole('alert')).toContainText('Run evidence expired; compact history is retained')
+  await expect(storage).toContainText('Compact run history, frozen mission and briefs stay inspectable')
+  await expect(page.getByTestId('nav-run-run_browser')).toBeVisible()
+  await expect(page.getByTestId('run-banner')).toContainText('Succeeded')
+  await page.screenshot({ path: test.info().outputPath('expired-storage-history.png') })
+})

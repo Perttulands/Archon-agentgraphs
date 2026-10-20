@@ -3299,6 +3299,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     ? { runId: activeRun.runId, states: nodeStates, attempts: nodeAttempts, points: runPoints, inputCardId: activeRun.inputCardId, inputs: activeRun.inputs, outputs: activeRun.outputs, events: runEvents, onEvidence: setInspectedNodeId, onAnswer: setAnswerGateId }
     : null), [activeRun, nodeAttempts, nodeStates, runPoints, runEvents])
   const inspectedNode = useMemo(() => {
+    if (inspectedNodeId === '@run') return { kind: 'run' as const, id: '', title: 'Run' }
     if (!inspectedNodeId || !board) return null
     const formation = board.formations?.find(node => node.id === inspectedNodeId)
     if (formation) return { kind: 'formation' as const, id: formation.id, title: formation.title }
@@ -3417,6 +3418,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                 </span>
                 <RunOutputs runId={activeRun.runId} outputs={activeRun.outputs} titleOf={nodeId => (board ? nodeTitle(board, nodeId) : nodeId)} />
                 <RunProduced />
+                <button type="button" className="btn" onClick={() => setInspectedNodeId('@run')}>Run evidence</button>
                 {historical ? null : <RunRevisionNote run={activeRun} currentRev={currentBoard?.rev} missionTitle={currentBoard?.title || ''} />}
                 <span className="run-meta" title={activeRun.cwd ? `Runs in ${activeRun.cwd}` : undefined}>
                   <RunWhen run={activeRun} />
@@ -4230,8 +4232,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
       {inspectedNode && activeRun ? (
         <Suspense fallback={<div role="status">Loading run evidence…</div>}>
-          <RunEvidence runId={activeRun.runId} nodeId={inspectedNode.id} title={inspectedNode.title}
-            state={nodeStates.get(inspectedNode.id) || ''} board={board} onClose={() => setInspectedNodeId(null)} />
+          <RunEvidence key={`${activeRun.runId}:${inspectedNode.id}`} final={activeRun.final} runId={activeRun.runId} nodeId={inspectedNode.id} title={inspectedNode.title}
+            state={inspectedNode.id ? nodeStates.get(inspectedNode.id) || '' : activeRun.status} board={board} onClose={() => setInspectedNodeId(null)} />
         </Suspense>
       ) : null}
 

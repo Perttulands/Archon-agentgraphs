@@ -11,6 +11,7 @@ import { fileAnchor, useFileWindows } from '../files/FileWindows'
 import { attemptsAnchor } from '../attempts/attemptsPlacement'
 import { artifactFileRequest, referencedFileRequest } from '../files/fileWindowModel'
 import Markdown from './Markdown'
+import RunStorage from './RunStorage'
 import TextLines, { prettyJson } from './TextLines'
 import {
   artifactRawUrl,
@@ -54,6 +55,7 @@ interface RunEvidenceProps {
   state: string
   /** Names the evidence's node, port and slot IDs; without it they show as IDs. */
   board?: BoardDocument | null
+  final?: boolean
   onClose: () => void
 }
 
@@ -66,7 +68,7 @@ const byteLength = (text: string) => new TextEncoder().encode(text).length
 /** Runtime codes remain in data; evidence reads in the operator's words. */
 const evidenceWord = (value: string) => ({ pass: 'PASS', fail: 'FAIL', canceled: 'Stopped', initial: 'first attempt', waiting_human: 'waiting for you' }[value] || value.replace(/_/g, ' '))
 
-export default function RunEvidence({ runId, nodeId, title, state, board, onClose }: RunEvidenceProps) {
+export default function RunEvidence({ runId, nodeId, title, state, board, final = false, onClose }: RunEvidenceProps) {
   const names = useMemo(() => evidenceNamesForBoard(board), [board])
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
   const [error, setError] = useState('')
@@ -99,6 +101,8 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
   useEffect(() => {
     let current = true
     setError('')
+    setEvidence(null)
+    if (!nodeId) return
     fetchNodeEvidence(runId, nodeId).then(next => { if (current) setEvidence(next) }, reason => { if (current) setError(errorText(reason)) })
     return () => { current = false }
   }, [runId, nodeId, state])
@@ -144,13 +148,14 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
       onClose={onClose}>
       <CitationContext.Provider value={{ runId, artifacts: [...(artifacts?.artifacts.map(file => file.name) || []), ...attemptSteps.flatMap(step => step.attempts.flatMap(attempt => attemptCitationScope(attempt).artifacts))], directories: [], paths: evidencePaths(evidence), open: openArtifact }}>
       <div data-testid="node-inspector" className="node-evidence">
-        <dl className="node-evidence-identity">
+        <RunStorage runId={runId} final={final} state={state} onChange={() => setArtifactRetry(retry => retry + 1)} />
+        {nodeId ? <><dl className="node-evidence-identity">
           <div><dt>{verdict ? 'Verdict' : 'State'}</dt><dd data-testid="node-evidence-state">{evidenceWord(verdict || state || 'not started')}</dd></div>
         </dl>
-        <EvidenceIds runId={runId} nodeId={nodeId} evidence={evidence} names={names} />
+        <EvidenceIds runId={runId} nodeId={nodeId} evidence={evidence} names={names} /></> : null}
 
         {error ? <div className="note-error" role="alert">Evidence unavailable: {error}</div> : null}
-        {!evidence && !error ? <div className="node-evidence-empty" role="status">Loading evidence…</div> : null}
+        {nodeId && !evidence && !error ? <div className="node-evidence-empty" role="status">Loading evidence…</div> : null}
 
         {openDocument ? (
           <DocumentView runId={runId} document={openDocument} onOpenArtifact={openArtifact} onClose={() => setOpenDocument(null)} />

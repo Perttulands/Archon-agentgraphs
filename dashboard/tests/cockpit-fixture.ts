@@ -335,6 +335,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (options.succeeded) return options.picked ? pickedEvents : succeededEvents
     return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }]
   }
+  let storage = { runId: 'run_browser', policy: 'bounded' as const, final: Boolean(options.succeeded || options.failedGate), trimmed: false, archived: false, state: 'retained' as 'retained' | 'expired', bytes: 12582912, allocatedBytes: 12582912, retainedBytes: 8388608, budgetBytes: 33554432, poolBudgetBytes: 268435456, activeSeats: [], protectedBy: [] as string[] }
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
     const path = url.pathname
@@ -352,6 +353,15 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (path === '/api/theme') {
       themeFetches++
       return route.fulfill(options.themeFailure ? { status: 500, json: { error: 'Unavailable' } } : { json: defaultTheme })
+    }
+    if (storage.state === 'expired' && path.includes('/evidence/artifacts')) return route.fulfill({ status: 410, json: { success: false, error: { code: 'EVIDENCE_EXPIRED', message: 'Run evidence expired; compact history is retained' } } })
+    if (path === '/api/runs/run_browser/storage') {
+      if (method === 'POST') {
+        const action = route.request().postDataJSON().action
+        storage = { ...storage, archived: action === 'archive' ? true : action === 'unarchive' ? false : storage.archived,
+          ...(action === 'dispose' ? { state: 'expired' as const, bytes: 0, allocatedBytes: 0, retainedBytes: 0 } : {}) }
+      }
+      return respond({ storage })
     }
     if (path.endsWith('/events')) return respond({ events: eventSnapshot().map(event => ({ ...event, runId: 'run_browser' })) })
     if (path === '/api/runs') return respond([])

@@ -25,6 +25,7 @@ function respond(data: unknown, status = 200, message = 'run evidence not found'
 const text = (value: string, extra: Partial<{ bytes: number; truncated: boolean }> = {}) => ({ text: value, bytes: value.length, ...extra })
 
 const routes: Record<string, unknown> = {
+  '/api/runs/run_1/storage': { storage: { runId: 'run_1', final: false, trimmed: false, policy: 'bounded', archived: false, state: 'retained', bytes: 1024, allocatedBytes: 4096, retainedBytes: 1024, budgetBytes: 33554432, poolBudgetBytes: 268435456, activeSeats: [], protectedBy: [] } },
   '/api/runs/run_1/evidence/nodes/fmn_plan': {
     evidence: {
       runId: 'run_1', nodeId: 'fmn_plan', kind: 'formation',
