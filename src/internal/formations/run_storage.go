@@ -15,13 +15,14 @@ import (
 
 const RunStorageBudgetBytes int64 = 32 << 20
 const RunStoragePoolBudgetBytes int64 = 256 << 20
+const RunStorageEntryLimit int64 = 4096
 
 var (
 	ErrRunStorageActive     = errors.New("run evidence belongs to a nonfinal run or an agent seat whose absence is unconfirmed")
 	ErrRunStorageReferenced = errors.New("run evidence is referenced by a nonfinal run")
 	ErrRunStorageExpired    = errors.New("expired evidence cannot be archived; archive only keeps files still present")
 	ErrRunEvidenceExpired   = errors.New("run evidence expired under its storage policy")
-	ErrRunStorageBudget     = errors.New("run output snapshot exceeds its 32 MiB capture budget: narrow the output folder, return the project path as text, or explicitly archive this run then resume")
+	ErrRunStorageBudget     = errors.New("run output snapshot exceeds its 32 MiB or 4096-entry capture budget: narrow the output folder, return the project path as text, or explicitly archive this run then resume")
 )
 
 type RunStorageReport struct {
@@ -52,7 +53,7 @@ type runStorageManifest struct {
 }
 
 func frozenRunStoragePolicy() map[string]any {
-	return map[string]any{"version": 1, "budgetBytes": RunStorageBudgetBytes, "poolBudgetBytes": RunStoragePoolBudgetBytes}
+	return map[string]any{"version": 1, "budgetBytes": RunStorageBudgetBytes, "poolBudgetBytes": RunStoragePoolBudgetBytes, "entryLimit": RunStorageEntryLimit}
 }
 
 func boundedRunStorage(events []RunEvent) bool {
@@ -200,16 +201,20 @@ func (s *Store) storageViews() ([]RunLedgerView, error) {
 // Known references protect whole source runs. Include every absolute path
 // appearing in a nonfinal ledger (also prose), plus symlink resolution of paths.
 // This is deliberately conservative; external consumers must export/archive.
-func (s *Store) storageProtection(ctx context.Context, views []RunLedgerView, busyIDs ...string) map[string][]string {
+func (s *Store) storageProtection(ctx context.Context, views []RunLedgerView, busyIDs ...string) (map[string][]string, error) {
 	busy := map[string]bool{}
 	for _, id := range busyIDs {
 		busy[id] = true
 	}
 	protected := map[string][]string{}
 	roots := map[string]string{}
+	aliases := map[string]string{}
 	for _, v := range views {
 		r, e := s.runStorageRoot(v.Status.RunID)
 		if e == nil {
+			if workspace, e := s.workspaceAbsolutePath(); e == nil {
+				aliases[v.Status.RunID] = filepath.Join(workspace, ".archon", "artifacts", v.Status.RunID)
+			}
 			roots[v.Status.RunID] = r
 			if real, e := filepath.EvalSymlinks(r); e == nil {
 				roots[v.Status.RunID] = real
@@ -237,8 +242,19 @@ func (s *Store) storageProtection(ctx context.Context, views []RunLedgerView, bu
 					scan(y)
 				}
 			case string:
+				// References also occur inside Markdown links and prose. A
+				// literal known artifact root is enough to retain conservatively;
+				// do not require the entire containing string to be a path.
+				for id, root := range roots {
+					alias := aliases[id]
+					if id != v.Status.RunID && (x == root || strings.Contains(x, root+string(filepath.Separator)) || x == alias || (alias != "" && strings.Contains(x, alias+string(filepath.Separator)))) {
+						found[id] = true
+					}
+				}
 				paths := []string{x}
-				paths = append(paths, strings.FieldsFunc(x, func(r rune) bool { return r == ' ' || r == '\n' || r == '\t' || r == '"' || r == '\'' || r == '`' })...)
+				paths = append(paths, strings.FieldsFunc(x, func(r rune) bool {
+					return r == ' ' || r == '\n' || r == '\t' || r == '"' || r == '\'' || r == '`' || r == '(' || r == ')' || r == '[' || r == ']' || r == '<' || r == '>' || r == '='
+				})...)
 				for _, p := range paths {
 					p = strings.TrimRight(p, ",;:.)]}")
 					if !filepath.IsAbs(p) {
@@ -255,6 +271,22 @@ func (s *Store) storageProtection(ctx context.Context, views []RunLedgerView, bu
 				}
 			}
 		}
+		// Undispatched steps may already name source artifacts in their frozen
+		// briefs, gate files, input files or goal text. Ledger deliveries alone
+		// do not discover these dependencies before dispatch.
+		board, err := s.ReadRunBoard(v.Status.RunID)
+		if err != nil {
+			return nil, fmt.Errorf("storage reference discovery for %s: %w", v.Status.RunID, err)
+		}
+		raw, err := json.Marshal(board)
+		if err != nil {
+			return nil, err
+		}
+		var graph any
+		if err = json.Unmarshal(raw, &graph); err != nil {
+			return nil, err
+		}
+		scan(graph)
 		for _, e := range v.Events {
 			scan(e.Data)
 		}
@@ -265,7 +297,7 @@ func (s *Store) storageProtection(ctx context.Context, views []RunLedgerView, bu
 	for id := range protected {
 		sort.Strings(protected[id])
 	}
-	return protected
+	return protected, nil
 }
 
 func (s *Store) storageReport(id string, events []RunEvent, m runStorageManifest, protected []string) (*RunStorageReport, error) {
@@ -279,7 +311,7 @@ func (s *Store) storageReport(id string, events []RunEvent, m runStorageManifest
 	}
 	r := &RunStorageReport{RunID: id, Policy: "legacy", Archived: m.Archived, State: m.State, Bytes: storageBytes(files), RetainedBytes: 0, BudgetBytes: RunStorageBudgetBytes, PoolBudgetBytes: RunStoragePoolBudgetBytes, ProtectedBy: append([]string{}, protected...), LastError: m.LastError}
 	r.ActiveSeats = s.storageActiveSeats(context.Background(), events)
-	r.Final = len(events) > 0 && isFinalRunEvent(events[len(events)-1].Type)
+	r.Final = storageFinal(events)
 	r.Trimmed = m.Trimmed
 	kept := map[string]bool{}
 	for _, name := range m.Keep {
@@ -323,7 +355,11 @@ func (s *Store) RunStorage(id string) (report *RunStorageReport, err error) {
 		if e != nil {
 			return e
 		}
-		report, e = s.storageReport(id, events, m, s.storageProtection(context.Background(), views)[id])
+		protection, e := s.storageProtection(context.Background(), views)
+		if e != nil {
+			return e
+		}
+		report, e = s.storageReport(id, events, m, protection[id])
 		return e
 	})
 	return
@@ -349,7 +385,11 @@ func (s *Store) SetRunArchive(id string, archive bool) (report *RunStorageReport
 		if e != nil {
 			return e
 		}
-		report, e = s.storageReport(id, events, m, s.storageProtection(context.Background(), views)[id])
+		protection, e := s.storageProtection(context.Background(), views)
+		if e != nil {
+			return e
+		}
+		report, e = s.storageReport(id, events, m, protection[id])
 		return e
 	})
 	return
@@ -451,14 +491,18 @@ func (s *Store) DisposeRunArtifacts(id string) (report *RunStorageReport, err er
 		if e != nil {
 			return e
 		}
-		if len(events) == 0 || !isFinalRunEvent(events[len(events)-1].Type) || s.storageRunBusy(id) || len(s.storageActiveSeats(context.Background(), events)) > 0 {
+		if !storageFinal(events) || s.storageRunBusy(id) || len(s.storageActiveSeats(context.Background(), events)) > 0 {
 			return ErrRunStorageActive
 		}
 		views, e := s.storageViews()
 		if e != nil {
 			return e
 		}
-		protection := s.storageProtection(context.Background(), views)[id]
+		protections, e := s.storageProtection(context.Background(), views)
+		if e != nil {
+			return e
+		}
+		protection := protections[id]
 		if len(protection) > 0 {
 			return ErrRunStorageReferenced
 		}
@@ -484,8 +528,34 @@ func (s *Store) DisposeRunArtifacts(id string) (report *RunStorageReport, err er
 // are already capture-budgeted; no output folder is silently partly retained.
 func (s *Store) selectStorageEvidence(root string, events []RunEvent, files []storageFile) []string {
 	selected := map[string]bool{}
+	byName := map[string]storageFile{}
+	for _, f := range files {
+		byName[f.name] = f
+	}
 	var used int64
 	add := func(names []storageFile) {
+		expanded := map[string]storageFile{}
+		for _, f := range names {
+			expanded[f.name] = f
+			for parent := filepath.ToSlash(filepath.Dir(f.name)); parent != "."; parent = filepath.ToSlash(filepath.Dir(parent)) {
+				if directory, ok := byName[parent]; ok {
+					expanded[parent] = directory
+				}
+			}
+		}
+		names = nil
+		for _, f := range expanded {
+			names = append(names, f)
+		}
+		var added int64
+		for _, f := range names {
+			if !selected[f.name] {
+				added++
+			}
+		}
+		if int64(len(selected))+added > RunStorageEntryLimit {
+			return
+		}
 		var total int64
 		for _, f := range names {
 			if !selected[f.name] {
@@ -570,7 +640,10 @@ func (s *Store) SweepRunStorage(ctx context.Context, excludedRunIDs ...string) e
 		if err != nil {
 			return err
 		}
-		protected := s.storageProtection(ctx, views, excludedRunIDs...)
+		protected, err := s.storageProtection(ctx, views, excludedRunIDs...)
+		if err != nil {
+			return err
+		}
 		exclude := map[string]bool{}
 		for _, id := range excludedRunIDs {
 			exclude[id] = true
@@ -680,7 +753,10 @@ func (s *Store) checkStorageEvidence(id, name string) error {
 // Snapshot budgets count logical copied bytes, including materialized external
 // links. Preflight and streaming enforce the same traversal and byte ceiling.
 type snapshotBudgetKey struct{}
-type snapshotByteBudget struct{ remaining int64 }
+type snapshotByteBudget struct {
+	remaining int64
+	entries   int64
+}
 
 func (s *Store) outputCopyContext(ctx context.Context, id, dir, port string) (context.Context, error) {
 	if err := copyStopped(ctx); err != nil {
@@ -712,17 +788,18 @@ func (s *Store) outputCopyContext(ctx context.Context, id, dir, port string) (co
 	if real, e := filepath.EvalSymlinks(filepath.Dir(replace)); e == nil {
 		replace = filepath.Join(real, port)
 	}
-	var used int64
+	var used, entries int64
 	for _, f := range files {
 		p := filepath.Join(root, filepath.FromSlash(f.name))
 		if strings.Contains("/"+f.name, "/outputs/") && !pathWithin(p, replace) {
 			used += f.size
+			entries++
 		}
 	}
-	if used > RunStorageBudgetBytes {
+	if used > RunStorageBudgetBytes || entries >= RunStorageEntryLimit {
 		return ctx, ErrRunStorageBudget
 	}
-	return context.WithValue(ctx, snapshotBudgetKey{}, &snapshotByteBudget{RunStorageBudgetBytes - used}), nil
+	return context.WithValue(ctx, snapshotBudgetKey{}, &snapshotByteBudget{remaining: RunStorageBudgetBytes - used, entries: RunStorageEntryLimit - entries}), nil
 }
 func preflightSnapshot(ctx context.Context, source, parent string, exclude []string) error {
 	budget, _ := ctx.Value(snapshotBudgetKey{}).(*snapshotByteBudget)
@@ -738,7 +815,7 @@ func preflightSnapshot(ctx context.Context, source, parent string, exclude []str
 		return err
 	}
 	if !info.IsDir() {
-		if info.Size() > budget.remaining {
+		if info.Size() > budget.remaining || budget.entries < 1 {
 			return ErrRunStorageBudget
 		}
 		return nil
@@ -757,6 +834,9 @@ func (c *treeCopier) copyFile(source, target string, info fs.FileInfo) error {
 	if !c.measure {
 		return cloneOrCopyFile(c.ctx, source, target, info.Mode().Perm())
 	}
+	if err := c.copyEntry(); err != nil {
+		return err
+	}
 	c.measured += info.Size()
 	budget, _ := c.ctx.Value(snapshotBudgetKey{}).(*snapshotByteBudget)
 	if budget != nil && c.measured > budget.remaining {
@@ -765,6 +845,9 @@ func (c *treeCopier) copyFile(source, target string, info fs.FileInfo) error {
 	return nil
 }
 func (c *treeCopier) symlink(link, target string) error {
+	if err := c.copyEntry(); err != nil {
+		return err
+	}
 	if c.measure {
 		return nil
 	}
@@ -830,4 +913,28 @@ func (s *Store) withRunCaptureLock(id string, fn func() error) error {
 
 func (s *Store) storageRunBusy(id string) bool {
 	return s.RunStorageRunBusy != nil && s.RunStorageRunBusy(id)
+}
+
+func (c *treeCopier) copyEntry() error {
+	budget, _ := c.ctx.Value(snapshotBudgetKey{}).(*snapshotByteBudget)
+	if budget == nil {
+		return nil
+	}
+	if c.measure {
+		c.measuredEntries++
+		if c.measuredEntries > budget.entries {
+			return ErrRunStorageBudget
+		}
+		return nil
+	}
+	if budget.entries < 1 {
+		return ErrRunStorageBudget
+	}
+	budget.entries--
+	return nil
+}
+
+func storageFinal(events []RunEvent) bool {
+	events = lifecycleLedger(events)
+	return len(events) > 0 && isFinalRunEvent(events[len(events)-1].Type)
 }

@@ -377,11 +377,12 @@ func snapshotOutput(ctx context.Context, source, parent string, exclude []string
 // being copied, the folder first and then each tree a link led out to, so a
 // link back into any of them becomes a link to its copy rather than a cycle.
 type treeCopier struct {
-	ctx      context.Context
-	skipped  map[string]bool
-	frames   []copyFrame
-	measure  bool
-	measured int64
+	ctx             context.Context
+	skipped         map[string]bool
+	frames          []copyFrame
+	measure         bool
+	measured        int64
+	measuredEntries int64
 }
 
 type copyFrame struct{ source, target string }
@@ -409,6 +410,9 @@ func (c *treeCopier) copyTree(source, target string) error {
 		dest := filepath.Join(target, rel)
 		switch mode := entry.Type(); {
 		case mode.IsDir():
+			if err := c.copyEntry(); err != nil {
+				return err
+			}
 			if c.measure {
 				return nil
 			}
@@ -508,9 +512,10 @@ func cloneOrCopyFile(ctx context.Context, source, target string, perm fs.FileMod
 		if e != nil {
 			return e
 		}
-		if info.Size() > budget.remaining {
+		if info.Size() > budget.remaining || budget.entries < 1 {
 			return ErrRunStorageBudget
 		}
+		budget.entries--
 	}
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm|0o600)
 	if err != nil {

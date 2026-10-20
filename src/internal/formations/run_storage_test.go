@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -224,7 +226,16 @@ func TestRunStorageEmptyOutputsAndOversizedGroupAreIndivisible(t *testing.T) {
 	}
 	events := []RunEvent{{Type: RunEventNodeOutput, Data: map[string]any{"outputs": map[string]any{"a": map[string]any{"ref": empty}, "z": map[string]any{"ref": large}}}}}
 	keep := s.selectStorageEvidence(root, events, files)
-	if len(keep) != 1 || keep[0] != "work/1/outputs/empty/folder" {
+	hasEmpty := false
+	for _, name := range keep {
+		if name == "work/1/outputs/empty/folder" {
+			hasEmpty = true
+		}
+		if name == "work/1/outputs/large/folder/report.md" {
+			t.Fatal("partial oversized output")
+		}
+	}
+	if !hasEmpty {
 		t.Fatalf("indivisible selection %v", keep)
 	}
 	if e = s.removeStorage(context.Background(), id, runStorageManifest{Version: 1, State: "retained"}, keep, false); e != nil {
@@ -423,5 +434,57 @@ func TestRunStorageAdmissionAndDisposalSerializeAcrossWorkspaceAliases(t *testin
 		} else if removeErr != nil {
 			t.Fatalf("neither admission nor disposal completed: %v %v", admitErr, removeErr)
 		}
+	}
+}
+
+func TestRunStorageEntryBudgetRejectsEmptyTreesWithoutCopying(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "many")
+	if e := os.Mkdir(source, 0700); e != nil {
+		t.Fatal(e)
+	}
+	for i := int64(0); i < RunStorageEntryLimit; i++ {
+		if e := os.WriteFile(filepath.Join(source, fmt.Sprint(i)), nil, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	ctx := context.WithValue(context.Background(), snapshotBudgetKey{}, &snapshotByteBudget{remaining: RunStorageBudgetBytes, entries: RunStorageEntryLimit})
+	target := filepath.Join(t.TempDir(), "outputs")
+	if e := preflightSnapshot(ctx, source, target, nil); !errors.Is(e, ErrRunStorageBudget) {
+		t.Fatalf("entry preflight %v", e)
+	}
+	if _, e := os.Stat(target); !errors.Is(e, os.ErrNotExist) {
+		t.Fatalf("entry preflight wrote copy: %v", e)
+	}
+}
+
+func TestRunStorageFrozenUndispatchedBriefProtectsItsReferences(t *testing.T) {
+	for _, kind := range []string{"files", "markdown"} {
+		t.Run(kind, func(t *testing.T) {
+			s, source := storageRun(t)
+			root, _ := s.runStorageRoot(source)
+			file := filepath.Join(root, "result.bin")
+			writeFixture(t, file, "needed before dispatch")
+			storageFinish(t, s, source)
+			brief := "[formation.brief]\n"
+			if kind == "files" {
+				brief += "goal = " + renderString("Read the attached file") + "\nfiles = [" + renderString(file) + "]\n"
+			} else {
+				brief += "goal = " + renderString("Read [source]("+file+") before writing") + "\n"
+			}
+			fixture := strings.Replace(s4RunBoardFixture(), "title = "+renderString("Research")+"\n", "title = "+renderString("Research")+"\n"+brief, 1)
+			writeFixture(t, s.BoardPath("session-search"), fixture)
+			_, personas := s4RunFixture(t)
+			consumer, e := s.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Personas: personas})
+			if e != nil {
+				t.Fatal(e)
+			}
+			r, e := s.RunStorage(source)
+			if e != nil || len(r.ProtectedBy) != 1 || r.ProtectedBy[0] != consumer.RunID {
+				t.Fatalf("frozen brief protection %+v %v", r, e)
+			}
+			if _, e = s.DisposeRunArtifacts(source); !errors.Is(e, ErrRunStorageReferenced) {
+				t.Fatalf("frozen brief disposed %v", e)
+			}
+		})
 	}
 }

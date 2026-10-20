@@ -78,7 +78,7 @@ func renderBriefAndInputs(b *strings.Builder, req FormationExecution, card Perso
 	// the attempt's own directory (archon-5tg1).
 	if req.ArtifactDir != "" {
 		b.WriteString("attempt artifact directory: " + req.ArtifactDir + "\n")
-		b.WriteString("Keep concise selected evidence there. Use the project workspace for scratch, renders, caches, builds and large deliverables. Ordinary runs have a 32 MiB total output snapshot budget; a larger file/folder output blocks acceptance until narrowed or this run is explicitly archived. A text output may return a project path without copying it. Create a file before naming it as a ref in archon-outputs.\n")
+		b.WriteString("Keep concise selected evidence there. Use the project workspace for scratch, renders, caches, builds and large deliverables. Ordinary runs have a 32 MiB and 4096-entry total output snapshot budget; a larger file/folder output blocks acceptance until narrowed or this run is explicitly archived. A text output may return a project path without copying it. Create a file before naming it as a ref in archon-outputs.\n")
 	}
 }
 
