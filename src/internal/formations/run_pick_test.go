@@ -623,23 +623,30 @@ to = "end_done:in"
 		{"two selecting gates", judged + secondGate + card("fmn_work", "best"), "Limit Cap picks the best attempt of Work when spent, but Review and Second review both judge it and send it back, so neither can pick: keep one, or set it to stop or fail"},
 		{"another value", judged + card("fmn_work", "never"), `Limit Cap holds whenSpent = "never": set it to stop, best or fail`},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			board, err := parseBoard([]byte(tc.toml))
-			if err != nil {
-				t.Fatal(err)
-			}
-			found := false
-			for _, finding := range ValidateBoard(board).Errors {
-				found = found || finding.Code == FindingInvalidLimit && finding.Message == tc.message
-			}
-			if !found {
-				t.Fatalf("findings = %+v, want %q", ValidateBoard(board).Errors, tc.message)
-			}
-			var admission *RunAdmissionError
-			if err := CheckRunAdmission(board, nil, RunAdmissionScope{MissionID: "mis_showcase"}); !errors.As(err, &admission) || !strings.Contains(admission.Error(), tc.message) {
-				t.Fatalf("admission = %v", err)
-			}
-		})
+		for _, title := range []string{"Cap", "Limit"} {
+			variant := tc
+			variant.toml = strings.ReplaceAll(tc.toml, `title = "Cap"`, `title = "`+title+`"`)
+			variant.message = strings.ReplaceAll(tc.message, "Limit Cap", "Limit "+title)
+			variant.message = strings.ReplaceAll(variant.message, "Limit Limit", "Limit")
+			t.Run(tc.name+"/"+title, func(t *testing.T) {
+				tc := variant
+				board, err := parseBoard([]byte(tc.toml))
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, finding := range ValidateBoard(board).Errors {
+					found = found || finding.Code == FindingInvalidLimit && finding.Message == tc.message
+				}
+				if !found {
+					t.Fatalf("findings = %+v, want %q", ValidateBoard(board).Errors, tc.message)
+				}
+				var admission *RunAdmissionError
+				if err := CheckRunAdmission(board, nil, RunAdmissionScope{MissionID: "mis_showcase"}); !errors.As(err, &admission) || !strings.Contains(admission.Error(), tc.message) {
+					t.Fatalf("admission = %v", err)
+				}
+			})
+		}
 	}
 	for _, whenSpent := range []string{"best", "stop", "fail"} {
 		board, err := parseBoard([]byte(judged + card("fmn_work", whenSpent)))

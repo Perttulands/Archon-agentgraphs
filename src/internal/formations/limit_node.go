@@ -438,47 +438,56 @@ func limitCovering(board *BoardDocument, nodeID string) (LimitNode, bool) {
 	return LimitNode{}, false
 }
 
+// limitFindingName avoids repeating a default-titled card's kind and title.
+func limitFindingName(board *BoardDocument, limitID string) string {
+	name := nodeName(board, limitID)
+	if name == defaultLimitTitle() {
+		return name
+	}
+	return "Limit " + name
+}
+
 // limitFindings validates every Limit card: it covers one step or the Input
 // card, no other card covers the same target, and each knob it sets is a
 // positive whole number. A card that sets no knob limits nothing.
 func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
 	covered := map[string]string{}
 	for _, limit := range board.Limits {
-		name := nodeName(board, limit.ID)
+		name := limitFindingName(board, limit.ID)
 		add := func(message string) {
 			errs = append(errs, BoardFinding{Code: FindingInvalidLimit, NodeID: limit.ID, Message: message})
 		}
 		switch {
 		case strings.TrimSpace(limit.Target) == "":
-			add(fmt.Sprintf("Limit %s is wired to nothing: wire it to a step, or to the Input card for the whole mission", name))
+			add(fmt.Sprintf("%s is wired to nothing: wire it to a step, or to the Input card for the whole mission", name))
 		case !validLimitTarget(board, limit.Target):
-			add(fmt.Sprintf("Limit %s covers %s, which is not a step or the Input card: wire it to a step, or to the Input card for the whole mission", name, limit.Target))
+			add(fmt.Sprintf("%s covers %s, which is not a step or the Input card: wire it to a step, or to the Input card for the whole mission", name, limit.Target))
 		case covered[limit.Target] != "":
-			add(fmt.Sprintf("%s has two Limit cards, %s and %s: keep one", nodeName(board, limit.Target), nodeName(board, covered[limit.Target]), name))
+			add(fmt.Sprintf("%s has two Limit cards, %s and %s: keep one", nodeName(board, limit.Target), nodeName(board, covered[limit.Target]), nodeName(board, limit.ID)))
 		default:
 			covered[limit.Target] = limit.ID
 		}
 		if limit.Rounds != nil && *limit.Rounds <= 0 {
-			add(fmt.Sprintf("Limit %s holds rounds = %d: rounds must be a positive whole number", name, *limit.Rounds))
+			add(fmt.Sprintf("%s holds rounds = %d: rounds must be a positive whole number", name, *limit.Rounds))
 		}
 		if limit.Seconds != nil && *limit.Seconds <= 0 {
-			add(fmt.Sprintf("Limit %s holds seconds = %d: time must be a positive whole number of seconds", name, *limit.Seconds))
+			add(fmt.Sprintf("%s holds seconds = %d: time must be a positive whole number of seconds", name, *limit.Seconds))
 		}
 		switch warn := limit.WarnSeconds; {
 		case warn == nil:
 		case *warn <= 0:
-			add(fmt.Sprintf("Limit %s holds warnSeconds = %d: the warning must be a positive whole number of seconds", name, *warn))
+			add(fmt.Sprintf("%s holds warnSeconds = %d: the warning must be a positive whole number of seconds", name, *warn))
 		case limit.Seconds == nil:
-			add(fmt.Sprintf("Limit %s warns with %s left but sets no time: give it time, or clear the warning", name, durationWords(*warn)))
+			add(fmt.Sprintf("%s warns with %s left but sets no time: give it time, or clear the warning", name, durationWords(*warn)))
 		case *limit.Seconds > 0 && *warn >= *limit.Seconds:
-			add(fmt.Sprintf("Limit %s warns with %s left of %s, before any work: warn with less time left", name, durationWords(*warn), durationWords(*limit.Seconds)))
+			add(fmt.Sprintf("%s warns with %s left of %s, before any work: warn with less time left", name, durationWords(*warn), durationWords(*limit.Seconds)))
 		}
 		if limit.Tokens != nil && *limit.Tokens <= 0 {
-			add(fmt.Sprintf("Limit %s holds tokens = %d: tokens must be a positive whole number", name, *limit.Tokens))
+			add(fmt.Sprintf("%s holds tokens = %d: tokens must be a positive whole number", name, *limit.Tokens))
 		}
 		if limit.Rounds == nil && limit.Seconds == nil && limit.Tokens == nil {
 			warnings = append(warnings, BoardFinding{Code: FindingEmptyLimit, NodeID: limit.ID,
-				Message: fmt.Sprintf("Limit %s sets no limit: give it rounds, time or tokens, or delete it", name)})
+				Message: fmt.Sprintf("%s sets no limit: give it rounds, time or tokens, or delete it", name)})
 		}
 		if problem := whenSpentProblem(board, limit); problem != "" {
 			add(problem)
@@ -491,23 +500,23 @@ func limitFindings(board *BoardDocument) (errs, warnings []BoardFinding) {
 // nothing. Best needs a card on a step whose selecting gate a judge or a
 // human decides, so there is someone to pick.
 func whenSpentProblem(board *BoardDocument, limit LimitNode) string {
-	name := nodeName(board, limit.ID)
+	name := limitFindingName(board, limit.ID)
 	switch strings.TrimSpace(limit.WhenSpent) {
 	case "", LimitWhenSpentStop, LimitWhenSpentFail:
 		return ""
 	case LimitWhenSpentBest:
 	default:
-		return fmt.Sprintf("Limit %s holds whenSpent = %q: set it to stop, best or fail", name, limit.WhenSpent)
+		return fmt.Sprintf("%s holds whenSpent = %q: set it to stop, best or fail", name, limit.WhenSpent)
 	}
 	if _, ok := findMission(board, limit.Target); ok {
-		return fmt.Sprintf("Limit %s picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop or fail", name)
+		return fmt.Sprintf("%s picks the best attempt when spent, but it covers the whole mission: only a step's card can pick; set it to stop or fail", name)
 	}
 	if _, ok := findFormation(board.Formations, limit.Target); !ok {
 		return ""
 	}
 	_, problem := selectingGate(board, limit.Target)
 	if problem != "" {
-		return fmt.Sprintf("Limit %s picks the best attempt of %s when spent, but %s", name, nodeName(board, limit.Target), problem)
+		return fmt.Sprintf("%s picks the best attempt of %s when spent, but %s", name, nodeName(board, limit.Target), problem)
 	}
 	return ""
 }

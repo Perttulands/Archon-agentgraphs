@@ -274,30 +274,37 @@ func TestValidationRejectsALimitCardWiredToNothingOrHoldingABadValue(t *testing.
 		{"a negative warning", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\nseconds = 300\nwarnSeconds = -1\n", FindingInvalidLimit, "Limit Cap holds warnSeconds = -1: the warning must be a positive whole number of seconds"},
 		{"zero tokens", "[[limit]]\nid = \"lim_a\"\ntitle = \"Cap\"\ntarget = \"fmn_work\"\ntokens = 0\n", FindingInvalidLimit, "Limit Cap holds tokens = 0: tokens must be a positive whole number"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			board, err := parseBoard([]byte(base + "\n" + tc.toml))
-			if err != nil {
-				t.Fatal(err)
-			}
-			report := ValidateBoard(board)
-			findings := report.Errors
-			if tc.code == FindingEmptyLimit {
-				findings = report.Warnings
-			}
-			found := false
-			for _, finding := range findings {
-				found = found || finding.Code == tc.code && finding.Message == tc.message
-			}
-			if !found {
-				t.Fatalf("findings = %+v, want %q", report, tc.message)
-			}
-			err = CheckRunAdmission(board, nil, RunAdmissionScope{MissionID: "mis_showcase"})
-			var admission *RunAdmissionError
-			refused := errors.As(err, &admission) && strings.Contains(admission.Error(), tc.message)
-			if refused != (tc.code == FindingInvalidLimit) {
-				t.Fatalf("admission = %v", err)
-			}
-		})
+		for _, title := range []string{"Cap", "Limit"} {
+			variant := tc
+			variant.toml = strings.ReplaceAll(tc.toml, `title = "Cap"`, `title = "`+title+`"`)
+			variant.message = strings.ReplaceAll(tc.message, "Cap", title)
+			variant.message = strings.ReplaceAll(variant.message, "Limit Limit", "Limit")
+			t.Run(tc.name+"/"+title, func(t *testing.T) {
+				tc := variant
+				board, err := parseBoard([]byte(base + "\n" + tc.toml))
+				if err != nil {
+					t.Fatal(err)
+				}
+				report := ValidateBoard(board)
+				findings := report.Errors
+				if tc.code == FindingEmptyLimit {
+					findings = report.Warnings
+				}
+				found := false
+				for _, finding := range findings {
+					found = found || finding.Code == tc.code && finding.Message == tc.message
+				}
+				if !found {
+					t.Fatalf("findings = %+v, want %q", report, tc.message)
+				}
+				err = CheckRunAdmission(board, nil, RunAdmissionScope{MissionID: "mis_showcase"})
+				var admission *RunAdmissionError
+				refused := errors.As(err, &admission) && strings.Contains(admission.Error(), tc.message)
+				if refused != (tc.code == FindingInvalidLimit) {
+					t.Fatalf("admission = %v", err)
+				}
+			})
+		}
 	}
 }
 
