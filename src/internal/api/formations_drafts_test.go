@@ -103,18 +103,6 @@ func TestFormationsAPIAcceptsDraftAuthoringAndReportsFindings(t *testing.T) {
 	if errors := validate(); len(errors) != 2 {
 		t.Fatalf("validation = %+v, want unstaffed slot and incomplete gate", errors)
 	}
-
-	board, _ = store.ReadBoard("untitled-mission")
-	rec := serve(http.MethodPost, "/api/runs", board.ETag, `{"inputs":{"brief":"sketch"},"mission":"untitled-mission","inputCardId":"`+mission.ID+`","expectedRev":`+jsonInt(board.Rev)+`}`)
-	var failure struct {
-		Error struct {
-			Code     string                    `json:"code"`
-			Findings []formations.BoardFinding `json:"findings"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &failure); err != nil || rec.Code != http.StatusUnprocessableEntity || failure.Error.Code != RunAdmissionErrorCode || len(failure.Error.Findings) != 2 {
-		t.Fatalf("draft run start = %d %s (%v), want 422 with both findings", rec.Code, rec.Body.String(), err)
-	}
 }
 
 func findingsWithCode(findings []formations.BoardFinding, code string) []formations.BoardFinding {

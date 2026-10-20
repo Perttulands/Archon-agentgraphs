@@ -283,14 +283,18 @@ func (c *Coordinator) Handler() http.Handler {
 		version, commit := buildinfo.Current()
 		reply(w, 200, map[string]string{"status": "ok", "version": version, "commit": commit})
 	})
-	// Route ownership: internal/api wins both board reads and all authoring routes.
-	// Its injected runtime delegates POST runs to coordinator admission (limits,
-	// durable 202), GET run to the closed projection, GET stream to live SSE,
-	// and verdict to the exact-request coordinator guard. No duplicate patterns
-	// or request-local engines are mounted. Resume and abort share this owner.
-	h := api.NewFormationsHandlerWithStores(c.store, c.personas)
-	h.SetRuntime(api.RuntimeHandlers{Start: c.start, Get: c.get, Events: c.events, Stream: c.stream, Resume: c.resume, Abort: c.abort, Verdict: c.verdict, Pick: c.pick, Escalations: c.escalations})
-	h.RegisterRoutes(mux)
+	// The coordinator owns every runtime route; the API handler serves only
+	// mission definitions and authoring, so no request can construct an engine.
+	mux.HandleFunc("POST /api/runs", c.start)
+	mux.HandleFunc("GET /api/runs/{runId}", c.get)
+	mux.HandleFunc("GET /api/runs/{runId}/events", c.events)
+	mux.HandleFunc("GET /api/runs/{runId}/stream", c.stream)
+	mux.HandleFunc("POST /api/runs/{runId}/resume", c.resume)
+	mux.HandleFunc("POST /api/runs/{runId}/abort", c.abort)
+	mux.HandleFunc("POST /api/runs/{runId}/gates/{gateId}/verdict", c.verdict)
+	mux.HandleFunc("POST /api/runs/{runId}/gates/{gateId}/pick", c.pick)
+	mux.HandleFunc("GET /api/runs/{runId}/escalations", c.escalations)
+	api.NewFormationsHandlerWithStores(c.store, c.personas).RegisterRoutes(mux)
 	c.mu.Lock()
 	liveness := c.agentLiveness
 	c.mu.Unlock()

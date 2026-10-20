@@ -63,7 +63,7 @@ func TestFormationShapeRefusalsOverHTTP(t *testing.T) {
 	}
 }
 
-func TestImportedPeerShapeBlocksRuntimeAPIBeforeEffects(t *testing.T) {
+func TestImportedPeerShapeAppearsInValidation(t *testing.T) {
 	workspace := t.TempDir()
 	store := formations.NewStore(workspace)
 	writeFormationsAPIFixture(t, store.BoardPath("shapes"), `schema=1
@@ -83,22 +83,11 @@ type="peer"
 [[formation.slot]]
 id="slot_invalid"
 `)
-	tmuxCapture := installRuntimeAPITmuxTripwire(t, workspace)
 	mux := http.NewServeMux()
 	NewFormationsHandlerWithStore(store).RegisterRoutes(mux)
-	for _, request := range []struct{ method, path, body string }{
-		{http.MethodGet, "/api/missions/shapes/validation", ""},
-		{http.MethodPost, "/api/runs", `{"mission":"shapes","formationId":"fmn_valid"}`},
-	} {
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(request.method, request.path, strings.NewReader(request.body)))
-		want := http.StatusOK
-		if request.method == http.MethodPost {
-			want = http.StatusUnprocessableEntity
-		}
-		if rec.Code != want || !strings.Contains(rec.Body.String(), `"code":"invalid_formation_shape"`) || !strings.Contains(rec.Body.String(), `"nodeId":"fmn_invalid"`) {
-			t.Fatalf("%s = %d %s", request.path, rec.Code, rec.Body.String())
-		}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/missions/shapes/validation", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"code":"invalid_formation_shape"`) || !strings.Contains(rec.Body.String(), `"nodeId":"fmn_invalid"`) {
+		t.Fatalf("validation = %d %s", rec.Code, rec.Body.String())
 	}
-	assertNoRuntimeAPIEffects(t, workspace, tmuxCapture)
 }
