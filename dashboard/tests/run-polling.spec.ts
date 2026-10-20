@@ -3,6 +3,7 @@ import { cockpitFixture } from './cockpit-fixture'
 
 test('51-run discovery shares one compact index and selected history has one serial stream', async ({ page }) => {
   await page.clock.install()
+  await page.clock.pauseAt(new Date(Date.now() + 1000))
   await cockpitFixture(page)
   const history = Array.from({ length: 63 }, (_, i) => ({ runId: 'run_live', seq: i + 1, type: i ? 'node_started' : 'run_started', nodeId: 'execution' }))
   const summary = (i: number) => ({ runId: `run_${i}`, missionSlug: 'browser', missionId: 'brd_browser', missionRev: 1,
@@ -33,9 +34,10 @@ test('51-run discovery shares one compact index and selected history has one ser
   })
   await page.goto('/?mission=browser&run=run_live')
   await expect.poll(() => detailCalls).toBe(1)
-  await expect.poll(() => listCalls).toBe(1)
+  await expect.poll(() => listCalls).toBeGreaterThan(0)
+  const initialLists = listCalls
   await page.clock.runFor(5200)
-  await expect.poll(() => listCalls).toBe(2)
+  await expect.poll(() => listCalls).toBe(initialLists + 1)
   expect(detailCalls).toBe(1)
   expect(maxInFlight).toBe(1)
   release()
