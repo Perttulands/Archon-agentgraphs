@@ -51,7 +51,7 @@ export async function fetchApi<T>(endpoint: string, init?: RequestInit): Promise
       'Content-Type': 'application/json',
       ...(init?.headers || {}),
     },
-    signal: AbortSignal.timeout(10000),
+    signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
   })
   const result = await response.json() as ApiResponse<T>
   if (!response.ok || !result.success || result.data === undefined || result.data === null) {
@@ -310,26 +310,54 @@ export async function startRun(etag: string, body: { mission: string; inputCardI
 }
 
 /** Compact shared run index, without event histories. */
-export async function fetchAllRuns(): Promise<RunStatusProjection[]> {
-  const result = await fetchApi<RunStatusProjection[]>('/api/runs')
+export async function fetchAllRuns(signal?: AbortSignal): Promise<RunStatusProjection[]> {
+  const result = await fetchApi<RunStatusProjection[]>('/api/runs', { signal })
   return Array.isArray(result.data) ? result.data : []
 }
 
-export async function fetchRunStatus(runId: string): Promise<RunStatusProjection | RunStatusResult> {
-  const result = await fetchApi<RunStatusProjection | RunStatusResult>(`/api/runs/${encodeURIComponent(runId)}`)
-  return result.data
+type ProjectedRunEvent = Omit<RunEvent, 'runId'> & {
+  runId?: string
+  slotId?: string
+  requestedSeq?: number
+  status?: string
+  verdict?: string
+  sessionName?: string
+  outcome?: string
+  reason?: string
+  endIds?: string[]
+}
+
+// Both HTTP history surfaces use the coordinator's flat projection; consumers
+// use RunEvent.data. Normalize once before adopting the ordered snapshot.
+function normalizeRunEvents(runId: string, events: ProjectedRunEvent[]): RunEvent[] {
+  return events.map(event => {
+    const data = { ...event.data }
+    for (const key of ['requestedSeq', 'slotId', 'status', 'verdict', 'endIds'] as const) {
+      if (event[key] !== undefined) data[key] = event[key]
+    }
+    if (event.sessionName !== undefined) data.sessionRef = event.sessionName
+    if (event.reason !== undefined || event.outcome !== undefined) data.reason = event.reason ?? event.outcome
+    return { seq: event.seq, type: event.type, runId, nodeId: event.nodeId, gateId: event.gateId, attempt: event.attempt, data }
+  }).sort((a, b) => a.seq - b.seq)
+}
+
+function normalizeRunStatus(response: RunStatusProjection | RunStatusResult): RunStatusProjection {
+  const status = runStatusFromResponse(response)
+  return { ...status, events: normalizeRunEvents(status.runId, status.events || []) }
+}
+
+export async function fetchRunStatus(runId: string, signal?: AbortSignal): Promise<RunStatusProjection> {
+  const result = await fetchApi<RunStatusProjection | RunStatusResult>(`/api/runs/${encodeURIComponent(runId)}`, { signal })
+  return normalizeRunStatus(result.data)
 }
 
 export async function fetchRunEvents(runId: string): Promise<RunEvent[]> {
-  const result = await fetchApi<{ events: Array<{ seq: number; type: string; nodeId?: string; slotId?: string; gateId?: string; attempt?: number; requestedSeq?: number; status?: string; verdict?: string; sessionName?: string; outcome?: string; reason?: string; endIds?: string[] }> }>(`/api/runs/${encodeURIComponent(runId)}/events`)
-  return (result.data.events || []).map(event => ({
-    seq: event.seq, type: event.type, runId, nodeId: event.nodeId, gateId: event.gateId, attempt: event.attempt,
-    data: { requestedSeq: event.requestedSeq, slotId: event.slotId, status: event.status, verdict: event.verdict, sessionRef: event.sessionName, reason: event.reason ?? event.outcome, ...(event.endIds ? { endIds: event.endIds } : {}) },
-  })).sort((a, b) => a.seq - b.seq)
+  const result = await fetchApi<{ events: ProjectedRunEvent[] }>(`/api/runs/${encodeURIComponent(runId)}/events`)
+  return normalizeRunEvents(runId, result.data.events || [])
 }
 
-export async function fetchRunEscalations(runId: string): Promise<OpenEscalation[]> {
-  const result = await fetchApi<{ escalations: OpenEscalation[] }>(`/api/runs/${encodeURIComponent(runId)}/escalations`)
+export async function fetchRunEscalations(runId: string, signal?: AbortSignal): Promise<OpenEscalation[]> {
+  const result = await fetchApi<{ escalations: OpenEscalation[] }>(`/api/runs/${encodeURIComponent(runId)}/escalations`, { signal })
   return (result.data.escalations || []).sort((a, b) => a.seq - b.seq)
 }
 
@@ -341,7 +369,7 @@ export async function abortRunRequest(runId: string, body: { reason: string; req
       body: JSON.stringify(body),
     }
   )
-  return result.data
+  return normalizeRunStatus(result.data)
 }
 
 export async function resumeRunRequest(runId: string, body: { actor: string; mode: string; reason: string; grant?: boolean; pickBest?: boolean; takeFail?: boolean }): Promise<RunStatusProjection | RunStatusResult> {
@@ -352,7 +380,7 @@ export async function resumeRunRequest(runId: string, body: { actor: string; mod
       body: JSON.stringify(body),
     }
   )
-  return result.data
+  return normalizeRunStatus(result.data)
 }
 
 /**

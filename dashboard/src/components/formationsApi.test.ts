@@ -10,6 +10,8 @@ import {
   fetchBoardValidation,
   fetchBoardWithLayout,
   fetchRunEvents,
+  fetchRunStatus,
+  abortRunRequest,
   normalizeBoard,
   normalizeLayout,
   patchBoardDocument,
@@ -63,6 +65,36 @@ describe('formations API helpers', () => {
     expect(events.map(event => event.seq)).toEqual([1, 2])
     expect(events[1]).toMatchObject({ type: 'run_failed', nodeId: 'end_rejected', gateId: 'gate_review', data: { reason: 'the brief misses the audience', endIds: ['end_done', 'end_rejected'] } })
     expect(events[0].data).not.toHaveProperty('endIds')
+  })
+
+  it('normalizes flat selected-status events with the same data as the history endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse({ success: true, data: {
+      runId: 'run_1', status: 'failed', final: true, eventCount: 3, events: [
+        { seq: 1, type: 'seat_created', nodeId: 'work', slotId: 'builder', sessionName: 'archon-work' },
+        { seq: 2, type: 'gate_verdict', nodeId: 'review', gateId: 'review', verdict: 'fail', reason: 'needs work', requestedSeq: 1 },
+        { seq: 3, type: 'run_failed', endIds: ['rejected'] },
+      ],
+    } }))))
+    const run = await fetchRunStatus('run_1')
+    expect(run.events).toEqual([
+      expect.objectContaining({ runId: 'run_1', data: { slotId: 'builder', sessionRef: 'archon-work' } }),
+      expect.objectContaining({ runId: 'run_1', data: { verdict: 'fail', reason: 'needs work', requestedSeq: 1 } }),
+      expect.objectContaining({ runId: 'run_1', data: { endIds: ['rejected'] } }),
+    ])
+    expect(await abortRunRequest('run_1', { reason: 'stop', requestedBy: 'human:ui' })).toEqual(run)
+  })
+
+  it('combines caller cancellation with the request timeout', async () => {
+    const controller = new AbortController()
+    let signal: AbortSignal | null | undefined
+    vi.stubGlobal('fetch', vi.fn((_input, init: RequestInit) => {
+      signal = init.signal
+      return Promise.resolve(jsonResponse({ success: true, data: {} }))
+    }))
+    await fetchApi('/fixture', { signal: controller.signal })
+    expect(signal?.aborted).toBe(false)
+    controller.abort()
+    expect(signal?.aborted).toBe(true)
   })
 
   it('reads board validation with empty lists when none are reported', async () => {
