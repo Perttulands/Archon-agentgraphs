@@ -488,3 +488,65 @@ func TestRunStorageFrozenUndispatchedBriefProtectsItsReferences(t *testing.T) {
 		})
 	}
 }
+
+func TestRunStorageAcceptedEntryBoundarySurvivesCompaction(t *testing.T) {
+	s, id := storageRun(t)
+	dir, e := s.createAttemptArtifactDir(id, "fmn_research", 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	source := filepath.Join(t.TempDir(), "deliverable")
+	if e = os.Mkdir(source, 0700); e != nil {
+		t.Fatal(e)
+	}
+	// Four destination wrappers plus the output folder and4091 empty files are
+	// exactly4096 retained entries. One extra file must fail before acceptance.
+	for i := int64(0); i < RunStorageEntryLimit-5; i++ {
+		if e = os.WriteFile(filepath.Join(source, fmt.Sprint(i)), nil, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	extra := filepath.Join(source, "one-too-many")
+	writeFixture(t, extra, "")
+	ctx, e := s.outputCopyContext(context.Background(), id, dir, "port_out")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = preflightSnapshot(ctx, source, filepath.Join(dir, "outputs", "port_out"), nil); !errors.Is(e, ErrRunStorageBudget) {
+		t.Fatalf("boundary+1 accepted: %v", e)
+	}
+	if e = os.Remove(extra); e != nil {
+		t.Fatal(e)
+	}
+	formation := FormationNode{ID: "fmn_research", Outputs: []FormationPort{{ID: "port_out", Kind: PortKindFolder}}}
+	accepted, e := s.acceptAttemptOutputs(context.Background(), id, formation, 1, map[string]FormationOutputPayload{"port_out": {Ref: source}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.AppendRunEvent(id, RunEvent{Type: RunEventNodeOutput, NodeID: formation.ID, Attempt: 1, Data: map[string]any{"outputs": map[string]any{"port_out": map[string]any{"ref": accepted["port_out"].Ref, "kind": PortKindFolder}}}}); e != nil {
+		t.Fatal(e)
+	}
+	storageFinish(t, s, id)
+	root, _ := s.runStorageRoot(id)
+	before, e := storageFiles(context.Background(), root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if int64(len(before)) != RunStorageEntryLimit {
+		t.Fatalf("accepted entries=%d", len(before))
+	}
+	if e = s.SweepRunStorage(context.Background()); e != nil {
+		t.Fatal(e)
+	}
+	after, e := storageFiles(context.Background(), root)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("accepted output lost entries on compaction: before=%d after=%d", len(before), len(after))
+	}
+	m, e := s.readStorageManifest(id)
+	if e != nil || int64(len(m.Keep)) != RunStorageEntryLimit {
+		t.Fatalf("retained manifest entries=%d %v", len(m.Keep), e)
+	}
+}

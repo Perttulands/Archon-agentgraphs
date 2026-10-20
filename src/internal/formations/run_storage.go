@@ -784,18 +784,37 @@ func (s *Store) outputCopyContext(ctx context.Context, id, dir, port string) (co
 	if err != nil {
 		return ctx, err
 	}
-	replace := filepath.Join(dir, attemptOutputsDir, port)
-	if real, e := filepath.EvalSymlinks(filepath.Dir(replace)); e == nil {
-		replace = filepath.Join(real, port)
+	// Charge the same destination entries final retention will keep, including
+	// node/attempt/outputs/port wrappers. Shared ancestors count only once.
+	realDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return ctx, err
 	}
-	var used, entries int64
+	replace := filepath.Join(realDir, attemptOutputsDir, port)
+	entryNames := map[string]bool{}
+	addEntry := func(name string) {
+		for name != "." {
+			entryNames[name] = true
+			name = filepath.ToSlash(filepath.Dir(name))
+		}
+	}
+	var used int64
 	for _, f := range files {
 		p := filepath.Join(root, filepath.FromSlash(f.name))
 		if strings.Contains("/"+f.name, "/outputs/") && !pathWithin(p, replace) {
 			used += f.size
-			entries++
+			addEntry(f.name)
 		}
 	}
+	wrapper, err := filepath.Rel(root, replace)
+	if err != nil {
+		return ctx, err
+	}
+	if wrapper == ".." || strings.HasPrefix(wrapper, ".."+string(filepath.Separator)) {
+		return ctx, fmt.Errorf("output directory is not under this run's artifact root")
+	}
+	addEntry(filepath.ToSlash(wrapper))
+	entries := int64(len(entryNames))
 	if used > RunStorageBudgetBytes || entries >= RunStorageEntryLimit {
 		return ctx, ErrRunStorageBudget
 	}
