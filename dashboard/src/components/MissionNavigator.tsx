@@ -92,6 +92,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
           {actions}
           <span className="nav-count">{count}</span>
         </div>
+        {problem ? <details className="nav-source-problem" data-testid={`source-problem-${key}`}><summary>Source details</summary><p>{problem}</p></details> : null}
         {open && !problem ? <div className="nav-rows">{body()}</div> : null}
       </section>
     )

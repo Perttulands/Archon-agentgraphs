@@ -933,7 +933,12 @@ describe('FormationsCockpit reference parity', () => {
     patches = installFetchMock({ brokenMissions: [{ slug: 'moved', broken: reason }] })
     render(<FormationsCockpit />)
     await screen.findByTestId('formation-node-fmn_frame')
-    expect(screen.getByTestId('broken-missions')).toHaveTextContent(`A mission cannot be read: moved: ${reason}`)
+    expect(screen.queryByTestId('broken-missions')).toBeNull()
+    const notice = screen.getByTestId('source-problem-moved')
+    expect(screen.getByTestId('nav-group-moved')).toContainElement(notice)
+    fireEvent.click(within(notice).getByText('Source details'))
+    expect(notice).toHaveAttribute('open')
+    expect(notice).toHaveTextContent(reason)
   })
 
   it('renames the selected board through the top-bar board controls', async () => {

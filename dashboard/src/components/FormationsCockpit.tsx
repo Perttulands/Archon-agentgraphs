@@ -3195,7 +3195,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     [board, validation],
   )
   const referencedFileProblems = useMemo(() => fileProblems(validation?.warnings ?? []), [validation])
-  const brokenMissions = useMemo(() => boards.filter(summary => summary.broken), [boards])
   const blockedFindings = useMemo(() => findingsByNode(board, admissionFindings), [board, admissionFindings])
   const draftClass = (nodeId: string) => `${draftFindings.has(nodeId) ? ' is-draft' : ''}${blockedFindings.has(nodeId) ? ' admission-blocked' : ''}`
   const renderDraftMarker = (nodeId: string) => (
@@ -3958,11 +3957,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               requestedSeq={Number(event.data?.requestedSeq)} title={pointTitle(event.gateId || event.nodeId)}
               onEvidence={() => setInspectedNodeId(event.gateId || event.nodeId || '')} />)}
           {error || linkError ? <div className="errbar action-error" data-testid="formations-error" role="alert" style={errorAnchor.current ? { position: 'fixed', ...errorAnchor.current, bottom: 'auto' } : undefined}>{error || linkError} <button type="button" aria-label="Dismiss error" onClick={() => { setError(''); setLinkError('') }}>Dismiss</button></div>
-            : brokenMissions.length ? (
-              <div className="errbar" data-testid="broken-missions" role="status">
-                {brokenMissions.length === 1 ? 'A mission cannot be read' : `${brokenMissions.length} missions cannot be read`}: {brokenMissions.map(summary => `${summary.slug}: ${summary.broken}`).join('; ')}
-              </div>
-            ) : null}
+            : null}
           <AdmissionFindingsPanel
             findings={admissionFindings}
             titleOf={nodeId => noteElements.find(element => element.id === nodeId)?.title || nodeId}

@@ -43,3 +43,8 @@
 @media (max-width:720px){
   .fmx .mission-nav{width:100%;flex:0 0 auto;max-height:30vh;border-right:0;border-bottom:1px solid var(--line);}
 }
+
+/* Source failures stay in their own mission row, inside navigator scrolling. */
+.nav-source-problem { padding: 4px 12px 8px; font-size: 12px; }
+.nav-source-problem summary { cursor: pointer; color: var(--terra); }
+.nav-source-problem p { overflow-wrap: anywhere; white-space: normal; margin: 6px 0; line-height: 1.5; }
