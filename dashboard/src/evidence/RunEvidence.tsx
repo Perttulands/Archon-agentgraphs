@@ -63,6 +63,9 @@ const CLEANUP_SETTLED = new Set(['ended', 'kept_on_call'])
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error))
 const byteLength = (text: string) => new TextEncoder().encode(text).length
 
+/** Runtime codes remain in data; evidence reads in the operator's words. */
+const evidenceWord = (value: string) => ({ pass: 'PASS', fail: 'FAIL', canceled: 'Stopped', initial: 'first attempt', waiting_human: 'waiting for you' }[value] || value.replace(/_/g, ' '))
+
 export default function RunEvidence({ runId, nodeId, title, state, board, onClose }: RunEvidenceProps) {
   const names = useMemo(() => evidenceNamesForBoard(board), [board])
   const [evidence, setEvidence] = useState<NodeEvidence | null>(null)
@@ -142,7 +145,7 @@ export default function RunEvidence({ runId, nodeId, title, state, board, onClos
       <CitationContext.Provider value={{ runId, artifacts: [...(artifacts?.artifacts.map(file => file.name) || []), ...attemptSteps.flatMap(step => step.attempts.flatMap(attempt => attemptCitationScope(attempt).artifacts))], directories: [], paths: evidencePaths(evidence), open: openArtifact }}>
       <div data-testid="node-inspector" className="node-evidence">
         <dl className="node-evidence-identity">
-          <div><dt>{verdict ? 'Verdict' : 'State'}</dt><dd data-testid="node-evidence-state">{verdict || state || 'not started'}</dd></div>
+          <div><dt>{verdict ? 'Verdict' : 'State'}</dt><dd data-testid="node-evidence-state">{evidenceWord(verdict || state || 'not started')}</dd></div>
         </dl>
         <EvidenceIds runId={runId} nodeId={nodeId} evidence={evidence} names={names} />
 
@@ -224,7 +227,7 @@ function Attempts({ runId, nodeId, attempts, attemptSteps, names, onOpenArtifact
         <h3>Output</h3>
         {latestOutput ? (
           <div className="node-evidence-output" data-testid="node-output">
-            <div className="node-output-status">#{latestOutput.seq} · status · {latestOutput.status || 'done'}</div>
+            <div className="node-output-status">#{latestOutput.seq} · status · {evidenceWord(latestOutput.status || 'done')}</div>
             {latestOutput.reason ? <EvidenceTextView value={latestOutput.reason} format="text" label="Output reason" /> : null}
             {latestOutput.text.bytes && !outputInPort ? (
               <div data-testid="node-output-value"><EvidenceTextView value={latestOutput.text} label="Output" /></div>
@@ -254,7 +257,7 @@ function Attempts({ runId, nodeId, attempts, attemptSteps, names, onOpenArtifact
         {attempts.length === 0 ? <div className="node-evidence-empty">No attempts recorded yet.</div> : attempts.map(attempt => (
           <CitationScopeProvider key={`${attempt.attempt}-${attempt.startedSeq || 0}`} scope={scopeFor(attempt.attempt)}>
           <div className="node-evidence-attempt" data-testid={`node-attempt-${attempt.attempt}`} key={`${attempt.attempt}-${attempt.startedSeq || 0}`}>
-            <div className="node-attempt-head">Attempt {attempt.attempt}{attempt.reason ? ` · ${attempt.reason}` : ''}</div>
+            <div className="node-attempt-head">Attempt {attempt.attempt}{attempt.reason ? ` · ${evidenceWord(attempt.reason)}` : ''}</div>
             {attempt.inputs.map((input, index) => (
               <InputView key={`${input.edgeId || index}`} runId={runId} input={input} names={names} onOpenArtifact={onOpenArtifact} />
             ))}
@@ -264,10 +267,10 @@ function Attempts({ runId, nodeId, attempts, attemptSteps, names, onOpenArtifact
                 <div className="node-dispatch" key={dispatch.seq}>
                   <span className="node-dispatch-slot">{slot}</span>
                   <span className="node-dispatch-agent">{[dispatch.agentId, dispatch.harness].filter(Boolean).join(' · ') || 'agent not recorded'}</span>
-                  {dispatch.phase ? <span className="node-dispatch-phase">{dispatch.phase}</span> : null}
+                  {dispatch.phase ? <span className="node-dispatch-phase">{evidenceWord(dispatch.phase)}</span> : null}
                   {dispatch.rejected
                     ? <span className="node-dispatch-phase node-dispatch-rejected" title={dispatch.rejected}>verdict rejected</span>
-                    : <span className="node-dispatch-phase">{dispatch.status || 'no result yet'}</span>}
+                    : <span className="node-dispatch-phase">{evidenceWord(dispatch.status || 'no result yet')}</span>}
                   {dispatch.brief ? (
                     <button type="button" className="evidence-link" onClick={() => onOpenBrief(dispatch.seq, `${slot} attempt ${attempt.attempt}`)}>brief</button>
                   ) : null}
@@ -315,12 +318,12 @@ function GateEvaluations({ runId, evaluations, attemptSteps, names, onOpenArtifa
           <h3>{index === 0 ? 'Gate verdict' : 'Earlier evaluation'}{evaluation.attempt ? ` · attempt ${evaluation.attempt}` : ''}</h3>
           {evaluation.verdict ? (
             <div className={`node-evidence-verdict ${evaluation.verdict.verdict === 'fail' ? 'fail' : 'pass'}`} data-testid={index === 0 ? 'node-gate-verdict' : undefined}>
-              <div className="node-verdict-line">verdict · {evaluation.verdict.verdict || 'not recorded'}{evaluation.verdict.routePort ? ` · route ${evaluation.verdict.routePort}` : ''}</div>
+              <div className="node-verdict-line">verdict · {evidenceWord(evaluation.verdict.verdict || 'not recorded')}{evaluation.verdict.routePort ? ` · route ${evidenceWord(evaluation.verdict.routePort)}` : ''}</div>
               <EvidenceTextView value={evaluation.verdict.reason} label="Verdict reason" />
               {evaluation.verdict.perKind && Object.keys(evaluation.verdict.perKind).length ? (
                 <div className="node-verdict-evidence">
                   {Object.entries(evaluation.verdict.perKind).map(([kind, result]) => (
-                    <div className="node-verdict-kind" key={kind}><span>{gateKindLabel(kind)}</span><strong>{result}</strong></div>
+                    <div className="node-verdict-kind" key={kind}><span>{gateKindLabel(kind)}</span><strong>{evidenceWord(result)}</strong></div>
                   ))}
                 </div>
               ) : null}
@@ -333,7 +336,7 @@ function GateEvaluations({ runId, evaluations, attemptSteps, names, onOpenArtifa
               {request.decision ? (
                 <>
                   <div className="node-verdict-line">
-                    {request.decision.verdict}{request.decision.decidedBy ? ` · ${request.decision.decidedBy}` : ''}
+                    {evidenceWord(request.decision.verdict)}{request.decision.decidedBy ? ` · ${request.decision.decidedBy}` : ''}
                     {request.decision.relayedBy ? <span className="node-verdict-via" title={`Recorded by seat ${request.decision.relayedBy}`}> · via {names.relayer(request.decision.relayedBy)}</span> : null}
                   </div>
                   {request.decision.response.bytes ? <EvidenceTextView value={request.decision.response} label="Operator response" /> : <div className="node-evidence-empty">No response text.</div>}
@@ -344,7 +347,7 @@ function GateEvaluations({ runId, evaluations, attemptSteps, names, onOpenArtifa
 
           {evaluation.kindResults.map(result => (
             <div className="evidence-block" key={result.seq}>
-              <div className="evidence-label">{gateKindLabel(result.kind)} · {result.verdict || 'no verdict'}</div>
+              <div className="evidence-label">{gateKindLabel(result.kind)} · {evidenceWord(result.verdict || 'no verdict')}</div>
               {result.reason.text !== evaluation.verdict?.reason.text ? <EvidenceTextView value={result.reason} label={`${result.kind} reason`} /> : null}
               <EvidenceItems items={result.evidence} omitted={result.evidenceOmitted} />
             </div>
@@ -355,7 +358,7 @@ function GateEvaluations({ runId, evaluations, attemptSteps, names, onOpenArtifa
 
           {evaluation.judgeFailures?.map(failure => (
             <div className="node-evidence-verdict fail" key={failure.seq}>
-              <div className="node-verdict-line">judge failed{failure.code ? ` · ${failure.code}` : ''}</div>
+              <div className="node-verdict-line">judge failed{failure.code ? ` · ${evidenceWord(failure.code)}` : ''}</div>
               <EvidenceTextView value={failure.reason} format="text" label="Judge failure" />
               {failure.returned ? (
                 <div data-testid={`judge-returned-${failure.seq}`}>

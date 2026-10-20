@@ -7,6 +7,7 @@ import { fileAnchor, useFileWindows } from './FileWindows'
 import { artifactFileRequest, outputFileRequest, type FileRequest } from './fileWindowModel'
 import type { NodeProduced, ProducedItem, RunProducedSummary } from './produced'
 import './produced.css'
+import { isCacheArtifact } from './artifactPresentation'
 
 // Chips for what a run produced. A card, a node window or a Flow row shows a
 // step's chips with <ProducedFiles nodeId={…} />, and the run bar shows the
@@ -140,10 +141,11 @@ export function RunProduced() {
 
   if (!value || !files) return null
   const { primary, others } = value.summary
-  const lead = primary.length ? primary : others
+  const lead = primary.length ? primary : others.filter(item => !isCacheArtifact(item.artifact || ''))
   const shown = lead.slice(0, RUN_BAR_CHIPS)
-  const rest = [...lead.slice(RUN_BAR_CHIPS), ...(primary.length ? others : [])]
-  if (shown.length === 0) return null
+  const visibleKeys = new Set(shown.map(item => item.key))
+  const rest = [...primary, ...others].filter(item => !visibleKeys.has(item.key))
+  if (shown.length === 0 && rest.length === 0) return null
 
   const groups = new Map<string, { title: string; outputs: ProducedItem[]; files: Map<string, ProducedItem[]>; count: number }>()
   for (const item of rest) {
@@ -159,7 +161,7 @@ export function RunProduced() {
     if (item.portId || item.kind === 'output') group.outputs.push(item)
     else {
       const port = parts[2] === 'outputs' ? parts[3] : ''
-      const label = port && nodeId ? value.names.port(nodeId, port) : 'Files'
+      const label = isCacheArtifact(item.artifact || '') ? 'Cache files' : port && nodeId ? `${value.names.port(nodeId, port)} · kept output` : 'Files'
       const bucket = group.files.get(label) || []
       bucket.push(item)
       group.files.set(label, bucket)
@@ -193,8 +195,8 @@ export function RunProduced() {
               <div className="run-produced-group-title">{group.title} · {group.count}</div>
               {group.outputs.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
               {[...group.files].map(([label, items]) => (
-                <details key={label} open={items.length <= 8} className="run-produced-files">
-                  <summary tabIndex={items.length <= 8 ? -1 : 0}>{label} · {items.length}</summary>
+                <details key={label} open={label !== 'Cache files' && items.length <= 8} className="run-produced-files">
+                  <summary tabIndex={label !== 'Cache files' && items.length <= 8 ? -1 : 0}>{label} · {items.length}</summary>
                   {items.map(item => <ProducedChip key={item.key} item={item} value={value} role="menuitem" openedFrom={() => moreRef.current} onOpened={() => setMenu(null)} />)}
                 </details>
               ))}

@@ -23,12 +23,12 @@ test('Arrange followed immediately by Fit keeps the disconnected gate accessible
   await page.screenshot({ path: '/tmp/archon-nno-after.png' })
 })
 
-for (const width of [1920, 2560]) test(`TOML mission opens arranged and Fit is read-only at ${width}`, async ({ page }) => {
-  await page.setViewportSize({ width, height: width === 1920 ? 1080 : 1440 })
+for (const [width, height] of [[1920, 1080], [2560, 1080], [2560, 1440]]) test(`TOML mission opens arranged and Fit is read-only at ${width}x${height}`, async ({ page }) => {
+  await page.setViewportSize({ width, height })
   const fixture = await cockpitFixture(page, { noLayout: true })
   await page.goto('/')
   await expect(page.locator('[data-node="lim_cap"]')).toBeVisible()
-  // First open must fit the whole unsaved arrangement without pressing Fit.
+  // Opening keeps readable text; the explicit Fit action gives the overview.
   await transitionsSettled(page)
   const cards = await page.locator('.world [data-node]').evaluateAll(elements => elements.map(el => {
     const rect = el.getBoundingClientRect()
@@ -47,13 +47,14 @@ for (const width of [1920, 2560]) test(`TOML mission opens arranged and Fit is r
   expect(at('gate').x).toBeLessThan(at('peer').x)
   expect(at('judge').x).toBe(at('gate').x)
   expect(at('lim_cap').x).toBe(at('execution').x)
-  const viewport = await page.locator('.viewport').boundingBox()
-  for (const card of cards) {
-    expect(card.x).toBeGreaterThanOrEqual(viewport!.x)
-    expect(card.right).toBeLessThanOrEqual(viewport!.x + viewport!.width)
-    expect(card.y).toBeGreaterThanOrEqual(viewport!.y)
-    expect(card.bottom).toBeLessThanOrEqual(viewport!.y + viewport!.height)
-  }
+  const authoredPositions = () => page.locator('.world [data-node]').evaluateAll(elements => elements.map(element => ({ id: (element as HTMLElement).dataset.node, left: (element as HTMLElement).style.left, top: (element as HTMLElement).style.top })))
+  const positionsBeforeFit = await authoredPositions()
+  const mainText = page.locator('[data-node="execution"] .slot-caption').first()
+  expect(await mainText.evaluate(element => {
+    const world = element.closest('.world')!
+    const matrix = new DOMMatrix(getComputedStyle(world).transform)
+    return parseFloat(getComputedStyle(element).fontSize) * Math.hypot(matrix.a, matrix.b)
+  })).toBeGreaterThanOrEqual(11)
   const title = page.locator('[data-node="gate"] .gt')
   const titleBounds = await title.boundingBox()
   const chipBounds = await page.locator('[data-node="gate"] .gkind-formation').boundingBox()
@@ -61,7 +62,19 @@ for (const width of [1920, 2560]) test(`TOML mission opens arranged and Fit is r
   expect(await title.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true)
   await page.getByTitle('Fit', { exact: true }).click()
   await transitionsSettled(page)
+  const viewport = await page.locator('.viewport').boundingBox()
+  const overview = await page.locator('.world [data-node]').evaluateAll(elements => elements.map(element => {
+    const box = element.getBoundingClientRect()
+    return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
+  }))
+  for (const card of overview) {
+    expect(card.left).toBeGreaterThanOrEqual(viewport!.x)
+    expect(card.right).toBeLessThanOrEqual(viewport!.x + viewport!.width)
+    expect(card.top).toBeGreaterThanOrEqual(viewport!.y)
+    expect(card.bottom).toBeLessThanOrEqual(viewport!.y + viewport!.height)
+  }
+  expect(await authoredPositions()).toEqual(positionsBeforeFit)
   expect(fixture.writes).toEqual([])
   expect(fixture.board().rev).toBe(1)
-  await page.screenshot({ path: `/tmp/canvas-arranged-${width}.png` })
+  await page.screenshot({ path: `/tmp/canvas-arranged-${width}x${height}.png` })
 })

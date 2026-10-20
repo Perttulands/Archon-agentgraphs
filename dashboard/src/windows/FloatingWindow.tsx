@@ -9,7 +9,7 @@ import './floatingWindows.css'
  * A floating window with the standard chrome: a title bar to drag, a close
  * button, and handles on every edge and corner. What it holds is the caller's.
  */
-export default function FloatingWindow({ id, kind, title, label, defaultSize, minimum, anchor, keepClear, anchorKind, overCanvas, actions, className, onClose, onKeyDown, children, takeFocus = true }: {
+export default function FloatingWindow({ id, kind, title, label, defaultSize, minimum, openingMinimum, anchor, keepClear, anchorKind, overCanvas, actions, className, onClose, onKeyDown, children, takeFocus = true }: {
   takeFocus?: boolean
   id: string
   kind: FloatingWindowKind
@@ -17,6 +17,8 @@ export default function FloatingWindow({ id, kind, title, label, defaultSize, mi
   /** The window's accessible name, and what its handles and close button call it. */
   label: string
   minimum?: FrameSize
+  /** A first-open reading floor; remembered operator sizes and resize minima are separate. */
+  openingMinimum?: FrameSize
   defaultSize: FrameSize
   /** What the window opens beside, in viewport pixels; see useFloatingWindow. */
   anchor?: () => WindowRect | null
@@ -37,7 +39,7 @@ export default function FloatingWindow({ id, kind, title, label, defaultSize, mi
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void
   children: ReactNode
 }) {
-  const win = useFloatingWindow<HTMLElement>({ id, kind, label, defaultSize, minimum, anchor, keepClear, anchorKind, overCanvas, onClose })
+  const win = useFloatingWindow<HTMLElement>({ id, kind, label, defaultSize, minimum, openingMinimum, anchor, keepClear, anchorKind, overCanvas, onClose })
   const { ref } = win.rootProps
 
   // Opening a window takes keyboard focus; closing it gives focus back.

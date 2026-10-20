@@ -129,8 +129,8 @@ export function folderFileRequest(path: string, context?: string): FileRequest {
     load: async () => {
       const { data } = await fetchApi<{ items?: Array<{ name: string; path: string; isDir: boolean }> }>(`/api/files/directory${filePath(path)}`)
       const items = data.items || []
-      const lines = items.map(item => `- [${markdownLabel(item.name)}${item.isDir ? '/' : ''}](<${item.path}${item.isDir ? '/' : ''}>)`)
-      const text = lines.length ? lines.join('\n') : '_This folder is empty._'
+      const lines = items.map(item => `[${markdownLabel(item.name)}${item.isDir ? '/' : ''}](<${item.path}${item.isDir ? '/' : ''}>)`)
+      const text = lines.length ? lines.join('\n\n') : '_This folder is empty._'
       return { kind: 'markdown', text: { text, bytes: new TextEncoder().encode(text).length }, path }
     },
   }

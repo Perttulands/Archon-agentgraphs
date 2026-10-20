@@ -44,12 +44,16 @@
 .attempts-side { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 2px; overflow-x: auto; }
 
 .attempts-scroll { flex: 1; min-height: 0; padding: 12px; overflow: auto; container-type: size; }
+.attempts-scroll:not(.compare) { scroll-snap-type: x mandatory; scroll-padding-inline: 12px; }
+.attempts-grid.strip .attempt-col { scroll-snap-align: start; }
+.attempt-cache-files { color: var(--text-secondary); font-size: 12px; }
+.attempt-cache-files > summary { margin-bottom: 8px; cursor: pointer; }
 .attempts-message { margin: 0; color: var(--text-secondary); font-size: 12px; }
 
 /* Each attempt is a column of four rows shared across the strip, so every
    verdict starts at the same height and the loop reads straight across. */
 .attempts-grid { display: grid; grid-template-rows: auto auto auto auto; column-gap: 12px; align-items: start; }
-.attempts-grid.strip { grid-auto-flow: column; grid-auto-columns: minmax(280px, 1fr); }
+.attempts-grid.strip { width: max-content; min-width: 100%; grid-auto-flow: column; grid-auto-columns: var(--attempt-column-width, minmax(280px, 1fr)); }
 .attempts-grid.compare { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .attempt-col {
   grid-row: span 4; display: grid; grid-template-rows: subgrid; align-self: stretch; min-width: 0;

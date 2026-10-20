@@ -5,7 +5,7 @@ import FloatingWindow from './FloatingWindow'
 import FloatingFrameHandles from './FloatingFrameHandles'
 import { useFloatingWindow } from './useFloatingWindow'
 import { WindowManagerProvider, useWindowManager } from './WindowManager'
-import { readFloatingWindowSize } from './floatingWindowSize'
+import { readFloatingWindowSize, writeFloatingWindowSize } from './floatingWindowSize'
 import { rectsOverlap, type WindowRect, type Workspace } from './windowGeometry'
 
 // jsdom lays nothing out, so the workspace is given directly: a 1200 x 800
@@ -303,4 +303,38 @@ describe('floating windows', () => {
     act(() => fit({ width: 700, height: 500 }))
     expect(size()).toEqual(sized)
   })
+  it.each(['attempts', 'evidence', 'file'] as const)('preserves a remembered %s size below its first-open reading floor', kind => {
+    const size = { width: kind === 'evidence' ? 650 : 450, height: kind === 'evidence' ? 620 : 340 }
+    writeFloatingWindowSize(kind, size)
+    function Remembered() {
+      const stack = useWindowManager(workspace)
+      return <WindowManagerProvider stack={stack}><FloatingWindow id="remembered" kind={kind} title="Remembered" label="remembered" defaultSize={{ width: 1000, height: 800 }} onClose={() => {}}>Body</FloatingWindow></WindowManagerProvider>
+    }
+    render(<Remembered />)
+    const win = screen.getByRole('dialog', { name: 'remembered' })
+    expect(parseFloat(win.style.width)).toBe(size.width)
+    expect(parseFloat(win.style.height)).toBe(size.height)
+  })
+
+  it('uses an image opening floor only on first open, leaving its resize minimum small', () => {
+    function ImageWindow() {
+      const stack = useWindowManager(workspace)
+      return <WindowManagerProvider stack={stack}><FloatingWindow id="image" kind="file" title="Image" label="image" defaultSize={{ width: 720, height: 560 }} openingMinimum={{ width: 640, height: 560 }} onClose={() => {}}>Image</FloatingWindow></WindowManagerProvider>
+    }
+    const view = render(<ImageWindow />)
+    const win = screen.getByRole('dialog', { name: 'image' })
+    expect(parseFloat(win.style.width)).toBeGreaterThanOrEqual(640)
+    expect(parseFloat(win.style.height)).toBeGreaterThanOrEqual(560)
+    for (let n=0;n<20;n++) fireEvent.keyDown(screen.getByRole('separator', { name: 'Resize the image from the bottom right' }), { key: 'ArrowLeft' })
+    for (let n=0;n<20;n++) fireEvent.keyDown(screen.getByRole('separator', { name: 'Resize the image from the bottom right' }), { key: 'ArrowUp' })
+    const width=parseFloat(win.style.width), height=parseFloat(win.style.height)
+    expect(width).toBeLessThan(640)
+    expect(height).toBeLessThan(560)
+    view.unmount()
+    render(<ImageWindow />)
+    const reopened = screen.getByRole('dialog', { name: 'image' })
+    expect(parseFloat(reopened.style.width)).toBe(width)
+    expect(parseFloat(reopened.style.height)).toBe(height)
+  })
+
 })

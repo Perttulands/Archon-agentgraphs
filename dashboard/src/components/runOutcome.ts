@@ -64,7 +64,7 @@ export function problemHeadline(problem: EvidenceProblem, names: { node: (nodeId
       parts.push(`run failed${actor ? ` · ended by ${actor}` : ''}`)
       break
     case 'run_canceled':
-      parts.push(`run canceled${actor ? ` by ${actor}` : ''}`)
+      parts.push(`run stopped${actor ? ` by ${actor}` : ''}`)
       break
     case 'run_blocked':
       parts.push('blocked')
@@ -72,10 +72,10 @@ export function problemHeadline(problem: EvidenceProblem, names: { node: (nodeId
     default:
       parts.push(problem.type)
   }
-  if (problem.code) parts.push(problem.code)
+  if (problem.code) parts.push(problem.code.replace(/_/g, ' '))
   if (problem.limit) parts.push(runLimitPhrase(problem.limit, names.node, names.inputCard))
   if (problem.resumedSeq) parts.push(`resumed at #${problem.resumedSeq}`)
-  else if (problem.type === 'run_blocked' && problem.resumeAllowed !== undefined) parts.push(problem.resumeAllowed ? 'resumable' : 'not resumable')
+  else if (problem.type === 'run_blocked' && problem.resumeAllowed !== undefined) parts.push(problem.resumeAllowed ? 'can resume' : 'cannot resume')
   return parts.join(' · ')
 }
 

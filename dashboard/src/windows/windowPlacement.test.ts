@@ -229,3 +229,26 @@ describe('window placement rules', () => {
     expect(shortCount).toBeLessThan(20000)
   })
 })
+
+describe('reading floors beside a centred source', () => {
+  it.each([[1536, 864], [1600, 900], [1680, 1050]])('uses feasible floor-sized room at %dx%d', (width, height) => {
+    const source = { left: width / 2 - 160, top: 220, width: 320, height: 300 }
+    const workspace: Workspace = { bounds: { left: 268, top: 85, width: width - 276, height: height - 93 }, avoid: [] }
+    const minimum = { width: 560, height: Math.ceil(height * .7) }
+    const opened = placeOpeningWindow({ width: Math.round(width * .72), height: Math.round(height * .78) }, minimum, { workspace, anchor: source, anchorFirst: true })
+    expect(opened.width).toBeGreaterThanOrEqual(minimum.width)
+    expect(opened.height).toBeGreaterThanOrEqual(minimum.height)
+    expect(rectsOverlap(opened, source)).toBe(false)
+    expect(inside(opened, workspace.bounds)).toBe(true)
+  })
+})
+
+it('preserves a reading source before a small unavoidable overlap with fixed zoom controls', () => {
+  const source = { left: 606, top: 172, width: 293, height: 410 }
+  const zoom = { left: 1432, top: 680, width: 86, height: 176 }
+  const workspace = { bounds: { left: 268, top: 85, width: 1260, height: 771 }, avoid: [zoom] }
+  const opened = placeOpeningWindow({ width: 1106, height: 674 }, { width: 560, height: 605 }, { workspace, anchor: source, anchorFirst: true })
+  expect(rectsOverlap(opened, source)).toBe(false)
+  expect(rectsOverlap(opened, zoom)).toBe(true)
+  expect(inside(opened, workspace.bounds)).toBe(true)
+})

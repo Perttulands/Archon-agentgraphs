@@ -51,10 +51,10 @@ describe('run outcome words', () => {
     const names = { node: titleOf }
     expect(problemHeadline({ seq: 51, type: 'run_blocked', reason: text(''), resumeAllowed: true, resumedSeq: 52 }, names)).toBe('#51 · blocked · resumed at #52')
     expect(problemHeadline({ seq: 53, type: 'run_failed', code: 'coordinator_execution_failed', reason: text(''), actor: 'archond' }, names))
-      .toBe('#53 · run failed · ended by Archon · coordinator_execution_failed')
-    expect(problemHeadline({ seq: 9, type: 'run_canceled', reason: text(''), actor: 'human:ui' }, names)).toBe('#9 · run canceled by human:ui')
+      .toBe('#53 · run failed · ended by Archon · coordinator execution failed')
+    expect(problemHeadline({ seq: 9, type: 'run_canceled', reason: text(''), actor: 'human:ui' }, names)).toBe('#9 · run stopped by human:ui')
     expect(problemHeadline({ seq: 20, type: 'run_blocked', code: 'limit_reached', reason: text('Draft used 3 of 3 rounds'), resumeAllowed: true, limit: { kind: 'rounds', limitId: 'lim_cap', nodeId: 'fmn_draft', used: 3, max: 3 } }, names))
-      .toBe('#20 · blocked · limit_reached · Draft used 3 of 3 rounds · resumable')
+      .toBe('#20 · blocked · limit reached · Draft used 3 of 3 rounds · can resume')
   })
 })
 

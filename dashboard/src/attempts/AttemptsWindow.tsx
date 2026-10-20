@@ -182,17 +182,32 @@ export default function AttemptsWindow({ runId, nodeId, stepTitle, count, versio
     setPair(current => (at === 0 ? [attempt, current[1]] : [current[0], attempt]))
   }, [compare, side])
 
-  // Scroll only the strip, before paint; neither the window nor the page moves.
+  // Give the strip a whole number of complete columns at every window size,
+  // including an operator's remembered size. Re-align after resizing too, so
+  // the focused reason never starts halfway off the visible edge.
   useLayoutEffect(() => {
-    if (compare || focus === null) return
+    if (compare) return
     const strip = scrollRef.current
-    const column = strip?.querySelector<HTMLElement>(`[data-attempt="${focus}"]`)
-    if (!strip || !column) return
-    const box = column.getBoundingClientRect()
-    const view = strip.getBoundingClientRect()
-    const left = box.left < view.left ? box.left - view.left - 12 : box.right > view.right ? Math.min(box.left - view.left - 12, box.right - view.right + 12) : 0
-    if (left) strip.scrollLeft += left
-  }, [compare, focus])
+    if (!strip) return
+    const layout = () => {
+      const style = getComputedStyle(strip)
+      const padding = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0')
+      const available = strip.clientWidth - padding
+      if (available > 0) {
+        const columns = Math.max(1, Math.min(numbers.length, Math.floor((available + 12) / (280 + 12))))
+        strip.style.setProperty('--attempt-column-width', `${(available - (columns - 1) * 12) / columns}px`)
+      }
+      const column = strip.querySelector<HTMLElement>(`[data-attempt="${focus}"]`)
+      if (!column) return
+      const box = column.getBoundingClientRect(), view = strip.getBoundingClientRect()
+      if (box.left < view.left + 12 || box.right > view.right - 12) strip.scrollLeft += box.left - view.left - 12
+    }
+    layout()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(layout)
+    observer.observe(strip)
+    return () => observer.disconnect()
+  }, [compare, focus, numbers.length])
 
   // Switching views redraws the pips; a pip that had the keys takes them along
   // as it goes, so the window keeps them.

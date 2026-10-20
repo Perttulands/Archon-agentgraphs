@@ -110,11 +110,11 @@ describe('attemptFileGroups and folderSummary', () => {
       files: ['execution/1/mh/videos/body.mp4', kept, ...other].map(name => file(name)),
     }))
     expect(groups.outputs[0].files.map(entry => entry.name)).toEqual([kept])
-    expect(groups.others.map(entry => entry.name)).toEqual(other)
+    expect(groups.others.map(entry => entry.name)).toEqual(['execution/1/mh/videos/body.mp4', ...other])
     const unclaimed = attemptFileGroups(attempt(1, {
       files: ['execution/1/mh/videos/body.mp4', kept, ...other].map(name => file(name)),
     }))
-    expect(unclaimed.others.map(entry => entry.name)).toEqual([kept, ...other])
+    expect(unclaimed.others.map(entry => entry.name)).toEqual(['execution/1/mh/videos/body.mp4', kept, ...other])
   })
 
   it('gives each output its own files and keeps the rest apart', () => {

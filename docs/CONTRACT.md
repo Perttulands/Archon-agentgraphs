@@ -1054,8 +1054,10 @@ of ports that name no file, and the seat's report when it adds something. The
 run bar's Produced list leads with a finished run's final steps (those whose
 outputs feed nothing), or a running run's latest step, and a menu holds the
 rest, grouped in run order by step and output with counts, outputs before other files.
-A kept output copy replaces its working-path twin in the list; distinct paths
-and attempts remain distinct. A formation that recorded output reserves its
+Kept outputs are grouped by their declared port. Working files remain visible
+alongside snapshots: matching names or sizes alone do not establish identical
+content. Known cache folders are collapsed separately, with their complete
+file view still accessible. Distinct paths and attempts remain distinct. A formation that recorded output reserves its
 produced-file row while evidence loads, keeping its card and open windows still.
 Flow reserves one fixed-height output-chip row too; extra chips scroll horizontally,
 so loading evidence cannot move later steps.
@@ -1063,8 +1065,9 @@ Declared output chips open the producing step's attempts; other files open in a
 floating file window, rendered by kind, with Open raw and Copy path (the
 artifact's absolute path on the daemon host); several can be open side by side.
 Node, note and file windows float in the free space nearest what
-opened them, over the canvas or over Flow, shrinking to half their remembered size at most to
-fit. A window leaves its own card or Flow row, its neighbours, its next links and
+opened them, over the canvas or over Flow. First-open defaults may shrink to
+half their size to fit, subject to their reading floor; an operator's remembered
+size wins and is only held within the workspace. A window leaves its own card or Flow row, its neighbours, its next links and
 the title bars of open windows visible and clickable where space allows, and
 cascades when no free space is left. Opening, closing or resizing a window never
 moves Flow's rows. Menus opened from the run bar render above every window.
@@ -1087,10 +1090,14 @@ windows keep at least 640 px of width; attempts keep at least 560 px. Both
 open at no less than 70% of the viewport height. They keep their opening card,
 or their opening Flow status and verdict, clear; a failed gate stays visible
 when it fits at that floor. Other rows and the Input card may be covered before
-these windows shrink. Image file windows keep at least 640×560, decided before
-loading so the content does not move. Standalone evidence thumbnails have no
-orphan list markers. Attempts' Other files uses the same kept-copy rule as
-Produced: a kept output replaces its working-path twin, once.
+these windows shrink. Text and report file windows open at least 640 px wide and 70% of the viewport
+high. Image file windows open at least 640×560, decided before loading so the
+content does not move. These floors apply to first opens; remembered operator
+sizes win, and images can be resized below their opening floor. Attempt strips
+show whole columns and align the focused attempt after resizing. Standalone
+evidence thumbnails and folder file links have no orphan list markers.
+Attempts' Other files preserves distinct working files alongside kept outputs
+as Produced does; cache groups remain accessible when collapsed.
 A folder searches its nested files and previews videos first, then twelve images, preferring verdict-cited images and names
 containing contact sheet or sheet, then at most three final images. It shows
 each model once as a tile with its name, size and Open file action before

@@ -227,3 +227,33 @@ test('a step that ran once still shows its attempt from its node window', async 
   await expect(win.getByTestId('attempt-1-outcome')).toHaveText('✓ pass')
   await expect(win.getByTestId('attempts-compare')).toHaveCount(0)
 })
+
+test('a remembered attempts size shows whole columns and keeps every focused reason inside its column', async ({ page }) => {
+  await open(page, 'loop')
+  await page.evaluate(() => localStorage.setItem('archon.floatingWindowSize.v1', JSON.stringify({ version: 1, sizes: { attempts: { width: 630, height: 580 } } })))
+  await page.getByTestId('formation-node-execution').getByTestId('attempts-open-execution').click()
+  const win = page.getByRole('dialog', { name: 'Attempts of Draw Ahti' })
+  await expect(columns(page)).toHaveCount(5)
+  const size = await settledBox(page, win)
+  expect(size.width).toBe(630)
+  expect(size.height).toBe(580) // operator choice wins over the first-open 70% floor
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await win.getByTestId(`attempts-pip-${attempt}`).click()
+    await expect(focused(page)).toHaveAttribute('data-attempt', String(attempt))
+    await settledBox(page, focused(page))
+    await expect.poll(() => win.locator('.attempts-scroll').evaluate(strip => {
+      const bounds = strip.getBoundingClientRect(), style = getComputedStyle(strip)
+      const left = bounds.left + parseFloat(style.paddingLeft), right = bounds.left + strip.clientWidth - parseFloat(style.paddingRight)
+      return [...strip.querySelectorAll('[data-attempt]')].map(column => column.getBoundingClientRect())
+        .filter(box => box.right > left + 1 && box.left < right - 1)
+        .every(box => box.left >= left - 1 && box.right <= right + 1)
+    })).toBe(true)
+    const column = await focused(page).boundingBox()
+    if (attempt < 5) {
+      const reason = await focused(page).locator('.attempt-head .attempt-reason').boundingBox()
+      expect(reason).not.toBeNull()
+      expect(reason!.x).toBeGreaterThanOrEqual(column!.x)
+      expect(reason!.x + reason!.width).toBeLessThanOrEqual(column!.x + column!.width)
+    }
+  }
+})

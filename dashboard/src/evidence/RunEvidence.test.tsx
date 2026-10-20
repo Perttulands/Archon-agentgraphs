@@ -160,7 +160,7 @@ describe('RunEvidence', () => {
 
     const verdict = await screen.findByTestId('node-gate-verdict')
     expect(screen.getByTestId('node-evidence-state')).toHaveTextContent('PASS')
-    expect(verdict).toHaveTextContent('verdict · pass · route pass')
+    expect(verdict).toHaveTextContent('verdict · PASS · route PASS')
     expect(verdict).toHaveTextContent('Judge and operator agree')
     const evaluation = screen.getByTestId('gate-evaluation-20')
     expect(evaluation).toHaveTextContent('All children link to the parent')
@@ -170,7 +170,7 @@ describe('RunEvidence', () => {
     // A ref outside the artifact directory shows its absolute path and opens.
     fireEvent.click(within(evaluation).getByRole('button', { name: '/srv/project/beads.md' }))
     expect(await screen.findByTestId('evidence-document')).toHaveTextContent('Beads plan')
-    expect(evaluation).toHaveTextContent('judge · pass')
+    expect(evaluation).toHaveTextContent('judge · PASS')
     expect(evaluation).toHaveTextContent('Criterion · judge · human')
     expect(evaluation.textContent).not.toMatch(/formation/)
   })
@@ -214,15 +214,15 @@ describe('RunEvidence', () => {
     expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('Input from Map the territory · Map')
     expect(screen.getByTestId('gate-evaluation-8')).not.toHaveTextContent('port_map_out')
     // A decision a seat recorded for the operator names that seat.
-    expect(screen.getByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via Scout in Map the territory')
+    expect(screen.getByTestId('gate-evaluation-8')).toHaveTextContent('PASS · human:operator · via Scout in Map the territory')
 
     cleanup()
     const staffed = { ...board, formations: board.formations.map(formation => ({ ...formation, slots: [{ ...formation.slots[0], agentId: 'scout' }] })) }
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" board={staffed} onClose={() => {}} />)
-    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via scout')
+    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('PASS · human:operator · via scout')
     cleanup()
     render(<RunEvidence runId="run_1" nodeId="gate_framing" title="Framing review" state="done" onClose={() => {}} />)
-    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('pass · human:operator · via slot_scout')
+    expect(await screen.findByTestId('gate-evaluation-8')).toHaveTextContent('PASS · human:operator · via slot_scout')
   })
 
   it('lists the blocks and errors recorded against the node', async () => {
@@ -231,8 +231,8 @@ describe('RunEvidence', () => {
     const failures = await screen.findByTestId('evidence-failures')
     expect(within(failures).getByRole('heading', { name: 'Blocks and errors' })).toBeInTheDocument()
     expect(failures.querySelectorAll('.node-evidence-verdict.fail')).toHaveLength(2)
-    expect(failures).toHaveTextContent('#40 · error · invalid_judge_result')
-    expect(failures).toHaveTextContent('#41 · blocked · not resumable')
+    expect(failures).toHaveTextContent('#40 · error · invalid judge result')
+    expect(failures).toHaveTextContent('#41 · blocked · cannot resume')
     expect(failures).toHaveTextContent('invalid judge result: missing or unterminated archon-verdict block')
   })
 

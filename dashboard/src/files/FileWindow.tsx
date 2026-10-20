@@ -27,7 +27,7 @@ export default function FileWindow({ request, place, onOpen, onClose }: {
         </span>
       )}
       defaultSize={{ width: 720, height: 560 }}
-      minimum={/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(request.name) ? { width: 640, height: 560 } : undefined}
+      openingMinimum={/\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(request.name) ? { width: 640, height: 560 } : undefined}
       anchor={place ? () => place.anchor : undefined}
       keepClear={place ? () => place.keepClear : undefined}
       anchorKind={place?.anchorKind}

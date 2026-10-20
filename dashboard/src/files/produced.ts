@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RunEvent } from '../components/formationsTypes'
-import { keptArtifacts } from './keptArtifacts'
 import { fetchNodeEvidence, fetchRunArtifacts, type NodeEvidence, type RunArtifactEntry } from '../evidence/runEvidenceApi'
 
 // What a run produced, read from the evidence routes (ADR-0017): each step's
@@ -89,7 +88,7 @@ export function summarizeProduced(
   const claimed = new Set(steps.flatMap(step => step.items).map(item => item.artifact).filter(Boolean))
   const others = [
     ...steps.filter(step => !lead.includes(step)).flatMap(step => artifactsFirst(step.items)),
-    ...keptArtifacts(artifacts).filter(entry => !claimed.has(entry.name))
+    ...artifacts.filter(entry => !claimed.has(entry.name))
       .map((entry): ProducedItem => ({ key: `artifact:${entry.name}`, kind: 'artifact', artifact: entry.name, bytes: entry.size })),
   ]
   return { primary, others }

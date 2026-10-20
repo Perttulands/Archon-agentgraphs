@@ -194,13 +194,20 @@ interface Plan {
 export function placeOpeningWindow(size: FrameSize, minimum: FrameSize, scene: PlacementScene): WindowRect {
   const { candidates, violation, cost } = plan(size, minimum, scene)
   let best = candidates[0]
+  let bestSourceCover = Number.POSITIVE_INFINITY
   let bestViolation = Number.POSITIVE_INFINITY
   let bestCost = Number.POSITIVE_INFINITY
   for (const candidate of candidates) {
+    // Reading windows preserve their source before fixed canvas controls. A
+    // small overlap with zoom controls is preferable to hiding the very card
+    // whose result the operator opened; the window itself can be moved.
+    const sourceCover = scene.anchorFirst && usable(scene.anchor) ? overlapArea(candidate, grow(scene.anchor, BREATHING.anchor)) : 0
+    if (sourceCover > bestSourceCover) continue
     const broken = violation(candidate)
-    if (broken > bestViolation) continue
+    if (sourceCover === bestSourceCover && broken > bestViolation) continue
     const value = cost(candidate)
-    if (broken < bestViolation || value < bestCost) {
+    if (sourceCover < bestSourceCover || broken < bestViolation || value < bestCost) {
+      bestSourceCover = sourceCover
       best = candidate
       bestViolation = broken
       bestCost = value
@@ -251,7 +258,7 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
 
   const must: Array<[WindowRect, number]> = [
     ...avoid.map(rect => [rect, MUST.avoid] as [WindowRect, number]),
-    ...(anchor ? [[grow(anchor, BREATHING.anchor), (scene.anchorFirst ? 1000 : MUST.anchor)] as [WindowRect, number]] : []),
+    ...(anchor ? [[grow(anchor, BREATHING.anchor), MUST.anchor] as [WindowRect, number]] : []),
     ...keepClear.map(rect => [grow(rect, BREATHING.keepClear), MUST.keepClear] as [WindowRect, number]),
     ...windows.map(rect => [titleStrip(rect), MUST.title] as [WindowRect, number]),
     ...(control ? windows.map(rect => [rect, CONTROL.window] as [WindowRect, number]) : []),
@@ -327,6 +334,19 @@ function plan(size: FrameSize, minimum: FrameSize, scene: PlacementScene): Plan 
     candidates.push(hold({ ...full, left: anchor.left, top: anchor.top - PLACEMENT_GAP - full.height }))
   } else {
     candidates.push(hold(centre))
+  }
+  // A large requested reading window may not fit beside a centred source,
+  // while its readable floor does. Try the floor explicitly on every side;
+  // growing to the full width first can otherwise discard a feasible tall,
+  // narrow space just because that wider candidate is too short.
+  if (anchor && scene.anchorFirst) {
+    const floor = { width: smallest.width, height: smallest.height }
+    for (const top of [anchor.top, bottom(anchor) - floor.height]) {
+      candidates.push(hold({ ...floor, left: right(anchor) + PLACEMENT_GAP, top }))
+      candidates.push(hold({ ...floor, left: anchor.left - PLACEMENT_GAP - floor.width, top }))
+    }
+    candidates.push(hold({ ...floor, left: anchor.left, top: bottom(anchor) + PLACEMENT_GAP }))
+    candidates.push(hold({ ...floor, left: anchor.left, top: anchor.top - PLACEMENT_GAP - floor.height }))
   }
   // Cascaded from each open window, its title bar left showing.
   for (const open of windows) {

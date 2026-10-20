@@ -73,6 +73,8 @@ export interface UseFloatingWindowOptions {
   label: string
   defaultSize: FrameSize
   minimum?: FrameSize
+  /** Readable first-open size only; resizing uses minimum and remembered sizes win. */
+  openingMinimum?: FrameSize
   /**
    * Where the thing the window belongs to sits, in viewport pixels, read as the
    * window opens. The window opens in free space near it and never covers it
@@ -150,15 +152,24 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   label,
   defaultSize,
   minimum = FLOATING_WINDOW_MINIMUM[kind],
+  openingMinimum: requestedOpeningMinimum,
   anchor,
   keepClear,
   anchorKind,
   overCanvas = false,
   onClose,
 }: UseFloatingWindowOptions): FloatingWindow<T> {
-  const openingFloor = openingWindowMinimum(kind, { width: window.innerWidth, height: window.innerHeight })
-  const openingMinimum = { width: Math.max(minimum.width, openingFloor.width), height: Math.max(minimum.height, openingFloor.height) }
+  const rememberedSize = useRef(readFloatingWindowSize(kind)).current
   const stack = useWindowStack()
+  const bounds = stack.workspace(overCanvas).bounds
+  const openingFloor = requestedOpeningMinimum ?? openingWindowMinimum(kind, { width: window.innerWidth, height: window.innerHeight })
+  const firstOpeningMinimum = { width: Math.max(minimum.width, openingFloor.width), height: Math.max(minimum.height, openingFloor.height) }
+  // CHROTE's rule: the operator sized this kind of window, not its content.
+  // Keep that size instead of raising it to a first-open floor or shrinking it
+  // to half to fit a nearby gap. The workspace still bounds its dimensions.
+  const openingMinimum = rememberedSize
+    ? { width: Math.min(bounds.width, Math.max(minimum.width, rememberedSize.width)), height: Math.min(bounds.height, Math.max(minimum.height, rememberedSize.height)) }
+    : firstOpeningMinimum
   const { register, track } = stack
   const workspace = useCallback(() => stack.workspace(overCanvas), [stack.workspace, overCanvas])
   const stackRef = useRef(stack)
@@ -167,14 +178,14 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
   // Placed as it first renders, so it is visible, and can take focus, from its first paint.
   const placedAt = useRef({ others: -1, size: defaultSize })
   const [rect, setRect] = useState<WindowRect>(() => {
-    placedAt.current = { others: stack.openRects(id).length, size: readFloatingWindowSize(kind) ?? defaultSize }
+    placedAt.current = { others: stack.openRects(id).length, size: rememberedSize ?? defaultSize }
     return openingRect(stack, id, placedAt.current.size, openingMinimum, anchor, keepClear, anchorKind, overCanvas, kind === 'attempts' || kind === 'evidence')
   })
   const rectRef = useRef(rect)
   rectRef.current = rect
   const [activeHandle, setActiveHandle] = useState<FrameHandleId | null>(null)
   // A remembered size is the operator's, so it wins from the first paint.
-  const [sizedByOperator, setSizedByOperator] = useState(() => readFloatingWindowSize(kind) !== null)
+  const [sizedByOperator, setSizedByOperator] = useState(() => rememberedSize !== null)
   const sized = useRef(sizedByOperator)
   const cleanupRef = useRef<(() => void) | null>(null)
   const onCloseRef = useRef(onClose)
@@ -389,7 +400,7 @@ export function useFloatingWindow<T extends HTMLElement = HTMLElement>({
       clearFloatingWindowSize(kind)
       sized.current = false
       setSizedByOperator(false)
-      const next = openingRect(stackRef.current, id, defaultSize, openingMinimum, anchor, keepClear, anchorKind, overCanvas, kind === 'attempts' || kind === 'evidence')
+      const next = openingRect(stackRef.current, id, defaultSize, firstOpeningMinimum, anchor, keepClear, anchorKind, overCanvas, kind === 'attempts' || kind === 'evidence')
       setRect(next)
       return { width: next.width, height: next.height }
     },

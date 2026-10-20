@@ -45,7 +45,7 @@ const board = {
   connections: [{ id: 'c1', from: 'fmn_plan:port_plan', to: 'fmn_final:in' }],
 } as BoardDocument
 
-const workspace: Workspace = { bounds: { left: 0, top: 0, width: 1600, height: 1000 }, avoid: [{ left: 1540, top: 700, width: 60, height: 300 }] }
+const workspace: Workspace = { bounds: { left: 0, top: 0, width: 2240, height: 1000 }, avoid: [{ left: 2180, top: 700, width: 60, height: 300 }] }
 
 function OpenArtifact({ name }: { name: string }) {
   const files = useFileWindows()
@@ -104,10 +104,25 @@ describe('produced files', () => {
     fireEvent.click(screen.getByRole('button', { name: /more produced files/ }))
     const menu = screen.getByRole('menu')
     expect(within(menu).getByText('fmn_mesh · 501')).toBeInTheDocument()
-    const summary = within(menu).getByText('port_mesh · 500')
+    const summary = within(menu).getByText('port_mesh · kept output · 500')
     expect(summary.closest('details')).not.toHaveAttribute('open')
     fireEvent.click(summary)
     expect(within(menu).getByTestId('produced-chip-artifact:fmn_mesh/1/outputs/port_mesh/mesh/frame-499.png')).toBeVisible()
+  })
+
+  it('keeps generated cache files accessible in a collapsed group beside ordinary files', () => {
+    render(<Cockpit produced={produced} final artifacts={[
+      { name: 'step/1/.uv-cache/index.db', size: 20, modifiedAt: '' },
+      { name: 'step/1/report.md', size: 20, modifiedAt: '' },
+    ]} />)
+    fireEvent.click(screen.getByRole('button', { name: '3 more produced files' }))
+    const menu = screen.getByRole('menu')
+    const cache = within(menu).getByText('Cache files · 1').closest('details')!
+    expect(cache).not.toHaveAttribute('open')
+    expect(within(menu).getByRole('menuitem', { name: 'report.md' })).toBeVisible()
+    expect(within(cache).getByRole('menuitem', { name: 'index.db', hidden: true })).not.toBeVisible()
+    fireEvent.click(within(cache).getByText('Cache files · 1'))
+    expect(within(cache).getByRole('menuitem', { name: 'index.db' })).toBeVisible()
   })
 
   it('shows chips from evidence on each step and a finished run leads Produced with its final review', () => {
@@ -178,8 +193,8 @@ describe('produced files', () => {
 
     // The run bar sits just above the workspace. A file from its menu opens right below it, though the
     // menu itself is drawn at the end of the page.
-    const barBox = { left: 900, top: -40, width: 300, height: 24 }
-    screen.getByTestId('run-produced').getBoundingClientRect = () => ({ ...barBox, right: 1200, bottom: -16, x: 900, y: -40, toJSON: () => ({}) })
+    const barBox = { left: 1700, top: -40, width: 300, height: 24 }
+    screen.getByTestId('run-produced').getBoundingClientRect = () => ({ ...barBox, right: 2000, bottom: -16, x: 1700, y: -40, toJSON: () => ({}) })
     fireEvent.click(screen.getByRole('button', { name: '2 more produced files' }))
     fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'worker.log' }))
     const log = await screen.findByRole('dialog', { name: 'file worker.log' })

@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { scouting, scoutingFixture } from './scouting-fixture'
 
-const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
 
 type Node = { id: string; title: string; type?: string; files?: string[]; brief?: { goal?: string; files?: string[] } }
 type Box = { x: number; y: number; width: number; height: number }
@@ -90,10 +89,10 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   const besideGate = gapBetween(rubricBox, (await gate.boundingBox())!)
   expect(besideGate).toBeGreaterThanOrEqual(0)
   expect(besideGate).toBeLessThanOrEqual(240)
-  for (const other of await page.locator(CARDS).all()) {
-    const box = await other.boundingBox()
-    if (box) expect(gapBetween(rubricBox, box), 'the rubric meets a card only within pixel rounding').toBeGreaterThanOrEqual(-1)
-  }
+  // Reading a report takes precedence over unrelated cards when its floor
+  // cannot clear the whole graph; its own gate and nearby opening stay clear.
+  expect(rubricBox.width).toBeGreaterThanOrEqual(640)
+  expect(rubricBox.height).toBeGreaterThanOrEqual(Math.ceil(1080 * .7))
 
   await gate.getByRole('button', { name: '1 more referenced file' }).click()
   await page.getByRole('menuitem', { name: '/home/operator/private/scoring.md · judge Brief critic' }).click()
@@ -101,6 +100,11 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   const scoring = page.getByRole('dialog', { name: 'file scoring.md' })
   await expect(scoring.getByRole('heading', { name: 'Scoring guide' })).toBeVisible()
   await expect(scoring).toContainText('/home/operator/private/scoring.md')
+
+  // Finish reading before inspecting another card; report floors may cover
+  // unrelated cards, and their close controls keep that navigation deliberate.
+  await scoring.getByRole('button', { name: 'Close file scoring.md' }).click()
+  await rubric.getByRole('button', { name: 'Close file adversarial-review.md' }).click()
 
   // A file Archon cannot open is flagged on its chip and in its node window
   // (archon-n7u.26), and its window offers no raw view or download.
@@ -119,8 +123,7 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   await expect(sketch.getByRole('link', { name: 'Download' })).toHaveCount(0)
   const besideWindow = gapBetween((await sketch.boundingBox())!, (await missionWindow.boundingBox())!)
   expect(besideWindow).toBeGreaterThanOrEqual(0)
-  // Three windows already crowd this scene and the canvas dock stays clear, so the
-  // fourth lands in the nearest free space rather than right beside its source.
+  // The file stays near its source window at the report reading floor.
   expect(besideWindow).toBeLessThanOrEqual(320)
   expect(fixture.writes).toEqual([])
 })

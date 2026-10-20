@@ -1,5 +1,6 @@
 import MediaPreview from '../files/MediaPreview'
 import { mediaKind } from '../files/mediaUrls'
+import { isCacheArtifact } from '../files/artifactPresentation'
 import { useContext, useEffect, useState, type ReactNode } from 'react'
 import Markdown from '../evidence/Markdown'
 import { prettyJson } from '../evidence/TextLines'
@@ -331,6 +332,8 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
 }) {
   const outcome: AttemptOutcome = attemptOutcome(attempt, view.waitingGates)
   const { outputs, others } = attemptFileGroups(attempt)
+  const otherFiles = others.filter(file => !isCacheArtifact(file.name))
+  const cacheFiles = others.filter(file => isCacheArtifact(file.name))
   const open = useOpen()
   const excluded = marks.candidate === false
   const context = `${view.stepTitle} · attempt ${attempt.attempt}`
@@ -380,21 +383,33 @@ export default function AttemptColumn({ attempt, view, marks, onFocus }: {
           : attempt.stopReason?.text.trim() ? null : <p className="attempt-quiet">{attempt.status === 'running' ? 'No output yet.' : attempt.status === 'stopped' ? 'Stopped before its output.' : 'No output recorded.'}</p>}
       </div>
       <div className="attempt-files">
-        {others.length ? (
+        {otherFiles.length ? (
           <>
             <h4 className="attempt-label">Other files</h4>
             <div className="attempt-chips">
-              {others.slice(0, OTHER_FILES).map(file => (
+              {otherFiles.slice(0, OTHER_FILES).map(file => (
                 <FileChip key={file.name} request={artifactFileRequest(view.runId, file.name, context)}
                   label={attempt.directory ? nameWithin(attempt.directory.name, file.name) : baseName(file.name)} detail={formatBytes(file.size)} />
               ))}
-              {others.length > OTHER_FILES && attempt.directory ? (
+              {otherFiles.length > OTHER_FILES && attempt.directory ? (
                 <button type="button" className="produced-chip attempt-chip" onClick={event => open(folderFileRequest(attempt.directory!.path, context), event.currentTarget)}>
-                  and {others.length - OTHER_FILES} more
+                  and {otherFiles.length - OTHER_FILES} more
                 </button>
               ) : null}
             </div>
           </>
+        ) : null}
+        {cacheFiles.length ? (
+          <details className="attempt-cache-files">
+            <summary>Cache files · {cacheFiles.length}</summary>
+            <div className="attempt-chips">
+              {cacheFiles.map(file => (
+                <FileChip key={file.name} request={artifactFileRequest(view.runId, file.name, context)}
+                  label={attempt.directory ? nameWithin(attempt.directory.name, file.name) : file.name} detail={formatBytes(file.size)} />
+              ))}
+            </div>
+            {attempt.directory ? <button type="button" className="evidence-link" onClick={event => open(folderFileRequest(attempt.directory!.path, context), event.currentTarget)}>Browse all files</button> : null}
+          </details>
         ) : null}
         {attempt.filesTruncated ? (
           <p className="attempt-quiet">

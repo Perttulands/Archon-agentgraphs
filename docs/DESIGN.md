@@ -38,8 +38,12 @@ changes it; a variant that needs more proposes the addition in its set.
   560 px wide and 70% of the viewport high; run evidence keeps at least 640 px
   of width and the same height floor. Other rows may be covered; a failed gate
   stays clear when it fits at that floor. Cited image windows keep at least
-  640×560. Standalone thumbnails have no list bullets, and kept output copies
-  replace their working-path twins in Other files as in Produced.
+  640×560 on first open. Text and report file windows open at least 640 px wide
+  and 70% of the viewport high. Remembered operator sizes win over opening
+  floors; images can resize smaller. Attempt strips show whole columns.
+  Standalone thumbnails and folder links have no list bullets. Kept outputs
+  are grouped clearly; distinct working files remain visible, and known cache
+  folders live in collapsed, accessible groups.
 - The Flow view shows sequence, feeds and gating as a line; the canvas shows
   the graph.
 

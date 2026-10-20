@@ -1,5 +1,4 @@
 import { mediaKind } from '../files/mediaUrls'
-import { keptArtifacts } from '../files/keptArtifacts'
 import { shortTime, spanLabel } from '../components/runList'
 import type { AttemptFile, AttemptOutput, AttemptVerdict, StepAttempt } from '../evidence/runEvidenceApi'
 
@@ -94,7 +93,9 @@ export interface OutputFiles {
  * rest the seat wrote into the attempt's directory.
  */
 export function attemptFileGroups(attempt: StepAttempt): { outputs: OutputFiles[]; others: AttemptFile[] } {
-  const kept = keptArtifacts(attempt.files)
+  // A snapshot path and an equal-size working file do not prove equal bytes.
+  // Preserve both; declared outputs group their exact artifact paths.
+  const kept = attempt.files
   const claimed = new Set<string>()
   const outputs = attempt.outputs.map(output => {
     const artifact = output.artifact

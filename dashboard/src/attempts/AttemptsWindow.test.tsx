@@ -95,6 +95,21 @@ describe('AttemptsWindow', () => {
     expect(screen.getByTestId('attempt-1')).not.toHaveTextContent('Stopped before its output.')
   })
 
+  it('keeps cache files available separately from the primary other-file list', async () => {
+    attempts = [attempt(1, 'pass', { files: [
+      { name: 'draw/1/.mpl/fontlist.json', path: '/state/draw/1/.mpl/fontlist.json', kind: 'json', size: 10, modifiedAt: '' },
+      { name: 'draw/1/report.txt', path: '/state/draw/1/report.txt', kind: 'text', size: 10, modifiedAt: '' },
+    ] })]
+    render(<Window />)
+    const column = await screen.findByTestId('attempt-1')
+    const cache = within(column).getByText('Cache files · 1').closest('details')!
+    expect(cache).not.toHaveAttribute('open')
+    expect(within(column).getByRole('button', { name: /report.txt/ })).toBeVisible()
+    expect(within(cache).getByRole('button', { name: /fontlist.json/, hidden: true })).not.toBeVisible()
+    fireEvent.click(within(cache).getByText('Cache files · 1'))
+    expect(within(cache).getByRole('button', { name: /fontlist.json/ })).toBeVisible()
+  })
+
   it('puts two attempts side by side and steps the focused side', async () => {
     render(<Window />)
     await screen.findByTestId('attempt-4')
