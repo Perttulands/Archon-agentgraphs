@@ -1113,7 +1113,16 @@ func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openD
 	})
 }
 
-func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, personas *PersonaStore, req FormationRunRequest) (*RunStartResult, error) {
+func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formation FormationNode, personas *PersonaStore, req FormationRunRequest) (result *RunStartResult, err error) {
+	err = e.store.withRunStorageLock(func() error {
+		var x error
+		result, x = e.startFormationRunStorageLocked(slug, board, formation, personas, req)
+		return x
+	})
+	return
+}
+
+func (e *RunEngine) startFormationRunStorageLocked(slug string, board *BoardDocument, formation FormationNode, personas *PersonaStore, req FormationRunRequest) (*RunStartResult, error) {
 	bindings, err := resolveRunBindings(board, personas)
 	if err != nil {
 		return nil, err
@@ -1180,6 +1189,7 @@ func (e *RunEngine) startFormationRun(slug string, board *BoardDocument, formati
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
+			"storagePolicy":    frozenRunStoragePolicy(),
 			"missionSlug":      slug,
 			"missionPath":      filepath.ToSlash(e.store.BoardPath(slug)),
 			"missionRev":       board.Rev,

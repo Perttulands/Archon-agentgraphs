@@ -203,7 +203,16 @@ func formationResultFromEventData(data map[string]any) FormationExecutionResult 
 // is returned as it is. An invalid ref fails like an unreadable ref does,
 // and the step blocks; a valid output the copy could not keep is an
 // outputNotKeptError.
-func (s *Store) acceptAttemptOutputs(ctx context.Context, runID string, formation FormationNode, attempt int, outputs map[string]FormationOutputPayload) (map[string]FormationOutputPayload, error) {
+func (s *Store) acceptAttemptOutputs(ctx context.Context, runID string, formation FormationNode, attempt int, outputs map[string]FormationOutputPayload) (accepted map[string]FormationOutputPayload, err error) {
+	err = s.withRunCaptureLock(runID, func() error {
+		var e error
+		accepted, e = s.acceptAttemptOutputsStorageLocked(ctx, runID, formation, attempt, outputs)
+		return e
+	})
+	return
+}
+
+func (s *Store) acceptAttemptOutputsStorageLocked(ctx context.Context, runID string, formation FormationNode, attempt int, outputs map[string]FormationOutputPayload) (map[string]FormationOutputPayload, error) {
 	accepted := make(map[string]FormationOutputPayload, len(outputs))
 	for portID, payload := range outputs {
 		accepted[portID] = payload
@@ -228,7 +237,11 @@ func (s *Store) acceptAttemptOutputs(ctx context.Context, runID string, formatio
 				return nil, err
 			}
 		}
-		if path, err = keepOutput(ctx, path, dir, port.ID, s.runArtifactRoots(runID)); err != nil {
+		copyCtx, budgetErr := s.outputCopyContext(ctx, runID, dir, port.ID)
+		if budgetErr != nil {
+			return nil, &outputNotKeptError{message: budgetErr.Error(), err: budgetErr}
+		}
+		if path, err = keepOutput(copyCtx, path, dir, port.ID, s.runArtifactRoots(runID)); err != nil {
 			return nil, &outputNotKeptError{message: fmt.Sprintf("%s output %s at %s could not be kept in the attempt directory: %v", formation.ID, port.ID, payload.Ref, err), err: err}
 		}
 		kept = append(kept, filepath.Join(dir, attemptOutputsDir, port.ID))
@@ -259,7 +272,11 @@ func keepOutput(ctx context.Context, path, dir, portID string, artifactRoots []s
 			return "", err
 		}
 	}
-	return snapshotOutput(ctx, path, parent, append(artifactRoots, dir, outputsDir))
+	exclude := append(artifactRoots, dir, outputsDir)
+	if err := preflightSnapshot(ctx, path, parent, exclude); err != nil {
+		return "", err
+	}
+	return snapshotOutput(ctx, path, parent, exclude)
 }
 
 // outputPortPath checks a file or folder output's ref: an absolute path to an
@@ -360,9 +377,11 @@ func snapshotOutput(ctx context.Context, source, parent string, exclude []string
 // being copied, the folder first and then each tree a link led out to, so a
 // link back into any of them becomes a link to its copy rather than a cycle.
 type treeCopier struct {
-	ctx     context.Context
-	skipped map[string]bool
-	frames  []copyFrame
+	ctx      context.Context
+	skipped  map[string]bool
+	frames   []copyFrame
+	measure  bool
+	measured int64
 }
 
 type copyFrame struct{ source, target string }
@@ -390,6 +409,9 @@ func (c *treeCopier) copyTree(source, target string) error {
 		dest := filepath.Join(target, rel)
 		switch mode := entry.Type(); {
 		case mode.IsDir():
+			if c.measure {
+				return nil
+			}
 			return os.MkdirAll(dest, 0o770)
 		case mode&fs.ModeSymlink != 0:
 			return c.copyLink(path, dest)
@@ -398,7 +420,7 @@ func (c *treeCopier) copyTree(source, target string) error {
 			if err != nil {
 				return err
 			}
-			return cloneOrCopyFile(c.ctx, path, dest, info.Mode().Perm())
+			return c.copyFile(path, dest, info)
 		}
 		return nil
 	})
@@ -414,14 +436,14 @@ func (c *treeCopier) copyLink(path, dest string) error {
 	}
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return os.Symlink(link, dest)
+		return c.symlink(link, dest)
 	}
 	for _, frame := range c.frames {
 		if !pathWithin(real, frame.source) {
 			continue
 		}
 		if c.leftOut(real, frame.source) {
-			return os.Symlink(link, dest)
+			return c.symlink(link, dest)
 		}
 		rel, err := filepath.Rel(frame.source, real)
 		if err != nil {
@@ -431,16 +453,16 @@ func (c *treeCopier) copyLink(path, dest string) error {
 		if err != nil {
 			return err
 		}
-		return os.Symlink(relative, dest)
+		return c.symlink(relative, dest)
 	}
 	info, err := os.Stat(real)
 	switch {
 	case err != nil:
-		return os.Symlink(link, dest)
+		return c.symlink(link, dest)
 	case info.IsDir():
 		return c.copyTree(real, dest)
 	case info.Mode().IsRegular():
-		return cloneOrCopyFile(c.ctx, real, dest, info.Mode().Perm())
+		return c.copyFile(real, dest, info)
 	}
 	return nil
 }
@@ -480,6 +502,16 @@ func cloneOrCopyFile(ctx context.Context, source, target string, perm fs.FileMod
 		return err
 	}
 	defer in.Close()
+	budget, _ := ctx.Value(snapshotBudgetKey{}).(*snapshotByteBudget)
+	if budget != nil {
+		info, e := in.Stat()
+		if e != nil {
+			return e
+		}
+		if info.Size() > budget.remaining {
+			return ErrRunStorageBudget
+		}
+	}
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm|0o600)
 	if err != nil {
 		return err
@@ -490,15 +522,53 @@ func cloneOrCopyFile(ctx context.Context, source, target string, perm fs.FileMod
 				_ = out.Close()
 				return err
 			}
-			n, err := io.Copy(out, io.LimitReader(in, copyChunkBytes))
+			chunk := int64(copyChunkBytes)
+			if budget != nil {
+				pos, e := out.Seek(0, io.SeekCurrent)
+				if e != nil {
+					_ = out.Close()
+					return e
+				}
+				if left := budget.remaining - pos; left < chunk {
+					chunk = left
+				}
+				if chunk == 0 {
+					var one [1]byte
+					n, e := in.Read(one[:])
+					if n > 0 {
+						_ = out.Close()
+						return ErrRunStorageBudget
+					}
+					if e == io.EOF {
+						break
+					}
+					if e != nil {
+						_ = out.Close()
+						return e
+					}
+				}
+			}
+			n, err := io.Copy(out, io.LimitReader(in, chunk))
 			if err != nil {
 				_ = out.Close()
 				return err
 			}
-			if n < copyChunkBytes {
+			if n < chunk {
 				break
 			}
 		}
+	}
+	if budget != nil {
+		info, e := out.Stat()
+		if e != nil {
+			_ = out.Close()
+			return e
+		}
+		if info.Size() > budget.remaining {
+			_ = out.Close()
+			return ErrRunStorageBudget
+		}
+		budget.remaining -= info.Size()
 	}
 	return out.Close()
 }

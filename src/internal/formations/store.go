@@ -3,6 +3,7 @@ package formations
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -48,8 +49,13 @@ var (
 )
 
 type Store struct {
-	Workspace string
-	Now       func() time.Time
+	// RunStorageSeatAbsent proves an unresolved recorded seat is gone. Offline
+	// stores have no observer and conservatively retain that seat's evidence.
+	RunStorageSeatAbsent func(context.Context, KeptSeat) bool
+	// RunStorageRunBusy reports an executor settling after its final event.
+	RunStorageRunBusy func(string) bool
+	Workspace         string
+	Now               func() time.Time
 	// RunWorkspaceRoot is configured at startup; empty uses <Workspace>/workspaces.
 	RunWorkspaceRoot string
 	// OnRunEvent is called after a durable append. It must not block or read the store.

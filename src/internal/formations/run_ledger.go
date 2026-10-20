@@ -232,7 +232,12 @@ type RunGateBinding struct {
 	ResultEncoding          string            `toml:"resultEncoding"`
 }
 
-func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, error) {
+func (s *Store) StartRun(slug string, req RunStartRequest) (result *RunStartResult, err error) {
+	err = s.withRunStorageLock(func() error { var e error; result, e = s.startRun(slug, req); return e })
+	return
+}
+
+func (s *Store) startRun(slug string, req RunStartRequest) (*RunStartResult, error) {
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
@@ -332,6 +337,7 @@ func (s *Store) StartRun(slug string, req RunStartRequest) (*RunStartResult, err
 		Epoch:     0,
 		Attempt:   0,
 		Data: map[string]any{
+			"storagePolicy":    frozenRunStoragePolicy(),
 			"missionSlug":      slug,
 			"missionPath":      filepath.ToSlash(boardPath),
 			"missionRev":       board.Rev,
@@ -504,7 +510,12 @@ func (s *Store) ResumeRun(runID string, req RunResumeRequest) (*RunStatusProject
 	return status, err
 }
 
-func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (*RunStatusProjection, *BoardDocument, error) {
+func (s *Store) resumeRunWithSnapshot(runID string, req RunResumeRequest) (status *RunStatusProjection, board *BoardDocument, err error) {
+	err = s.withRunStorageLock(func() error { var e error; status, board, e = s.resumeRunStorageLocked(runID, req); return e })
+	return
+}
+
+func (s *Store) resumeRunStorageLocked(runID string, req RunResumeRequest) (*RunStatusProjection, *BoardDocument, error) {
 	ledger, err := s.openRunLedger(runID, true)
 	if err != nil {
 		return nil, nil, err

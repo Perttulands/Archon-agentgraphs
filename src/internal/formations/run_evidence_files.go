@@ -86,6 +86,26 @@ func (s *Store) ListRunArtifacts(runID string) ([]RunArtifactEntry, bool, int, e
 		}
 	}
 	sort.Slice(outputs, func(i, j int) bool { return outputs[i].Artifact < outputs[j].Artifact })
+	m, err := s.readStorageManifest(runID)
+	if err != nil {
+		return nil, false, 0, err
+	}
+	if m.State == "expired" {
+		return []RunArtifactEntry{}, false, 0, nil
+	}
+	if m.Trimmed {
+		keep := map[string]bool{}
+		for _, name := range m.Keep {
+			keep[name] = true
+		}
+		visible := entries[:0]
+		for _, entry := range entries {
+			if keep[entry.Name] {
+				visible = append(visible, entry)
+			}
+		}
+		entries = visible
+	}
 	entries, omitted := selectEvidenceArtifacts(entries, outputs)
 	return entries, truncated || omitted > 0, omitted, nil
 }
@@ -435,6 +455,9 @@ func (s *Store) openRunArtifact(runID, name string) (*os.File, os.FileInfo, erro
 	}
 	if _, err := s.ReadRunEvents(runID); err != nil {
 		return nil, nil, evidenceNotFound(err)
+	}
+	if err := s.checkStorageEvidence(runID, name); err != nil {
+		return nil, nil, err
 	}
 	current, err := s.openRunArtifactsRoot(runID)
 	if err != nil {
