@@ -3626,4 +3626,104 @@ describe('FormationsCockpit reference parity', () => {
     expect(started).toHaveLength(0)
   })
 
+  it('serializes slow discovery and selected requests, aborting them while hidden and before reopening', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
+    const base = globalThis.fetch
+    const run = { runId: 'run_legacy', status: 'running', final: false, missionSlug: 'test-board', inputCardId: mission.id, eventCount: 1 }
+    const reply = (data: unknown) => new Response(JSON.stringify({ success: true, data }))
+    const resources = new Map<string, { calls: number; live: number; max: number; settle: Array<() => void> }>()
+    globalThis.fetch = vi.fn((input, init) => {
+      const path = String(input)
+      if (path !== '/api/runs' && path !== '/api/runs/run_legacy') return base(input, init)
+      const resource = resources.get(path) || { calls: 0, live: 0, max: 0, settle: [] }
+      resources.set(path, resource)
+      resource.calls++; resource.live++; resource.max = Math.max(resource.max, resource.live)
+      return new Promise<Response>((resolve, reject) => {
+        const abort = () => { resource.live--; reject(new DOMException('Aborted', 'AbortError')) }
+        init?.signal?.addEventListener('abort', abort, { once: true })
+        resource.settle.push(() => {
+          init?.signal?.removeEventListener('abort', abort)
+          resource.live--
+          resolve(reply(path === '/api/runs' ? [run] : { ...run, events: [{ seq: 1, type: 'node_started', nodeId: 'fmn_frame' }] }))
+        })
+      })
+    })
+    let view!: ReturnType<typeof render>
+    await act(async () => { view = render(<FormationsCockpit active={false} />) })
+    expect(resources.size).toBe(0)
+    await act(async () => { view.rerender(<FormationsCockpit active />) })
+    expect([...resources.values()].map(resource => resource.calls)).toEqual([1, 1])
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000) })
+    expect([...resources.values()].map(resource => resource.calls)).toEqual([1, 1])
+    await act(async () => { view.rerender(<FormationsCockpit active={false} />) })
+    expect([...resources.values()].map(resource => resource.live)).toEqual([0, 0])
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect([...resources.values()].map(resource => resource.calls)).toEqual([1, 1])
+    await act(async () => { view.rerender(<FormationsCockpit active />) })
+    expect([...resources.values()].map(resource => resource.calls)).toEqual([2, 2])
+    expect([...resources.values()].map(resource => resource.max)).toEqual([1, 1])
+    await act(async () => { for (const resource of resources.values()) resource.settle[1]() })
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('Running')
+  })
+
+  it('keeps a resumed snapshot when an older poll answers afterwards, without a second events request', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('archon.activeRun.test-board', 'run_legacy')
+    const events = [{ seq: 1, type: 'node_started', nodeId: 'fmn_frame' }, { seq: 2, type: 'run_blocked', nodeId: 'fmn_frame' }]
+    const blocked = { runId: 'run_legacy', status: 'blocked', final: false, resumeAllowed: true, missionSlug: 'test-board', inputCardId: mission.id, eventCount: 2, events }
+    const resumed = { ...blocked, status: 'running', resumeAllowed: false, eventCount: 3, events: [...events, { seq: 3, type: 'run_resumed' }] }
+    const base = globalThis.fetch
+    const reply = (data: unknown) => new Response(JSON.stringify({ success: true, data }))
+    let reads = 0
+    let afterResume = false
+    let release!: () => void
+    globalThis.fetch = vi.fn((input, init) => {
+      const path = String(input)
+      if (path === '/api/runs') return Promise.resolve(reply([blocked]))
+      if (path === '/api/runs/run_legacy/resume') { afterResume = true; return Promise.resolve(reply(resumed)) }
+      if (path === '/api/runs/run_legacy') {
+        reads++
+        // Deliberately ignore AbortSignal to model a response already queued
+        // when cancellation and the command's newer snapshot arrive.
+        if (reads === 2) return new Promise<Response>(resolve => { release = () => resolve(reply(blocked)) })
+        return Promise.resolve(reply(afterResume ? resumed : blocked))
+      }
+      return base(input, init)
+    })
+    await act(async () => { render(<FormationsCockpit />) })
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('Blocked')
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
+    expect(reads).toBe(2)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Resume run' })) })
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('Running')
+    await act(async () => { release() })
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('Running')
+    expect(screen.getByTestId('formation-node-fmn_frame')).toHaveClass('running')
+    expect(screen.queryByTestId('run-chip-fmn_frame')).toBeNull()
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).endsWith('/events'))).toBe(false)
+  })
+
+  it('ignores a command response after selecting another run while loading that run immediately', async () => {
+    vi.useFakeTimers()
+    const first = { runId: 'run_first', status: 'blocked', final: false, resumeAllowed: true, missionSlug: 'test-board', inputCardId: mission.id, eventCount: 2 }
+    const second = { ...first, runId: 'run_second', status: 'succeeded', final: true, resumeAllowed: false, startedBy: 'agent:second', eventCount: 1 }
+    installRunsMock([first, second], { run_first: [{ runId: first.runId, seq: 2, type: 'run_blocked', nodeId: 'fmn_frame' }], run_second: [{ runId: second.runId, seq: 1, type: 'node_output', nodeId: 'fmn_judge' }] })
+    const base = globalThis.fetch
+    let release!: () => void
+    globalThis.fetch = vi.fn((input, init) => String(input) === '/api/runs/run_first/resume'
+      ? new Promise<Response>(resolve => { release = () => resolve(new Response(JSON.stringify({ success: true, data: { ...first, status: 'running', eventCount: 3, events: [{ seq: 3, type: 'run_resumed' }] } }))) })
+      : base(input, init))
+    await act(async () => { render(<FormationsCockpit />) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Resume run' })) })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-run-run_second')) })
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('agent:second')
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('Succeeded')
+    await act(async () => { release() })
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('agent:second')
+    expect(screen.getByTestId('run-banner')).toHaveTextContent('Succeeded')
+    expect(screen.getByTestId('inspect-node-fmn_judge')).toBeInTheDocument()
+    expect(screen.queryByTestId('inspect-node-fmn_frame')).toBeNull()
+  })
+
 })

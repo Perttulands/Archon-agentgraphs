@@ -33,7 +33,6 @@ import {
   fetchBoardWithLayout,
   fetchCodeGateProfiles,
   fetchRunEscalations,
-  fetchRunEvents,
   fetchAllRuns,
   fetchRunStatus,
   missingLayoutForBoard,
@@ -321,6 +320,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [linkError, setLinkError] = useState('')
   const activeRunRef = useRef<RunStatusProjection | null>(null)
   activeRunRef.current = activeRun
+  const [runCommands, setRunCommands] = useState<Array<{ runId: string }>>([])
+  const runRefreshController = useRef<AbortController | null>(null)
   const [runEvents, setRunEvents] = useState<RunEvent[]>([])
   const [escalations, setEscalations] = useState<OpenEscalation[]>([])
   const [inspectedNodeId, setInspectedNodeId] = useState<string | null>(null)
@@ -685,15 +686,16 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (!active) return
     let cancelled = false
     let timer = 0
+    const controller = new AbortController()
     const poll = async () => {
       try {
-        const runs = await fetchAllRuns()
+        const runs = await fetchAllRuns(controller.signal)
         if (!cancelled) setAllRuns(runs)
       } catch { /* retain the last index during transient failures */ }
       finally { if (!cancelled) timer = window.setTimeout(poll, 5000) }
     }
     void poll()
-    return () => { cancelled = true; window.clearTimeout(timer) }
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(timer) }
   }, [active])
 
   const pinnedRunId = pinnedRun.slug === selectedSlug ? pinnedRun.runId : ''
@@ -701,6 +703,27 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     ? chooseBoardRun({ slug: selectedSlug, runs: boardRuns, pinnedRunId, current: activeRun })
       || window.localStorage.getItem(activeRunStorageKey(selectedSlug)) || ''
     : ''
+
+  // Every async response belongs to one selection, even if the operator leaves
+  // and later returns to the same run. Commands and polls adopt the same snapshot.
+  const runSelection = useRef({ runId: selectedRunId, slug: selectedSlug })
+  if (runSelection.current.runId !== selectedRunId || runSelection.current.slug !== selectedSlug) {
+    runSelection.current = { runId: selectedRunId, slug: selectedSlug }
+  }
+  const adoptRunSnapshot = useCallback((status: RunStatusProjection, owner: typeof runSelection.current) => {
+    if (runSelection.current !== owner || !acceptsRunSnapshot(activeRunRef.current, status, owner.runId)) return false
+    activeRunRef.current = status
+    setActiveRun(status)
+    setRunEvents(status.events || [])
+    return true
+  }, [])
+  const beginRunCommand = useCallback((pauseAll = false) => {
+    // Pause the selected stream until the command's own status request settles.
+    runRefreshController.current?.abort()
+    const command = { runId: pauseAll ? '' : runSelection.current.runId }
+    setRunCommands(current => [...current, command])
+    return () => { setRunCommands(current => current.filter(item => item !== command)) }
+  }, [])
 
   // A mission created again under a deleted one's slug does not take its runs
   // (archon-n7u.15): a linked or remembered run of the earlier mission is put away.
@@ -728,34 +751,34 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (search !== window.location.search) window.history.replaceState(window.history.state, '', `${window.location.pathname}${search}${window.location.hash}`)
   }, [pinnedRun, selectedSlug])
 
+  const selectedRunCommandPending = runCommands.some(command => !command.runId || command.runId === selectedRunId)
   // A selected run has one serial detail stream. Its response already contains events.
   useEffect(() => {
-    if (!active || !selectedRunId) return
+    if (!active || !selectedRunId || selectedRunCommandPending) return
+    const owner = runSelection.current
     let cancelled = false
     let timer = 0
+    const controller = new AbortController()
+    runRefreshController.current = controller
     const tick = async () => {
       let final = false
       try {
-        const status = runStatusFromResponse(await fetchRunStatus(selectedRunId))
+        const status = runStatusFromResponse(await fetchRunStatus(selectedRunId, controller.signal))
         if (cancelled) return
         if (status.missionSlug && status.missionSlug !== selectedSlug) {
           setPinnedRun({ slug: '', runId: '' })
           setLinkError(`Run ${selectedRunId} belongs to mission "${status.missionSlug}", not "${selectedSlug}"`)
           return
         }
-        const previous = activeRunRef.current
-        if (!acceptsRunSnapshot(previous, status, selectedRunId)) return
-        activeRunRef.current = status
-        setActiveRun(status)
-        setRunEvents(status.events || [])
+        if (!adoptRunSnapshot(status, owner)) return
         final = status.final
         try {
-          const open = await fetchRunEscalations(selectedRunId)
+          const open = await fetchRunEscalations(selectedRunId, controller.signal)
           if (!cancelled) setEscalations(open)
         } catch { /* detail remains usable if escalation refresh fails */ }
         if (final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
       } catch (err) {
-        if (cancelled) return
+        if (cancelled || controller.signal.aborted) return
         if (selectedRunId === pinnedRunId) {
           setPinnedRun({ slug: '', runId: '' })
           setLinkError(`Run ${selectedRunId} from the link was not found`)
@@ -765,8 +788,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       }
     }
     void tick()
-    return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [active, selectedRunId, selectedSlug, pinnedRunId])
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(timer) }
+  }, [active, selectedRunId, selectedSlug, pinnedRunId, selectedRunCommandPending, adoptRunSnapshot])
 
   // ----- positioned nodes -----
   const layoutByNode = useMemo(() => {
@@ -1778,24 +1801,28 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (historicalRef.current) throw new Error('Choose Edit current mission before starting a new run.')
     const current = boardRef.current
     if (!current) return
-    const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
-      .catch(err => {
-        if (editOwnerRef.current === owner && err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
-        throw err
-      })
-    if (editOwnerRef.current !== owner) return
-    setAdmissionFindings([])
-    const status = { ...result.status, runId: result.status.runId || result.runId }
-    const events = await fetchRunEvents(status.runId)
-    if (editOwnerRef.current !== owner) return
-    setRunEvents(events)
-    setActiveRun(status)
-    setEscalations([])
-    setPinnedRun({ slug: current.slug, runId: status.runId })
-    if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
-    else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
-    setError('')
-  }, [captureEditOwner, assertEditOwner])
+    const runOwner = runSelection.current
+    const finish = beginRunCommand(true)
+    try {
+      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
+        .catch(err => {
+          if (editOwnerRef.current === owner && err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+          throw err
+        })
+      if (editOwnerRef.current !== owner || runSelection.current !== runOwner) return
+      setAdmissionFindings([])
+      const status = { ...result.status, runId: result.status.runId || result.runId }
+      activeRunRef.current = status
+      setRunEvents(status.events || [])
+      setActiveRun(status)
+      setEscalations([])
+      setPinnedRun({ slug: current.slug, runId: status.runId })
+      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+      setError('')
+    } finally { finish() }
+  }, [captureEditOwner, assertEditOwner, beginRunCommand])
+
 
   // A human channel changed in Start mission is saved first, with undo, so the run's frozen board carries it.
   const startMissionRun = useCallback(async (mission: MissionNode, inputs: RunInputs, channel: HumanChannel) => {
@@ -1812,49 +1839,51 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (historicalRef.current) throw new Error('Choose Edit current mission before running a formation.')
     const current = boardRef.current
     if (!current) return
-    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
-      .catch(err => {
-        if (editOwnerRef.current === owner && err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
-        throw err
-      })
-    if (editOwnerRef.current !== owner) return
-    setAdmissionFindings([])
-    const status = { ...result.status, runId: result.status.runId || result.runId }
-    const events = await fetchRunEvents(status.runId)
-    if (editOwnerRef.current !== owner) return
-    setRunEvents(events)
-    setActiveRun(status)
-    setEscalations([])
-    setPinnedRun({ slug: current.slug, runId: status.runId })
-    if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
-    else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
-    setError('')
-  }, [captureEditOwner, assertEditOwner])
+    const runOwner = runSelection.current
+    const finish = beginRunCommand(true)
+    try {
+      const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
+        .catch(err => {
+          if (editOwnerRef.current === owner && err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+          throw err
+        })
+      if (editOwnerRef.current !== owner || runSelection.current !== runOwner) return
+      setAdmissionFindings([])
+      const status = { ...result.status, runId: result.status.runId || result.runId }
+      activeRunRef.current = status
+      setRunEvents(status.events || [])
+      setActiveRun(status)
+      setEscalations([])
+      setPinnedRun({ slug: current.slug, runId: status.runId })
+      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+      setError('')
+    } finally { finish() }
+  }, [captureEditOwner, assertEditOwner, beginRunCommand])
 
-  const refreshRunEvents = useCallback(async (runId: string) => {
-    const events = await fetchRunEvents(runId)
-    setRunEvents(events)
-  }, [])
 
   // Stop is confirmed in the run bar first, which passes the operator's reason (archon-n7u.8).
   const abortActiveRun = useCallback(async (reason: string) => {
     if (!activeRun?.runId || activeRun.final) return false
+    const owner = runSelection.current
+    const finish = beginRunCommand()
     try {
       const status = runStatusFromResponse(await abortRunRequest(activeRun.runId, { reason, requestedBy: 'human:ui' }))
-      setActiveRun(status)
-      await refreshRunEvents(activeRun.runId)
+      if (!adoptRunSnapshot(status, owner)) return true
       if (status.final && selectedSlug) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
       setError('')
       return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to abort run')
+      if (runSelection.current === owner) setError(err instanceof Error ? err.message : 'Failed to abort run')
       return false
-    }
-  }, [activeRun, refreshRunEvents, selectedSlug])
+    } finally { finish() }
+  }, [activeRun, adoptRunSnapshot, beginRunCommand, selectedSlug])
 
   // At a judge verdict Archon rejected, a resume asks the judge again, and takeFail fails the gate instead (archon-lrbd).
   const resumeActiveRun = useCallback(async (takeFail = false) => {
     if (!activeRun?.runId || activeRun.final || !activeRun.resumeAllowed) return
+    const owner = runSelection.current
+    const finish = beginRunCommand()
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
         actor: 'human:ui',
@@ -1862,17 +1891,16 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         reason: takeFail ? 'rejected judge verdict taken as a fail in the cockpit' : 'operator resume',
         ...(takeFail ? { takeFail: true } : {}),
       }))
-      setActiveRun(status)
-      await refreshRunEvents(activeRun.runId)
+      if (!adoptRunSnapshot(status, owner)) return
       if (selectedSlug) {
         if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
         else window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
       }
       setError('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resume run')
-    }
-  }, [activeRun, refreshRunEvents, selectedSlug])
+      if (runSelection.current === owner) setError(err instanceof Error ? err.message : 'Failed to resume run')
+    } finally { finish() }
+  }, [activeRun, adoptRunSnapshot, beginRunCommand, selectedSlug])
 
   // A run stopped at a spent Limit card resumes only with a grant (archon-o7p.8):
   // one more round, or the card's time again, as the run bar's button says.
@@ -1881,37 +1909,39 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const grantActiveRun = useCallback(async (gives: string | null) => {
     if (!activeRun?.runId || activeRun.final || !activeRun.resumePolicy) return
     if (gives === null && activeRun.resumePolicy !== 'grant_or_pick') return
+    const owner = runSelection.current
+    const finish = beginRunCommand()
     try {
       const status = runStatusFromResponse(await resumeRunRequest(activeRun.runId, {
         actor: 'agent:ui',
         mode: 'reattach',
         ...(gives === null ? { reason: 'the best attempt picked in the cockpit', pickBest: true } : { reason: `${gives} granted in the cockpit`, grant: true }),
       }))
-      setActiveRun(status)
-      await refreshRunEvents(activeRun.runId)
+      if (!adoptRunSnapshot(status, owner)) return
       if (selectedSlug) {
         if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
         else window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
       }
       setError('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : gives === null ? 'Failed to pick the best attempt' : `Failed to grant ${gives}`)
-    }
-  }, [activeRun, refreshRunEvents, selectedSlug])
+      if (runSelection.current === owner) setError(err instanceof Error ? err.message : gives === null ? 'Failed to pick the best attempt' : `Failed to grant ${gives}`)
+    } finally { finish() }
+  }, [activeRun, adoptRunSnapshot, beginRunCommand, selectedSlug])
 
   // Records the operator's answer to a waiting human gate, a verdict or a pick,
   // and resolves to the failure's words, or nothing once it is recorded.
   const settleHumanGate = useCallback(async (requestedSeq: number, record: (runId: string) => Promise<RunStatusProjection | RunStatusResult>, failure: string) => {
     if (!activeRun?.runId || activeRun.final) return 'This run is no longer waiting.'
     const submittedKey = `${activeRun.runId}:${requestedSeq}`
+    const owner = runSelection.current
+    const finish = beginRunCommand()
     let recorded = false
     setRecordingAnswer(true)
     setSubmittedHere(current => new Set([...current, submittedKey]))
     try {
       const status = runStatusFromResponse(await record(activeRun.runId))
       recorded = true
-      setActiveRun(status)
-      await refreshRunEvents(activeRun.runId)
+      if (!adoptRunSnapshot(status, owner)) return ''
       if (selectedSlug) {
         if (status.final) window.localStorage.removeItem(activeRunStorageKey(selectedSlug))
         else window.localStorage.setItem(activeRunStorageKey(selectedSlug), status.runId)
@@ -1925,10 +1955,10 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         return remaining
       })
       const message = err instanceof Error ? err.message : failure
-      setError(message)
+      if (runSelection.current === owner) setError(message)
       return message
-    } finally { setRecordingAnswer(false) }
-  }, [activeRun, refreshRunEvents, selectedSlug])
+    } finally { finish(); setRecordingAnswer(false) }
+  }, [activeRun, adoptRunSnapshot, beginRunCommand, selectedSlug])
 
   // The response is the verdict reason: approve routes it with the gate input,
   // send back returns it as feedback.
