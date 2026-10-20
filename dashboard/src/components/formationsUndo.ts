@@ -40,10 +40,12 @@ export interface UndoRunner {
   idle(): Promise<void>
   /** A frozen run may be entered while waiting for writes; leave both histories intact. */
   canEdit?(): boolean
-  apply(step: UndoStep): Promise<void | UndoStep[]>
+  /** Identity of the editable view; changing away and back invalidates an operation. */
+  scope?(): unknown
+  apply(step: UndoStep, board: string): Promise<void | UndoStep[]>
   /** A stale board revision or ETag: the step was not applied and may succeed after a reload. */
   isConflict(err: unknown): boolean
-  reload(): Promise<void>
+  reload(board: string): Promise<void>
 }
 
 /**
@@ -57,6 +59,7 @@ export class UndoHistory {
   private entries: CockpitUndo[] = []
   private queue: Promise<unknown> = Promise.resolve()
   private currentBoard = ''
+  private generation = 0
   private redos: CockpitUndo[] = []
   private listeners = new Set<() => void>()
   private version = 0
@@ -69,6 +72,7 @@ export class UndoHistory {
   /** Switching boards empties the history: undo belongs to the board it was recorded on. */
   setBoard(slug: string) {
     if (slug === this.currentBoard) return
+    this.generation++
     this.currentBoard = slug
     this.entries = []
     this.redos = []
@@ -81,6 +85,7 @@ export class UndoHistory {
   }
 
   clear() {
+    this.generation++
     this.entries = []
     this.redos = []
     this.emit()
@@ -102,11 +107,16 @@ export class UndoHistory {
       let entry = source.pop()
       while (entry && (entry.board !== this.currentBoard || entry.board !== runner.board())) entry = source.pop()
       if (!entry) return { status: 'empty' }
+      const generation = this.generation
+      const scope = runner.scope?.()
       let index = 0
       let reloaded = false
       while (index < entry.steps.length) {
         try {
-          const reverse = await runner.apply(entry.steps[index])
+          if (generation !== this.generation || entry.board !== runner.board() || scope !== runner.scope?.() || runner.canEdit?.() === false) {
+            throw new Error('The mission view changed before the remaining edits could be applied.')
+          }
+          const reverse = await runner.apply(entry.steps[index], entry.board)
           if (reverse) inverse.unshift(...reverse)
           index++
         } catch (err) {
@@ -115,7 +125,7 @@ export class UndoHistory {
           if (runner.isConflict(err)) {
             if (!reloaded) {
               reloaded = true
-              await runner.reload().catch(() => undefined)
+              await runner.reload(entry.board).catch(() => undefined)
               continue
             }
             source.push({ ...entry, steps: remaining })
@@ -124,7 +134,7 @@ export class UndoHistory {
           return { status: 'failed', entry, message: err instanceof Error ? err.message : String(err), done, remaining }
         }
       }
-      if (inverse.length && entry.board === this.currentBoard && entry.board === runner.board()) destination.push({ ...entry, steps: inverse })
+      if (inverse.length && generation === this.generation && scope === runner.scope?.() && entry.board === this.currentBoard && entry.board === runner.board()) destination.push({ ...entry, steps: inverse })
       return { status: redo ? 'redone' : 'undone', entry }
     })
     this.queue = run.catch(() => undefined)

@@ -145,6 +145,39 @@ describe('UndoHistory', () => {
     expect(applied).toEqual([boardStep({ newest: 1 })])
   })
 
+  it.each([false, true])('stops remaining undo steps after a view switch (return=%s)', async returnToOriginal => {
+    const history = historyOn('a')
+    history.record({ board: 'a', label: 'compound', steps: [boardStep({ first: 1 }), boardStep({ second: 2 })] })
+    let release!: () => void
+    let entered!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const started = new Promise<void>(resolve => { entered = resolve })
+    let selected = 'a'
+    const applied: string[] = []
+    const pending = history.undo(runner(async () => { applied.push(selected); entered(); await held }, { board: () => selected }).value)
+    await started
+    selected = 'b'
+    history.setBoard('b')
+    if (returnToOriginal) { selected = 'a'; history.setBoard('a') }
+    release()
+    expect(await pending).toMatchObject({ status: 'failed', done: [boardStep({ first: 1 })], remaining: [boardStep({ second: 2 })] })
+    expect(applied).toEqual(['a'])
+    expect(history.redoSize).toBe(0)
+  })
+
+  it('does not retry a conflict after the mission changes during reload', async () => {
+    const history = historyOn('a')
+    history.record({ board: 'a', label: 'edit', steps: [boardStep({ edit: 1 })] })
+    let selected = 'a'
+    let calls = 0
+    const result = await history.undo(runner(async () => { calls++; throw new Conflict() }, {
+      board: () => selected,
+      reload: async () => { selected = 'b'; history.setBoard('b') },
+    }).value)
+    expect(result).toMatchObject({ status: 'failed', done: [], remaining: [boardStep({ edit: 1 })] })
+    expect(calls).toBe(1)
+  })
+
   it('combines one gesture into one entry that undoes the last edit first', () => {
     const combined = combineUndo('the judge', { label: '', steps: [boardStep({ first: true })] }, null, { label: '', steps: [boardStep({ second: 1 }), boardStep({ second: 2 })] })
     expect(combined).toEqual({ label: 'the judge', steps: [boardStep({ second: 1 }), boardStep({ second: 2 }), boardStep({ first: true })] })

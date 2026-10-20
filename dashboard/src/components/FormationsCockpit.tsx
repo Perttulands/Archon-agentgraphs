@@ -237,6 +237,7 @@ type WireDrag =
   | { kind: 'reconnect-source'; connection: BoardConnection }
   | { kind: 'judge'; gate: GateNode; moved: boolean; startX: number; startY: number }
 type LaneDrag = { connectionId: string; previousLane: string; moved: boolean }
+type EditOwner = { slug: string; missionId: string; historical: boolean }
 type MissionEditorState = { initial: MissionDraft; x: number; y: number }
 type GateEditorState = {
   initial: GateDraft
@@ -391,9 +392,30 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [laneDraft, setLaneDraft] = useState<{ connectionId: string; y: number } | null>(null)
 
   const boardRef = useRef<BoardDocument | null>(null)
+  // One identity per visit, including A -> B -> A while an old write is pending.
+  const editOwnerRef = useRef<EditOwner>({ slug: selectedSlug, missionId: currentBoard?.id || '', historical })
+  if (editOwnerRef.current.slug !== selectedSlug || editOwnerRef.current.missionId !== (currentBoard?.id || '') || editOwnerRef.current.historical !== historical) {
+    editOwnerRef.current = { slug: selectedSlug, missionId: currentBoard?.id || '', historical }
+  }
+  const captureEditOwner = useCallback(() => {
+    const owner = editOwnerRef.current
+    if (owner.historical || !owner.slug || boardRef.current?.slug !== owner.slug || boardRef.current.id !== owner.missionId) {
+      throw new Error('Choose an editable current mission before changing it.')
+    }
+    return owner
+  }, [])
+  const assertEditOwner = useCallback((owner: EditOwner) => {
+    if (owner !== editOwnerRef.current || owner.historical || boardRef.current?.id !== owner.missionId || boardRef.current?.slug !== owner.slug) {
+      throw new Error('The mission view changed before the remaining edits could be applied.')
+    }
+  }, [])
   const layoutRef = useRef<LayoutDocument | null>(null)
   const notesRef = useRef<BoardNotesDocument | null>(null)
   const noteDraftsRef = useRef<Record<string, string>>({})
+  const noteDraftVersionsRef = useRef<Record<string, number>>({})
+  const noteEditingRef = useRef(noteEditing)
+  noteEditingRef.current = noteEditing
+  const noteSaveRequestRef = useRef<object | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current), () => cockpitScene(viewportRef.current || document))
   const { focus: focusWindow, reflow: reflowWindows } = windows
@@ -558,6 +580,9 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   useEffect(() => {
     notesRef.current = null
+    noteDraftVersionsRef.current = {}
+    noteSaveRequestRef.current = null
+    setNoteSaving('')
     noteDraftsRef.current = {}
     setNotes(null)
     setNoteWindows([])
@@ -949,14 +974,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   // ----- mutations -----
   // Writes one board edit and adopts the result; a failure throws.
-  const applyBoardPatch = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null }> => {
+  const applyBoardPatch = useCallback(async (patch: Record<string, unknown>, owner = captureEditOwner()): Promise<{ board: BoardDocument; layout: LayoutDocument | null }> => {
+    assertEditOwner(owner)
     if (historicalRef.current) throw new Error('This run shows a frozen mission. Choose Edit current mission first.')
     const current = boardRef.current
     if (!current) throw new Error('No mission is open')
     const result = await writes.track(patchBoardDocument(current.slug, current.etag, current.rev, patch))
-    lastWriteBoardRef.current = current.slug
+    lastWriteBoardRef.current = owner === editOwnerRef.current ? current.slug : ''
     // A write that finishes after the operator switched boards must not replace the new board.
-    if (boardRef.current?.slug !== current.slug) return { board: result.board, layout: result.layout ?? null }
+    if (editOwnerRef.current !== owner) return { board: result.board, layout: result.layout ?? null }
     boardRef.current = result.board
     setBoard(result.board)
     if ('title' in patch) setBoards(items => items.map(item => item.id === result.board.id ? {
@@ -967,11 +993,11 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       setLayout(result.layout)
     }
     return { board: result.board, layout: result.layout ?? null }
-  }, [writes])
+  }, [writes, captureEditOwner, assertEditOwner])
 
-  const patchBoard = useCallback(async (patch: Record<string, unknown>): Promise<{ board: BoardDocument; layout: LayoutDocument | null } | null> => {
+  const patchBoard = useCallback(async (patch: Record<string, unknown>, owner = editOwnerRef.current): Promise<{ board: BoardDocument; layout: LayoutDocument | null } | null> => {
     try {
-      const result = await applyBoardPatch(patch)
+      const result = await applyBoardPatch(patch, owner)
       setError('')
       return result
     } catch (err) {
@@ -1102,18 +1128,19 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [blockBoardExitForDirtyNotes, boardDialog, closeBoardDialog])
 
   // Writes one layout edit and adopts the result; a failure throws.
-  const applyLayoutPatch = useCallback(async (patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }) => {
+  const applyLayoutPatch = useCallback(async (patch: { nodes?: LayoutNode[]; edges?: LayoutEdge[]; arrange?: boolean }, owner = captureEditOwner()) => {
+    assertEditOwner(owner)
     if (historicalRef.current) throw new Error('Choose Edit current mission before arranging it.')
     const currentBoard = boardRef.current
     const currentLayout = layoutRef.current
     if (!currentBoard || !currentLayout) throw new Error('No mission layout is open')
     const next = await writes.track(patchBoardLayout(currentBoard.slug, currentLayout.etag, patch))
-    lastWriteBoardRef.current = currentBoard.slug
-    if (boardRef.current?.slug !== currentBoard.slug) return next
+    lastWriteBoardRef.current = owner === editOwnerRef.current ? currentBoard.slug : ''
+    if (editOwnerRef.current !== owner) return next
     layoutRef.current = next
     setLayout(next)
     return next
-  }, [writes])
+  }, [writes, captureEditOwner, assertEditOwner])
 
   const patchLayoutEdge = useCallback(async (edgeId: string, lane: string): Promise<boolean> => {
     try {
@@ -1180,28 +1207,31 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // revision (another editor, or the poll not yet caught up) reloads the board
   // and retries once; only an undo the board truly refuses is dropped.
   const undoRunner = useMemo(() => ({
-    board: () => boardRef.current?.slug || '',
+    board: () => editOwnerRef.current.slug,
+    scope: () => editOwnerRef.current,
     idle: () => writes.idle(),
     canEdit: () => !historicalRef.current,
-    apply: async (step: UndoStep) => {
+    apply: async (step: UndoStep, expectedBoard: string) => {
+      const owner = captureEditOwner()
+      if (owner.slug !== expectedBoard) throw new Error('The mission changed.')
       if (!boardRef.current || !layoutRef.current) throw new Error('No mission open.')
       const inverse = inverseUndoStep(boardRef.current, layoutRef.current, step)
-      if ('board' in step) await applyBoardPatch(step.board)
-      else await applyLayoutPatch(step.layout)
+      if ('board' in step) await applyBoardPatch(step.board, owner)
+      else await applyLayoutPatch(step.layout, owner)
       return inverse
     },
     isConflict: (err: unknown) => err instanceof ApiRequestError && err.code === 'CONFLICT',
-    reload: async () => {
-      const slug = boardRef.current?.slug
-      if (!slug) return
+    reload: async (slug: string) => {
+      const owner = captureEditOwner()
+      if (owner.slug !== slug) return
       const next = await fetchBoardWithLayout(slug)
-      if (boardRef.current?.slug !== slug) return
+      if (editOwnerRef.current !== owner) return
       boardRef.current = next.board
       layoutRef.current = next.layout
       setBoard(next.board)
       setLayout(next.layout)
     },
-  }), [applyBoardPatch, applyLayoutPatch, writes])
+  }), [applyBoardPatch, applyLayoutPatch, writes, captureEditOwner])
 
   const performUndo = useCallback(async () => {
     if (historicalRef.current) return
@@ -1396,6 +1426,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   // A move writes the target, then the source; one undo puts both back.
   const moveStaffingOp = useCallback(async (from: SlotRef, fromNext: Staffing | null, to: SlotRef, toNext: Staffing | null): Promise<string | null> => {
+    const owner = captureEditOwner()
     const source = slotOf(from)
     const target = slotOf(to)
     if (!source || !target) return 'That slot is no longer in this mission.'
@@ -1404,21 +1435,21 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const restoreTarget = boardStep({ assignSlot: { formationId: to.formationId, slotId: to.slotId, ...slotSettings(staffingOf(target.slot)) } }, `the staffing of ${quoted(to.label, 'a slot')}`)
     const restoreSource = boardStep({ assignSlot: { formationId: from.formationId, slotId: from.slotId, ...slotSettings(staffingOf(source.slot)) } }, `the staffing of ${quoted(from.label, 'a slot')}`)
     try {
-      await applyBoardPatch({ assignSlot: { formationId: to.formationId, slotId: to.slotId, ...slotSettings(toNext) } })
+      await applyBoardPatch({ assignSlot: { formationId: to.formationId, slotId: to.slotId, ...slotSettings(toNext) } }, owner)
     } catch (err) {
       return err instanceof Error ? err.message : 'The staffing was not moved.'
     }
     try {
-      await applyBoardPatch({ assignSlot: { formationId: from.formationId, slotId: from.slotId, ...slotSettings(fromNext) } })
+      await applyBoardPatch({ assignSlot: { formationId: from.formationId, slotId: from.slotId, ...slotSettings(fromNext) } }, owner)
     } catch (err) {
       // The target changed, so that much is undoable alone.
-      recordUndo(`the staffing of ${quoted(to.label, 'a slot')}`, restoreTarget)
+      if (editOwnerRef.current === owner) recordUndo(`the staffing of ${quoted(to.label, 'a slot')}`, restoreTarget)
       return err instanceof Error ? err.message : 'The staffing was not moved.'
     }
     setError('')
-    recordUndo(`the move to ${quoted(to.label, 'a slot')}`, restoreTarget, restoreSource)
+    if (editOwnerRef.current === owner) recordUndo(`the move to ${quoted(to.label, 'a slot')}`, restoreTarget, restoreSource)
     return null
-  }, [applyBoardPatch, recordUndo, slotOf])
+  }, [applyBoardPatch, recordUndo, slotOf, captureEditOwner])
 
   const staffingHostRef = useRef<StaffingHost>({ catalog: { harnesses: [], roles: [], policy: [] }, save: saveStaffing, move: moveStaffingOp })
 
@@ -1455,7 +1486,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [patchBoard, recordUndo])
 
   // `record: false` leaves the undo entry to a caller that combines this with more edits.
-  const createFormationAt = useCallback(async (type: FormationType, title: string, x: number, y: number, record = true): Promise<FormationNode | null> => {
+  const createFormationAt = useCallback(async (type: FormationType, title: string, x: number, y: number, record = true, owner = editOwnerRef.current): Promise<FormationNode | null> => {
     const placement = placementForNewNode(x, y)
     let resolve: (id: string) => void = () => undefined
     let tempId = ''
@@ -1474,7 +1505,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       } }))
     }
     const before = boardRef.current
-    const result = await patchBoard({ createFormation: { type, title, x: placement.x, y: placement.y } })
+    const result = await patchBoard({ createFormation: { type, title, x: placement.x, y: placement.y } }, owner)
     if (!before || !result) {
       resolve('')
       if (tempId) setCreationWindow(current => current?.key === tempId ? null : current)
@@ -1697,9 +1728,9 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     ]
   }, [judgeChainOf])
 
-  const attachJudge = useCallback(async (gate: GateNode, chain: string[]): Promise<UndoDraft | null> => {
+  const attachJudge = useCallback(async (gate: GateNode, chain: string[], owner = editOwnerRef.current): Promise<UndoDraft | null> => {
     const steps = gateRestoreSteps(gate)
-    if (!await patchBoard({ setGateJudge: { gateId: gate.id, chain } })) return null
+    if (!await patchBoard({ setGateJudge: { gateId: gate.id, chain } }, owner)) return null
     return { label: `the judge of ${quoted(gate.title, 'the gate')}`, steps }
   }, [gateRestoreSteps, patchBoard])
 
@@ -1721,11 +1752,12 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   /** Drop on empty canvas / picker "new judge": create the formation, then wire it as judge; one undo removes both. */
   const createJudgeFor = useCallback(async (gate: GateNode, type: FormationType, title: string, x: number, y: number) => {
-    const created = await createFormationAt(type, title, x, y, false)
+    const owner = editOwnerRef.current
+    const created = await createFormationAt(type, title, x, y, false, owner)
     if (!created) return
     const removeJudge: UndoDraft = { label: '', steps: [boardStep({ deleteFormation: { id: created.id } }, 'the new judge formation')] }
-    const attached = await attachJudge(gate, [created.id])
-    recordEntry(combineUndo(`the new judge ${quoted(created.title, '')} for ${quoted(gate.title, 'the gate')}`, removeJudge, attached))
+    const attached = await attachJudge(gate, [created.id], owner)
+    if (editOwnerRef.current === owner) recordEntry(combineUndo(`the new judge ${quoted(created.title, '')} for ${quoted(gate.title, 'the gate')}`, removeJudge, attached))
   }, [attachJudge, createFormationAt, recordEntry])
 
   // Drafts save: missing code fields or a missing judge chain become run findings.
@@ -1765,12 +1797,14 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [judgeChainOf, applyBoardPatch, recordUndo])
 
   const rewireSource = useCallback(async (connection: BoardConnection, newFrom: string) => {
+    const owner = editOwnerRef.current
     if (!newFrom || newFrom === connection.from || newFrom.split(':')[0] === connection.to.split(':')[0]) return
-    const removed = await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } })
+    const removed = await patchBoard({ unwireConnection: { from: connection.from, to: connection.to } }, owner)
     if (!removed) return
     const restoreOld = boardStep({ wireConnection: { id: connection.id, from: connection.from, to: connection.to } }, 'the old wire')
-    const added = await patchBoard({ wireConnection: { id: connection.id, from: newFrom, to: connection.to } })
+    const added = await patchBoard({ wireConnection: { id: connection.id, from: newFrom, to: connection.to } }, owner)
     // If the new wire fails, the removal still changed the board, so it is undoable alone.
+    if (editOwnerRef.current !== owner) return
     if (!added) recordUndo('the connection removal', restoreOld)
     else recordUndo('the reconnection', boardStep({ unwireConnection: { from: newFrom, to: connection.to } }, 'the new wire'), restoreOld)
   }, [patchBoard, recordUndo])
@@ -2458,9 +2492,11 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
             if (gate && isFormation) {
               // One gesture, one undo entry: the wire removal and the judge attach run in turn.
               const moved = active.kind === 'reconnect-target' ? active.connection : null
+              const owner = editOwnerRef.current
               void (async () => {
-                if (moved && !await patchBoard({ unwireConnection: { from: moved.from, to: moved.to } })) return
-                const attached = await attachJudge(gate, [fromNodeId])
+                if (moved && !await patchBoard({ unwireConnection: { from: moved.from, to: moved.to } }, owner)) return
+                const attached = await attachJudge(gate, [fromNodeId], owner)
+                if (editOwnerRef.current !== owner) return
                 const unwired: UndoDraft | null = moved ? { label: '', steps: [boardStep({ wireConnection: { id: moved.id, from: moved.from, to: moved.to } }, 'the moved wire')] } : null
                 recordEntry(combineUndo(`the judge of ${quoted(gate.title, 'the gate')}`, unwired, attached))
               })()
@@ -2896,7 +2932,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   // A write that races another author reloads the notes and tries once more:
   // appends and entry-addressed edits are safe to repeat on the new revision.
-  const submitNotePatch = useCallback(async (patch: NotePatch) => {
+  const submitNotePatch = useCallback(async (patch: NotePatch, owner: EditOwner) => {
+    assertEditOwner(owner)
     if (historicalRef.current) throw new Error('Choose Edit current mission before changing its notes.')
     const currentBoard = boardRef.current
     const currentNotes = notesRef.current
@@ -2906,13 +2943,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     } catch (err) {
       if (!(err instanceof ApiRequestError && err.status === 409)) throw err
       const fresh = await fetchBoardNotes(currentBoard.slug)
+      assertEditOwner(owner)
       notesRef.current = fresh
       setNotes(fresh)
       return patchBoardNote(currentBoard.slug, fresh.etag, patch)
     }
-  }, [])
+  }, [assertEditOwner])
 
   const setNoteDraft = useCallback((target: string, text: string) => {
+    noteDraftVersionsRef.current[target] = (noteDraftVersionsRef.current[target] || 0) + 1
     noteDraftsRef.current = { ...noteDraftsRef.current, [target]: text }
     setNoteDrafts(noteDraftsRef.current)
   }, [])
@@ -2926,20 +2965,24 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [])
 
   const runNotePatch = useCallback(async (target: string, patch: NotePatch, onSaved?: () => void) => {
+    const owner = editOwnerRef.current
+    const request = {}
+    noteSaveRequestRef.current = request
     setNoteSaving(target)
     setNoteErrors(current => ({ ...current, [target]: '' }))
     try {
-      const updated = await submitNotePatch(patch)
-      if (!updated) return
+      const updated = await submitNotePatch(patch, owner)
+      if (!updated || editOwnerRef.current !== owner) return
       notesRef.current = updated
       setNotes(updated)
       setNotesConflict(false)
       onSaved?.()
     } catch (err) {
+      if (editOwnerRef.current !== owner) return
       if (err instanceof ApiRequestError && err.status === 409) setNotesConflict(true)
       setNoteErrors(current => ({ ...current, [target]: err instanceof Error ? err.message : 'Failed to save the note' }))
     } finally {
-      setNoteSaving('')
+      if (editOwnerRef.current === owner && noteSaveRequestRef.current === request) setNoteSaving('')
     }
   }, [submitNotePatch])
 
@@ -2947,10 +2990,12 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     const text = noteDraftsRef.current[target] || ''
     if (!text.trim()) return
     const entryId = noteEditing[target]
+    const version = noteDraftVersionsRef.current[target]
     const patch: NotePatch = entryId
       ? { target, action: 'edit', entryId, text }
       : { target, action: 'append', text }
     void runNotePatch(target, patch, () => {
+      if (noteDraftVersionsRef.current[target] !== version || noteEditingRef.current[target] !== entryId) return
       setNoteDraft(target, '')
       if (entryId) stopNoteEdit(target)
     })
@@ -2967,28 +3012,35 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [setNoteDraft, stopNoteEdit])
 
   const deleteNote = useCallback((target: string, entry: NoteEntry) => {
+    const version = noteDraftVersionsRef.current[target]
     void runNotePatch(target, { target, action: 'delete', entryId: entry.id }, () => {
-      if (noteEditing[target] === entry.id) cancelNoteEdit(target)
+      if (noteEditingRef.current[target] === entry.id && noteDraftVersionsRef.current[target] === version) cancelNoteEdit(target)
     })
-  }, [cancelNoteEdit, noteEditing, runNotePatch])
+  }, [cancelNoteEdit, runNotePatch])
 
   const reloadSharedNotes = useCallback(async () => {
+    const owner = editOwnerRef.current
+    const drafts = noteDraftsRef.current
     const currentBoard = boardRef.current
     if (!currentBoard) return
     setNoteSaving(BOARD_NOTE_TARGET)
     try {
       const fresh = await fetchBoardNotes(currentBoard.slug)
+      if (editOwnerRef.current !== owner) return
       notesRef.current = fresh
       setNotes(fresh)
-      noteDraftsRef.current = {}
-      setNoteDrafts({})
-      setNoteEditing({})
+      if (noteDraftsRef.current === drafts) {
+        noteDraftsRef.current = {}
+        setNoteDrafts({})
+        setNoteEditing({})
+      }
       setNotesConflict(false)
       setNoteErrors({})
     } catch (err) {
+      if (editOwnerRef.current !== owner) return
       setNoteErrors(current => ({ ...current, [BOARD_NOTE_TARGET]: err instanceof Error ? err.message : 'Failed to reload shared notes' }))
     } finally {
-      setNoteSaving('')
+      if (editOwnerRef.current === owner) setNoteSaving('')
     }
   }, [])
 

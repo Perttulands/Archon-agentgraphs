@@ -1145,6 +1145,29 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(boardWindow).getByRole('button', { name: 'Reload shared notes (discard local draft)' })).toBeEnabled()
   })
 
+  it.each([false, true])('keeps newer note typing when a save response arrives (editing=%s)', async editing => {
+    if (editing) patches = installFetchMock({ boardNotes: { mission: [noteEntry('nte_edit', 'human:ui', 'Original text')], elements: [] } })
+    await renderCockpit()
+    const originalFetch = globalThis.fetch
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    globalThis.fetch = vi.fn(async (input, init) => {
+      const response = await originalFetch(input, init)
+      if (String(input).endsWith('/notes') && init?.method === 'PATCH') await held
+      return response
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    const note = await screen.findByRole('textbox', { name: 'Note for the mission' })
+    if (editing) fireEvent.click(within(screen.getByTestId('note-entry-nte_edit')).getByRole('button', { name: /^Edit your note/ }))
+    fireEvent.change(note, { target: { value: 'Submitted text' } })
+    fireEvent.click(screen.getByRole('button', { name: editing ? 'Save edit' : 'Add note' }))
+    await screen.findByRole('button', { name: 'Saving…' })
+    fireEvent.change(note, { target: { value: 'New unsaved text' } })
+    await act(async () => { release(); await held })
+    await waitFor(() => expect(screen.getByRole('list', { name: 'Mission note thread' })).toHaveTextContent('Submitted text'))
+    expect(note).toHaveValue('New unsaved text')
+  })
+
   it('protects unsaved notes from board switches, creation, and deletion', async () => {
     const second = { ...makeBoard(), id: 'board-2', slug: 'second-board', title: 'Second board', etag: 'board-2-etag' }
     patches = installFetchMock({ boards: [makeBoard(), second] })
@@ -3444,6 +3467,33 @@ describe('FormationsCockpit reference parity', () => {
     expect(patches[restore]?.body.updateGate).toEqual({ id: 'gate_review', title: 'Review', kinds: ['formation'], criterion: 'Review the frame', check: '', checkVersion: '', checkValue: '' })
     expect(restore).toBeLessThan(patches.findIndex(patch => patch.body.setGateJudge))
     expect(patches.findIndex(patch => patch.body.detachGateJudge)).toBeLessThan(restore)
+  })
+
+  it('does not undo the rest of a judge edit onto another mission with the same node IDs', async () => {
+    const first = makeBoard()
+    first.gates = [{ ...gate, kinds: ['formation'] }]
+    const second = { ...makeBoard(), id: 'second', slug: 'second-board', title: 'Second board', etag: 'second-etag' }
+    patches = installFetchMock({ boards: [first, second] })
+    await renderCockpit()
+    fireEvent.contextMenu(screen.getByTestId('gate-node-gate_review'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Detach judge' }))
+    await waitFor(() => expect(screen.getByTestId('gate-kinds-gate_review')).toHaveTextContent(/^human$/))
+    const originalFetch = globalThis.fetch
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    globalThis.fetch = vi.fn(async (input, init) => {
+      const response = await originalFetch(input, init)
+      if (init?.method === 'PATCH' && String(init.body).includes('updateGate')) await held
+      return response
+    })
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() => expect(patches.some(patch => patch.body.updateGate)).toBe(true))
+    pickMission('second-board')
+    await waitFor(() => expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission', 'second-board'))
+    await act(async () => { release(); await held })
+    await waitFor(() => expect(screen.getByTestId('formations-error')).toHaveTextContent('Partly undid'))
+    expect(patches.filter(patch => patch.body.setGateJudge)).toHaveLength(0)
+    expect(patches.filter(patch => patch.url.includes('second-board'))).toHaveLength(0)
   })
 
   it('deletes a mission from its context menu', async () => {
