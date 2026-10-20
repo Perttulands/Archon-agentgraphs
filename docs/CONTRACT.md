@@ -22,7 +22,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | Input | A named value each run of the mission supplies: a name, a description, a kind (`text`, `file` or `folder`) and whether it is required. Step briefs reference it as `{name}`. A mission that declares none has one implicit required text input, `brief`. |
 | Output | A named result a successful run of the mission promises: a name, a description, a kind (`text`, `file` or `folder`), whether it is required, and `from`, the one step output port it comes from. A mission that declares none promises nothing. |
 | Output port | What a step emits on one route. Its kind is `text` (the default), `file` or `folder`; a file or folder output's `ref` is the absolute path of what the step produced, and Archon keeps a copy of it as each attempt produced it. Input ports carry no kind. |
-| Attempt directory | `<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>/`, created when each attempt of a step, judges included, is dispatched. The seat writes the files it produces there; it belongs to that attempt alone and is kept with the run. |
+| Attempt directory | `<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>/`, created when each attempt of a step, judges included, is dispatched. The seat writes selected evidence there; it belongs to that attempt alone. Retention follows the run evidence lifecycle below; project deliverables and build caches belong in the project workspace. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
 | Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
 | Persona (role) | A TOML agent card with role text only: a display name, kind, summary, capabilities, status and notes. It carries no harness, model or effort; each slot that uses it states its own. Every Archon has seven built-in generic roles (`scout`, `planner`, `builder`, `judge`, `orchestrator`, `debugger`, `reviewer`); a card in the agents directory adds a role or overrides a built-in one. |
@@ -1366,8 +1366,9 @@ mode show the block/error code and message.
 
 The prompt names the attempt directory, `attempt artifact directory:
 <state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>`, which Archon
-creates before dispatch for every attempt, judges included, and tells the seat
-to write the files it produces there. It also says what each output port
+creates before dispatch for every attempt, judges included. The seat writes
+selected evidence there and keeps project deliverables, build trees and caches
+in the project workspace. The prompt discloses the ordinary capture budget. It also says what each output port
 carries. On a `file` or `folder` port, `ref` is required and is the absolute
 path of the file (any type) or directory the output is, and `text` is a one-line
 summary. A blank, relative or missing path, or one that is not a regular file
@@ -1389,9 +1390,12 @@ receives and run evidence shows, so neither a later attempt that rewrites the
 same workspace file in place nor a step handed the path can change an earlier
 attempt's output. A brief whose inputs include a kept file or folder says so:
 "Input paths are kept copies of earlier work and are read-only; write new
-versions in your own attempt directory." Deleting a run's artifacts takes
-`chmod -R u+w` first. Snapshots are always taken and live with the run's
-artifacts; a large folder output is copied in full. The copy runs after the
+versions in your own attempt directory." Retained snapshots remain independent;
+a large file or folder is never silently converted to a mutable reference or
+partially retained. Ordinary runs have a 32 MiB total output capture budget.
+The copy checks the budget before and during transfer, including expanded
+external links. Exceeding it blocks with `output_not_kept`: narrow the declared
+output or explicitly archive the run, then resume. The copy runs after the
 step's seats finished, outside its time limit, and a run cancel or daemon
 shutdown stops it. A copy that fails or is stopped does not lose the
 attempt: the run blocks (code `output_not_kept`, or `coordinator_shutdown`
@@ -2073,6 +2077,49 @@ closes with 1000, and so does a refused attach, after an output frame reading
 `Archon: <reason>`; daemon shutdown closes terminals with 1001. WebSocket origins must
 match the request host. Terminal bytes are the actual seat display, not the
 sanitized ledger projection. The same trusted-network access boundary applies.
+
+### Run evidence lifecycle
+
+Archon keeps compact history separately from temporary files. New runs use a
+32 MiB evidence budget per run and a 256 MiB pool for ordinary completed runs.
+These are logical-byte capture and retention budgets, not filesystem quotas or
+limits on what a seat may do. Active and blocked missions can still create
+large working files; the prompt directs those files into the project workspace.
+Archon never cleans the project's cwd, native harness transcripts or external
+files reached through symlinks.
+
+The per-run output capture budget applies while the run executes. Declared
+file/folder outputs are independent snapshots and remain indivisible. A copy
+that would exceed the budget blocks instead of filling the evidence store with
+a working-folder copy. Text history, frozen definitions, verdicts and briefs
+remain available independently of artifact retention.
+
+Once a run is final and its execution has settled, the coordinator compacts its
+artifact directory: declared snapshots first, then small Markdown, text and
+JSON reports (at most 256 KiB each), within the per-run budget. Other working
+files expire. Older ordinary completed evidence expires when the pool exceeds
+256 MiB. Nonfinal runs and source runs referenced by nonfinal runs are protected;
+protected and explicitly archived bytes may exceed the ordinary pool. Reference
+discovery covers recorded paths, not every possible external consumer. Export
+work that must outlive this temporary evidence into its owning project.
+
+`archon --server <url> run storage <runId> [--json]` reads size, policy,
+retention state and known protected references. `--archive` explicitly retains
+large evidence outside the ordinary budget; this can also unblock a pending
+output copy before `run resume`. `--unarchive` returns evidence to ordinary
+retention. `--dispose` explicitly removes a final run's artifact files while
+keeping its history. Disposal refuses a run still in use. Archive does not
+restore expired bytes. The cockpit exposes the same operations in Run evidence.
+Logical file sizes and allocated bytes are distinct; hard links and sparse
+files mean logical size is not a promise of disk space reclaimed.
+
+A separate durable lifecycle record tracks retained, expired and interrupted
+cleanup; final ledgers are not rewritten to record housekeeping. Failed cleanup
+remains visible and retryable. Expired artifact reads say evidence is no longer
+available, while history and frozen definitions still read normally. Existing
+runs without the new policy are labelled legacy and are not silently enrolled
+by a software upgrade; explicit disposal works for them. The October 2026
+operator-approved cleanup removes past-run artifacts using that operation.
 
 ### Run evidence
 

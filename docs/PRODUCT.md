@@ -29,6 +29,9 @@ Archon makes chaining agents and gates easy and great, and that is all it does
   `run follow`; Archon pushes nothing into outside sessions.
 - **Limits are opt-in.** A run has no limits unless its mission holds a Limit
   card capping rounds, time or tokens; nothing adds one by default.
+- **Evidence stays small by default.** Keep compact history and selected evidence;
+  expire completed working files. Large archives are explicit. Project
+  deliverables belong to their project, not an unbounded run archive.
 - **Roles are generic.** Mission-specific instructions go in the step brief;
   model and effort stay visible on the mission.
 - **Work is ranked** by whether it helps an agent build, understand, invoke or

@@ -16,8 +16,9 @@ and only its declared output port IDs, then this run's exact sentinel:
 
 - Every dispatch, judges included, gets its own attempt directory,
   `<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>/`, named in its
-  brief. Write what the attempt produces there; it is never shared with an
-  earlier or later attempt.
+  brief. Write selected evidence there; keep project deliverables, caches and
+  build trees in the project workspace. Ordinary runs have a 32 MiB total
+  file/folder capture budget. The directory is never shared with another attempt.
 - A port's kind decides what its payload is:
   - `text` (the default): `text`, or `ref` naming the absolute path of a
     text file the seat wrote, which Archon reads as the routed text. To route
@@ -34,6 +35,11 @@ and only its declared output port IDs, then this run's exact sentinel:
   links that lead out of it are replaced by what they point at. A later attempt
   that rewrites the same project file, or a step handed the path, therefore
   leaves every earlier version as it was.
+- A file or folder that exceeds the remaining capture budget blocks with
+  `output_not_kept`; return a narrower deliverable or ask the driving agent to
+  explicitly archive the run before resuming. Do not declare an entire working
+  tree merely to pass its path: text ports can carry project-owned paths, which
+  are references rather than retained snapshots.
 - A step downstream of a file or folder port receives the path in its brief as
   `input file: <path>` or `input folder: <path>`. Input paths are kept copies
   and read-only: write new versions in your own attempt directory.

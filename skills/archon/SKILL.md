@@ -570,6 +570,17 @@ evidence and gate evidence; ambiguous relative names stay text. The Produced
 menu groups files in run order and lists kept copies once. Check each
 `seat_cleanup` outcome (`ended`, `left_socket_changed`, `left_cleanup_failed`).
 
+Run artifacts are temporary evidence. New runs keep at most 32 MiB ordinarily,
+with a 256 MiB completed-evidence pool; history remains after files expire.
+Keep project deliverables and caches in their project, and declare narrowly
+scoped outputs. If `output_not_kept` names the capture budget, inspect
+`run storage "$ARCHON_RUN_ID" --json`; narrow the output or deliberately choose
+`run storage "$ARCHON_RUN_ID" --archive`, then resume. Archive retains large
+files outside the ordinary budget. `--unarchive` returns to ordinary retention;
+`--dispose` removes final-run artifacts while preserving history. Inspect known
+references and sizes before choosing disposal; archive cannot restore expired
+files. See [Run evidence lifecycle](../../docs/CONTRACT.md#run-evidence-lifecycle).
+
 The runtime writes the brief each seat receives, including its output contract;
 you author only the formation brief. When a seat's output did not route, or you
 are working inside a seat, read [references/seat-output.md](references/seat-output.md).
