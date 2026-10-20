@@ -5,40 +5,13 @@ import {
   gateWireNeedsLabel,
   loopChannelSegments,
   loopConnectionIds,
-  pathIntersectsRect,
   roundedOrthoPath,
-  routeFormationWire,
   routeJudgeWire,
   routeLoopWires,
   routeOrthoWire,
   segmentHitsRect,
   segmentsShareChannel,
 } from './formationsRouting'
-
-describe('formationsRouting', () => {
-  it('routes around an obstacle instead of under a card', () => {
-    const obstacle = { id: 'middle', x: 90, y: 20, width: 60, height: 80 }
-    const route = routeFormationWire(
-      { x: 20, y: 60 },
-      { x: 220, y: 60 },
-      { fromId: 'source', toId: 'target', obstacles: [obstacle] }
-    )
-
-    expect(route.path).toMatch(/^M/)
-    expect(pathIntersectsRect(route.points, obstacle, 6)).toBe(false)
-  })
-
-  it('freezes direct routing while a connected node is being dragged', () => {
-    const obstacle = { id: 'middle', x: 90, y: 20, width: 60, height: 80 }
-    const route = routeFormationWire(
-      { x: 20, y: 60 },
-      { x: 220, y: 60 },
-      { fromId: 'source', toId: 'target', draggingNodeId: 'source', obstacles: [obstacle] }
-    )
-
-    expect(route.points).toEqual([{ x: 20, y: 60 }, { x: 220, y: 60 }])
-  })
-})
 
 /* Reference contract: 03-formations.js routeOrtho/roundedOrtho/clearLaneY/routeJudge.
    These tests pin the prototype's committed-wire geometry: orthogonal stub-routed
@@ -138,7 +111,9 @@ describe('routeOrthoWire (reference routeOrtho)', () => {
       .map(match => ({ x: Number(match[1]), y: Number(match[2]) }))
     expect(Math.min(...points.map(point => point.y))).toBe(source.y)
     expect(Math.max(...points.map(point => point.y))).toBe(target.y)
-    for (const rect of obstacles) expect(pathIntersectsRect(points, rect, 6)).toBe(false)
+    for (const rect of obstacles) {
+      for (let index = 1; index < points.length; index++) expect(segmentHitsRect(points[index - 1], points[index], rect, 6)).toBe(false)
+    }
   })
 
   it('skips obstacle detours while a node is dragged (frozen)', () => {
