@@ -1127,10 +1127,15 @@ drag pans them together, and Z or another click fits them again. While the run
 is live the window reads the attempts again as the run records them and follows
 a new attempt, unless the operator stepped back to an older one.
 
-A mission with no saved positions opens with the whole graph fitted. With a
-saved layout, it opens at a scale its card text can be read at: the whole graph when
-that fits at 80% or more, else 80% from the graph's leading edge, and a run
-opens centred on the card it has reached. Fit always shows the whole graph.
+Missions and frozen runs open at authored reading scale (100%), including
+when their positions are derived because no matching layout exists. A graph
+that does not fit is navigated from its leading edge; an open run centres on
+the card it has reached. This keeps the smallest card text at least 11 CSS
+pixels. Explicit Fit shows the whole graph as an overview and does not save
+positions. External mission summaries and layout-only changes refresh without
+reloading the page; observation never arranges a graph. Source failures stay
+beside the affected mission in the navigator, with expandable path and reason,
+so healthy Canvas and Flow work remains clear.
 
 A step's window (archon-fh5c.6) opens on the first click of its card with the
 step's staffing in one row a slot (role, harness, model, effort, each opening
