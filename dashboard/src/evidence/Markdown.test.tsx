@@ -84,3 +84,14 @@ describe('Markdown', () => {
     expect(screen.queryByRole('img')).toBeNull()
   })
 })
+
+// Floating-window focus/reflow rerenders must not replace the text being read.
+it('retains authored paragraphs and list items across surrounding rerenders', () => {
+  const content = 'Read this paragraph.\n\n1. First point\n2. Last point'
+  const view = render(<Markdown content={content} className="first" />)
+  const paragraph = screen.getByText('Read this paragraph.')
+  const item = screen.getByText('Last point')
+  view.rerender(<Markdown content={content} className="focused" />)
+  expect(screen.getByText('Read this paragraph.')).toBe(paragraph)
+  expect(screen.getByText('Last point')).toBe(item)
+})

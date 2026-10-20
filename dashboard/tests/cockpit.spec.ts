@@ -194,8 +194,9 @@ test('reports and other files still open from cards and the produced menu in fil
   // The gap between two boxes along the axis that separates them.
   const gap = (a: typeof card, b: typeof card) => Math.hypot(Math.max(0, b.x - (a.x + a.width), a.x - (b.x + b.width)), Math.max(0, b.y - (a.y + a.height), a.y - (b.y + b.height)))
   expect(apart(opened, card)).toBe(true)
-  const chip = (await page.getByTestId('produced-execution').getByRole('button', { name: 'report' }).boundingBox())!
-  expect(gap(opened, chip)).toBeLessThanOrEqual(240)
+  // File chips on Canvas anchor to their whole source card (fileAnchor), so
+  // the card stays readable. A wide card's far-side chip is not that anchor.
+  expect(gap(opened, card)).toBeLessThanOrEqual(240)
   const bar = (await produced.boundingBox())!
   const below = (await review.boundingBox())!
   expect(below.y).toBeGreaterThanOrEqual(bar.y + bar.height)
@@ -209,6 +210,8 @@ test('reports and other files still open from cards and the produced menu in fil
   // Drag the review to the right of the canvas and the result to the left, so the two sit side by side.
   // The review, on top, moves right by its title; the result then moves left by the start of its own title.
   const drag = async (win: typeof review, grip: 'start' | 'end', x: number) => {
+    // Raise the intended window before grabbing a title another window may cover.
+    await win.focus()
     const head = (await win.locator('.fwin-title').boundingBox())!
     await page.mouse.move(grip === 'start' ? head.x + 6 : head.x + head.width - 6, head.y + head.height / 2)
     await page.mouse.down()
