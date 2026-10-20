@@ -344,7 +344,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     // Once the mission holds Limit cards its writes carry its own ETag, so the
     // cockpit fetches validation again after each one, as against the daemon.
     const etag = () => path.startsWith('/api/missions/browser') && currentBoard.limits?.length ? currentBoard.etag : 'fixture-etag'
-    const respond = (data: unknown) => route.fulfill({ json: { success: true, data: path === '/api/runs/run_browser' ? { ...(data as object), events: eventSnapshot().map(event => ({ ...event, runId: 'run_browser' })) } : data }, headers: { ETag: etag() } })
+    const respond = (data: unknown) => route.fulfill({ json: { success: true, data: (path === '/api/runs/run_browser' || path === '/api/runs/run_browser/resume') ? { ...(data as object), events: eventSnapshot().map(event => ({ ...event, runId: 'run_browser' })) } : data }, headers: { ETag: etag() } })
     const refuseLimit = (target: string | undefined, knobs: Knobs) => {
       const message = limitRefusal(target, knobs)
       return message ? route.fulfill({ status: 400, json: { success: false, error: { code: 'INVALID_LIMIT', message } } }) : null
@@ -641,10 +641,10 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
       if (body.pickBest && timeBlock) return route.fulfill({ status: 409, json: { success: false, error: { code: 'CONFLICT', message: 'nothing to pick: this run did not stop at a spent limit of a step whose gate judged an attempt' } } })
       if (body.pickBest) picked = true
       else granted = true
-      return respond({ runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length + 3, cwd: runCwd })
+      return respond({ runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: eventSnapshot().length, cwd: runCwd })
     }
     if (path === '/api/runs/run_browser' && options.blockedAtLimit) return respond(granted || picked
-      ? { runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length + (picked ? 3 : 2), cwd: runCwd }
+      ? { runId: 'run_browser', status: 'running', final: false, resumeAllowed: false, missionSlug: 'browser', inputCardId: 'mission', eventCount: eventSnapshot().length, cwd: runCwd }
       : { runId: 'run_browser', status: 'blocked', final: false, resumeAllowed: true, resumePolicy: timeBlock ? 'grant' : 'grant_or_pick', missionSlug: 'browser', inputCardId: 'mission', eventCount: blockEvents.length, cwd: runCwd })
 
     if (options.blockedAtLimit && path === '/api/runs/run_browser/evidence/problems') return respond({ problems: [

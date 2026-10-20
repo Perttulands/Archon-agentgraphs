@@ -174,7 +174,7 @@ test('a gate whose ask fell back says why, and a relayed decision names the seat
   await evidenceShot(page, 'talk-fallback-reason')
 
   await page.getByRole('button', { name: 'Inspect gate evidence for Framing review' }).click()
-  await expect(page.getByTestId('gate-evaluation-4')).toContainText('pass · human:operator · via scout')
+  await expect(page.getByTestId('gate-evaluation-4')).toContainText('PASS · human:operator · via scout')
   await evidenceShot(page, 'relayed-decision-via')
 })
 
