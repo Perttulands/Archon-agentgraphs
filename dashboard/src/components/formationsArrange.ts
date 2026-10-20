@@ -109,9 +109,16 @@ export function arrangedLayoutNodes(board: BoardDocument): LayoutNode[] {
   const stack = (id: string): string[] => [id, ...(below.get(id) || []).flatMap(stack)]
   const snapUp = (value: number) => Math.ceil(value / 28) * 28
   const nodes: LayoutNode[] = []
-  let x = 112
-  for (const depth of [...columns.keys()].sort((a, b) => a - b)) {
-    let y = 112
+  // Match arrangementColumnsPerRow in Go: continue left to right below the
+  // tallest branch/judge stack after four columns, rather than widening forever.
+  let x = 112, rowY = 112, rowBottom = 112
+  const columnOrder = [...columns.keys()].sort((a, b) => a - b)
+  for (const [column, depth] of columnOrder.entries()) {
+    if (column > 0 && column % 4 === 0) {
+      x = 112
+      rowY = rowBottom
+    }
+    let y = rowY
     let width = 0
     for (const id of columns.get(depth)!.flatMap(stack)) {
       const [w, h] = ({ inputCard: [260, 168], gate: [332, 132], end: [200, 64], limit: [220, 72], peer: [336, 360], orchestrated: [336, 460] } as Record<string, number[]>)[items.get(id)!] || [320, 320]
@@ -119,6 +126,7 @@ export function arrangedLayoutNodes(board: BoardDocument): LayoutNode[] {
       y = snapUp(y + h + 112 + (nodeFileRefs(board, id).length ? 30 : 0) + 112)
       width = Math.max(width, w)
     }
+    rowBottom = Math.max(rowBottom, y)
     x = snapUp(x + width + 84)
   }
   return nodes

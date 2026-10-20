@@ -1565,12 +1565,18 @@ For skill discovery setup, see [install the skill](../README.md#let-agents-drive
 
 Arrange (`mission arrange`, the cockpit's Arrange) rewrites only the layout. It
 lays columns along the run from the Input card (its out port, formation and
-Tool outputs, gate pass), ignores fail edges back to earlier steps and judge
-wiring, places judge formations below their gate, and puts nodes the Input card
+Tool outputs, gate pass), continuing left to right in rows of at most four
+columns. Each new row starts below the preceding row's tallest stack, keeping
+long paths at a readable width for vertical navigation. It ignores fail edges
+back to earlier steps and judge wiring when assigning columns, places judge
+formations and Limit cards below their owner, and puts nodes the Input card
 does not reach after the main path. The same mission always arranges the same
-way. The canvas computes this same arrangement for nodes without saved
-positions, preserving saved positions verbatim. Opening or fitting a mission
-does not save that arrangement or change its revision.
+way. Arrange intentionally replaces saved positions, using the current layout
+ETag and rejecting a stale one. Validation checks definitions and leaves layout
+bytes unchanged. The canvas computes the same arrangement for nodes without
+saved positions, preserving saved positions verbatim. Opening, fitting,
+reconnecting, running or refreshing a mission never persists this fallback or
+rearranges saved cards; ordinary edits place new cards without moving others.
 `mission new <slug>` creates an empty mission and `mission create <mission>`
 adds its Input card. `mission create`, `formation create`, `gate create` and
 `end create` print `created <id>`, or with `--json` `{mission, layout,

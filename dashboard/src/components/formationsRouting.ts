@@ -228,6 +228,19 @@ export function routeOrthoWire(source: Point, target: Point, options: OrthoRoute
       points = [source, s2, { x: s2.x, y: laneY }, { x: t2.x, y: laneY }, { x: t2.x, y: t2.y }, t2, target]
     }
   } else {
+    // A forward path wrapped onto the next reading row enters from the left.
+    // Use the whitespace between rows before falling back to an outer lane;
+    // routing it like a same-row pushback sends it around the entire graph.
+    if (!options.frozen && target.y > source.y + STUB * 2) {
+      const middle = (source.y + target.y) / 2
+      const candidates = [middle, ...obstacles.flatMap(rect => [rect.y - LANE_CLEARANCE, rect.y + rect.height + LANE_CLEARANCE])]
+        .filter(y => y > source.y + STUB && y < target.y - STUB)
+        .sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle) || a - b)
+      for (const y of candidates) {
+        const between = [source, s2, { x: s2.x, y }, { x: t2.x, y }, t2, target]
+        if (clear(between)) return roundedOrthoPath(between, CORNER_RADIUS)
+      }
+    }
     const laneY = options.frozen
       ? Math.min(source.y, target.y) - 46
       : clearLaneY(obstacles, t2.x, s2.x, (source.y + target.y) / 2)

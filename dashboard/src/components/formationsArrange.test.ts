@@ -1,4 +1,5 @@
 import golden from './testdata/arrange-golden.json'
+import longGolden from './testdata/arrange-long-golden.json'
 import { describe, expect, it } from 'vitest'
 import { arrangedLayoutNodes } from './formationsArrange'
 import { displayLayoutFor } from './formationsCanvas'
@@ -22,8 +23,22 @@ const board: BoardDocument = {
 }
 
 describe('display arrangement', () => {
-  it('matches the shared Go/TypeScript Arrange golden fixture', () => {
-    expect(arrangedLayoutNodes(golden.board as BoardDocument)).toEqual(golden.positions)
+  it.each([golden, longGolden])('matches shared Go/TypeScript Arrange geometry for $board.title', fixture => {
+    const graph = fixture.board as BoardDocument
+    const before = structuredClone(graph)
+    const positions = arrangedLayoutNodes(graph)
+    expect(positions).toEqual(fixture.positions)
+    expect(arrangedLayoutNodes(graph)).toEqual(positions)
+    expect(arrangedLayoutNodes({ ...graph, formations: [...graph.formations].reverse(), connections: [...graph.connections].reverse() })).toEqual(positions)
+    expect(graph).toEqual(before)
+  })
+
+  it('preserves every saved position of the long graph instead of applying the new arrangement', () => {
+    const saved = new Map(longGolden.previousPositions.map(node => [node.id, node]))
+    const before = structuredClone(saved)
+    expect(displayLayoutFor(longGolden.board as BoardDocument, saved)).toEqual(saved)
+    expect(saved).toEqual(before)
+    expect(arrangedLayoutNodes(longGolden.board as BoardDocument)).not.toEqual(longGolden.previousPositions)
   })
 
   it('keeps computed cards clear of all saved and previously placed cards', () => {
@@ -79,7 +94,7 @@ describe('display arrangement', () => {
     const at = (id: string) => layout.get(id)!
     expect(layout.size).toBe(10)
     expect(at('work').x).toBeGreaterThan(at('branch').x)
-    expect(at('rework').x).toBeGreaterThan(at('gate').x)
+    expect(at('rework').y).toBeGreaterThan(at('gate').y) // continuation wraps below the judge stack
     expect(at('cycle-a').x).toBeGreaterThan(at('finish').x)
     expect(at('cycle-b').x).toBeGreaterThan(at('cycle-a').x)
     expect(at('judge').y).toBe(504)

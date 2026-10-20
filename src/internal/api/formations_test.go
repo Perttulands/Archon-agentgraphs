@@ -776,6 +776,26 @@ y = 100
 	handler := NewFormationsHandlerWithStore(store)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
+	missionBefore, err := os.ReadFile(store.BoardPath("arrange"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	layoutBefore, err := os.ReadFile(store.LayoutPath("arrange"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Inspection, change detection and validation are read-only even when a
+	// hand-placed graph differs from what explicit Arrange would produce.
+	for _, path := range []string{"/api/missions/arrange", "/api/missions/arrange/layout", "/api/missions/arrange/validation", "/api/missions/arrange/changes"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	if got, err := os.ReadFile(store.LayoutPath("arrange")); err != nil || !bytes.Equal(got, layoutBefore) {
+		t.Fatalf("inspection changed saved layout: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPatch, "/api/missions/arrange/layout", bytes.NewBufferString(`{"arrange":true}`))
 	req.Header.Set("If-Match", layout.ETag)
 	rec := httptest.NewRecorder()
@@ -793,6 +813,23 @@ y = 100
 	}
 	if byID["mis_start"].X >= byID["fmn_finish"].X {
 		t.Fatalf("explicit arrange did not order connected nodes: %+v", byID)
+	}
+	if got, err := os.ReadFile(store.BoardPath("arrange")); err != nil || !bytes.Equal(got, missionBefore) {
+		t.Fatalf("Arrange changed mission definition: %v", err)
+	}
+	arrangedBytes, err := os.ReadFile(store.LayoutPath("arrange"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := httptest.NewRequest(http.MethodPatch, "/api/missions/arrange/layout", bytes.NewBufferString(`{"arrange":true}`))
+	stale.Header.Set("If-Match", layout.ETag)
+	staleRec := httptest.NewRecorder()
+	mux.ServeHTTP(staleRec, stale)
+	if staleRec.Code != http.StatusConflict {
+		t.Fatalf("stale Arrange: %d %s", staleRec.Code, staleRec.Body.String())
+	}
+	if got, err := os.ReadFile(store.LayoutPath("arrange")); err != nil || !bytes.Equal(got, arrangedBytes) {
+		t.Fatalf("stale Arrange changed layout: %v", err)
 	}
 }
 

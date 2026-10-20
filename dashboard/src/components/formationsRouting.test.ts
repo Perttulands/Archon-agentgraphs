@@ -121,6 +121,26 @@ describe('routeOrthoWire (reference routeOrtho)', () => {
     expect(/(-2|122)/.test(d)).toBe(true)
   })
 
+  it('continues a wrapped reading row through a clear gap instead of around the whole graph', () => {
+    // The first row's Limit is taller than its work cards; lower rows must
+    // not force a row-to-row link onto an outer top/bottom clearance lane.
+    const obstacles = [
+      { id: 'work', x: 476, y: 112, width: 320, height: 432 },
+      { id: 'limit', x: 896, y: 672, width: 220, height: 184 },
+      { id: 'later', x: 532, y: 980, width: 320, height: 432 },
+      { id: 'final', x: 532, y: 1540, width: 332, height: 244 },
+    ]
+    const source = { x: 1636, y: 430 }, target = { x: 112, y: 1000 }
+    const d = routeOrthoWire(source, target, { fromId: 'source', toId: 'target', obstacles })
+    expect(d.startsWith('M1636,430')).toBe(true)
+    expect(d.endsWith('L112,1000')).toBe(true)
+    const points = [...d.matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)]
+      .map(match => ({ x: Number(match[1]), y: Number(match[2]) }))
+    expect(Math.min(...points.map(point => point.y))).toBe(source.y)
+    expect(Math.max(...points.map(point => point.y))).toBe(target.y)
+    for (const rect of obstacles) expect(pathIntersectsRect(points, rect, 6)).toBe(false)
+  })
+
   it('skips obstacle detours while a node is dragged (frozen)', () => {
     const obstacle = { id: 'mid', x: 80, y: 30, width: 60, height: 60 }
     const d = routeOrthoWire({ x: 0, y: 60 }, { x: 220, y: 60 }, { fromId: 'a', toId: 'b', obstacles: [obstacle], frozen: true })

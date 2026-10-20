@@ -398,7 +398,6 @@ Drafts save with blanks. Only `mission validate` and run admission reject gaps.
 
 ```bash
 archon $S mission validate "$M" --json
-archon $S mission arrange "$M" --json
 ```
 
 Reach zero errors before running. Findings name node IDs: unstaffed slots,
@@ -407,6 +406,21 @@ Input card, a mission with several Input cards, `duplicate_slot_id`. Warnings
 name nodes no path from the Input card reaches (`unreachable_node`); wire a
 route into them or delete them. A rejected `mission run` prints the same findings (HTTP 422
 `RUN_ADMISSION_FAILED`) and records no run.
+
+### Arrange intentionally
+
+Validation leaves positions unchanged. Preserve the operator's placement during
+ordinary editing, inspection and runs. After creating or substantially rewiring
+a graph, use Arrange when replacing its whole layout is the intended change:
+
+```bash
+archon $S mission arrange "$M" --json
+```
+
+It replaces saved positions with compact reading rows, leaving the mission
+definition unchanged. Newly added cards receive their own positions without
+moving existing cards. Read back the layout or inspect the cockpit after an
+intentional Arrange; it is a layout edit, not a validation step.
 
 To build and launch a lab daemon, import examples, configure
 notifications or smoke-test routing, read

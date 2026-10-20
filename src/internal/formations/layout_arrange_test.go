@@ -36,13 +36,13 @@ func arrangeFixture(t *testing.T, path string, extra string) (*Store, string, ma
 	return store, board.Slug, byID
 }
 
-// assertRunOrder checks each step sits in a column right of the one before.
+// assertRunOrder checks reading order: right along a row, then down to the next.
 func assertRunOrder(t *testing.T, byID map[string]LayoutNode, runOrder []string) {
 	t.Helper()
 	for index := 1; index < len(runOrder); index++ {
 		previous, current := byID[runOrder[index-1]], byID[runOrder[index]]
-		if current.X <= previous.X {
-			t.Errorf("%s (x=%d) is not right of %s (x=%d)", runOrder[index], current.X, runOrder[index-1], previous.X)
+		if current.Y < previous.Y || current.Y == previous.Y && current.X <= previous.X {
+			t.Errorf("%s at %+v does not follow %s at %+v in reading order", runOrder[index], current, runOrder[index-1], previous)
 		}
 	}
 }
@@ -157,18 +157,79 @@ func TestArrangeLayoutFollowsDeliveryRunOrder(t *testing.T) {
 
 // This fixture is also asserted by formationsArrange.test.ts in the dashboard.
 func TestArrangedLayoutGolden(t *testing.T) {
-	raw, err := os.ReadFile("../../../dashboard/src/components/testdata/arrange-golden.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fixture struct {
-		Board     BoardDocument `json:"board"`
-		Positions []LayoutNode  `json:"positions"`
-	}
-	if err := json.Unmarshal(raw, &fixture); err != nil {
-		t.Fatal(err)
-	}
-	if got := arrangedLayoutNodes(&fixture.Board); !reflect.DeepEqual(got, fixture.Positions) {
-		t.Fatalf("Arrange parity: got %+v, want %+v", got, fixture.Positions)
+	for _, name := range []string{"arrange-golden.json", "arrange-long-golden.json"} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join("../../../dashboard/src/components/testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fixture struct {
+				Board     BoardDocument `json:"board"`
+				Positions []LayoutNode  `json:"positions"`
+				Previous  []LayoutNode  `json:"previousPositions"`
+			}
+			if err := json.Unmarshal(raw, &fixture); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := json.Marshal(fixture.Board)
+			got := arrangedLayoutNodes(&fixture.Board)
+			if !reflect.DeepEqual(got, fixture.Positions) {
+				t.Fatalf("Arrange parity: got %+v, want %+v", got, fixture.Positions)
+			}
+			if again := arrangedLayoutNodes(&fixture.Board); !reflect.DeepEqual(got, again) {
+				t.Fatal("repeated arrangement moved cards")
+			}
+			after, _ := json.Marshal(fixture.Board)
+			if string(after) != string(before) {
+				t.Fatal("arrangement changed mission definition")
+			}
+			// Conservative room includes findings/file rows; each occupied card
+			// remains disjoint even when a wrap follows a tall judge/Limit stack.
+			sizes := map[string][2]int{}
+			for _, n := range fixture.Board.Missions {
+				sizes[n.ID] = [2]int{260, 280}
+			}
+			for _, n := range fixture.Board.Formations {
+				w, h := arrangementItemSize(arrangementItem{kind: n.Type, files: n.Brief != nil && len(n.Brief.Files) > 0})
+				sizes[n.ID] = [2]int{w, h}
+			}
+			for _, n := range fixture.Board.Gates {
+				sizes[n.ID] = [2]int{332, 244}
+			}
+			for _, n := range fixture.Board.Ends {
+				sizes[n.ID] = [2]int{200, 176}
+			}
+			for _, n := range fixture.Board.Limits {
+				sizes[n.ID] = [2]int{220, 184}
+			}
+			for i, a := range got {
+				for _, b := range got[i+1:] {
+					aw, ah, bw, bh := sizes[a.ID][0], sizes[a.ID][1], sizes[b.ID][0], sizes[b.ID][1]
+					if a.X < b.X+bw && b.X < a.X+aw && a.Y < b.Y+bh && b.Y < a.Y+ah {
+						t.Fatalf("overlapping cards: %+v and %+v", a, b)
+					}
+				}
+			}
+			if len(fixture.Previous) > 0 {
+				bounds := func(nodes []LayoutNode) (int, int) {
+					x, y := 0, 0
+					for _, n := range nodes {
+						if right := n.X + sizes[n.ID][0]; right > x {
+							x = right
+						}
+						if bottom := n.Y + sizes[n.ID][1]; bottom > y {
+							y = bottom
+						}
+					}
+					return x, y
+				}
+				oldWidth, _ := bounds(fixture.Previous)
+				width, height := bounds(got)
+				if width > 1700 || width*2 >= oldWidth || height > 2200 {
+					t.Fatalf("long graph bounds %dx%d, previous width %d", width, height, oldWidth)
+				}
+				t.Logf("long graph outer bounds: width %d -> %d, new height %d (saved layout unchanged until explicit Arrange)", oldWidth, width, height)
+			}
+		})
 	}
 }

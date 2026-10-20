@@ -39,7 +39,7 @@ var nounHelps = []nounHelp{
 		{"notes", "<mission> [--json]", "print the mission's note threads"},
 		{"note", "<mission> [--node <element-id>] (--text <text> | --file <path>) [--entry <id> [--clear]] [--author <human|agent>:<name>] [--json]", "add to a note thread. With --entry, edit your own entry, or delete it with --clear"},
 		{"validate", "<mission> [--json]", "list every finding that would stop a run, naming each node by title and ID. Exits 1 on any error"},
-		{"arrange", "<mission> [--json]", "lay the canvas out along the run"},
+		{"arrange", "<mission> [--json]", "replace saved canvas positions with compact reading rows"},
 		{"create", "<mission> [--title <title>] [--goal <goal>] [--file <path>]... [--human-channel notify|session] [--x n] [--y n] [--json]", "add the Input card to a mission that has none. Create the mission itself with archon mission new <slug>"},
 		{"update", "<mission> [<input>] [--title text] [--goal text] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]", "change the Input card. Only the flags you give change it, and an empty value clears that field"},
 		{"input", "<mission> [<name>] [--kind text|file|folder] [--required | --optional] [--description <text>] [--delete] [--json]", "list the inputs a run supplies, or with a name declare, change or --delete that input. A mission that declares none takes one required text input, brief. A new input is optional text unless the flags say otherwise, and only the flags you give change an existing one; step briefs reference it as {name}"},

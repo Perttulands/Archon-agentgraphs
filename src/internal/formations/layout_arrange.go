@@ -53,7 +53,7 @@ func (s *Store) ArrangeLayout(slug string, opts WriteOptions) (*LayoutDocument, 
 	return arranged, nil
 }
 
-// arrangedLayoutNodes lays a board out along its main path. Columns follow the
+// arrangedLayoutNodes lays a board out in compact reading rows. Columns follow the
 // run: mission out, formation and Tool outputs, and gate pass. A gate's fail
 // edges back to earlier steps and its judge wiring do not move columns; judge
 // formations sit below the gate they judge. Nodes reached only through a fail
@@ -234,9 +234,13 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 	sort.Ints(columnOrder)
 
 	nodes := make([]LayoutNode, 0, len(items))
-	x := formationLayoutGrid * 4
-	for _, depth := range columnOrder {
-		y := formationLayoutGrid * 4
+	x, rowY := formationLayoutGrid*4, formationLayoutGrid*4
+	rowBottom := rowY
+	for column, depth := range columnOrder {
+		if column > 0 && column%arrangementColumnsPerRow == 0 {
+			x, rowY = formationLayoutGrid*4, rowBottom
+		}
+		y := rowY
 		width := 0
 		for _, id := range columns[depth] {
 			for _, placed := range stackedBelow(id, judgesBelow) {
@@ -248,6 +252,9 @@ func arrangedLayoutNodes(board *BoardDocument) []LayoutNode {
 					width = itemWidth
 				}
 			}
+		}
+		if y > rowBottom {
+			rowBottom = y
 		}
 		x = snapLayoutUp(x + width + 84)
 	}
@@ -263,6 +270,13 @@ func stackedBelow(id string, below map[string][]string) []string {
 	}
 	return stack
 }
+
+// Four columns keep the main path within a desktop reading width. Subsequent
+// layers continue left to right on the next row, below every branch and judge
+// in the preceding row; an arbitrarily long path grows down instead of shrinking
+// into one unreadable horizontal strip. Saved positions are never changed by
+// this calculation: only explicit Arrange persists it.
+const arrangementColumnsPerRow = 4
 
 // arrangementRowGap leaves room under each card for its note preview.
 const arrangementRowGap = 112
