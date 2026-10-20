@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -192,4 +193,55 @@ func outputTestCloneSupported(t *testing.T, dir string) bool {
 	defer os.Remove(out.Name())
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, out.Fd(), ficlone, in.Fd())
 	return errno == 0
+}
+
+// A seat may return outputs/ itself, or the destination port's parent. Keep
+// other files in that parent, while never copying a prior snapshot back into
+// itself when the same output is accepted again.
+func TestOutputRootSnapshotsPreserveExistingPortContentsWithoutRecursing(t *testing.T) {
+	for _, location := range []string{"outputs-root", "port-root"} {
+		t.Run(location, func(t *testing.T) {
+			dir := t.TempDir()
+			thawAfter(t, dir)
+			port := "port_main"
+			portRoot := filepath.Join(dir, "outputs", port)
+			if err := os.MkdirAll(portRoot, 0700); err != nil {
+				t.Fatal(err)
+			}
+			asset := filepath.Join(portRoot, "asset.txt")
+			if err := os.WriteFile(asset, []byte("original asset"), 0640); err != nil {
+				t.Fatal(err)
+			}
+			source := filepath.Dir(portRoot)
+			relativeAsset := filepath.Join(port, "asset.txt")
+			relativeTarget := filepath.Join(port, "outputs")
+			if location == "port-root" {
+				source = portRoot
+				relativeAsset = "asset.txt"
+				relativeTarget = port
+			}
+			for acceptance := 1; acceptance <= 2; acceptance++ {
+				kept, err := keepOutput(context.Background(), source, dir, port, nil)
+				if err != nil {
+					t.Fatalf("acceptance %d: %v", acceptance, err)
+				}
+				data, err := os.ReadFile(filepath.Join(kept, relativeAsset))
+				if err != nil || string(data) != "original asset" {
+					t.Fatalf("acceptance %d lost port contents: %q %v", acceptance, data, err)
+				}
+				if _, err := os.Stat(filepath.Join(kept, relativeTarget)); !os.IsNotExist(err) {
+					t.Fatalf("acceptance %d recursively copied prior destination: %v", acceptance, err)
+				}
+				entries, err := os.ReadDir(portRoot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, entry := range entries {
+					if strings.HasPrefix(entry.Name(), ".snapshot-") {
+						t.Fatalf("acceptance %d left staging directory %s", acceptance, entry.Name())
+					}
+				}
+			}
+		})
+	}
 }

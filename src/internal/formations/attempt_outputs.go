@@ -334,7 +334,7 @@ func snapshotOutput(ctx context.Context, source, parent string, exclude []string
 		}
 	} else {
 		copier := &treeCopier{ctx: ctx, skipped: map[string]bool{}}
-		for _, dir := range append(exclude, parent, stage) {
+		for _, dir := range append(exclude, target, stage) {
 			if real, err := filepath.EvalSymlinks(dir); err == nil {
 				dir = real
 			}
