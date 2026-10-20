@@ -14,6 +14,7 @@ import (
 	"time"
 
 	chroteapi "github.com/Perttulands/Archon-agentgraphs/internal/api"
+	"github.com/Perttulands/Archon-agentgraphs/internal/coordinator"
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
@@ -2551,8 +2552,14 @@ rev = 1
 	handler.RegisterRoutes(mux)
 	apiBoard := decodeAPIBoard(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/missions/poems", ""))
 	apiLayout := decodeAPILayout(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/missions/poems/layout", ""))
-	apiStatus := decodeAPIStatus(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/runs/"+started.RunID, ""))
-	apiEvents := decodeAPIEvents(t, requestArchonFormationsAPI(t, mux, http.MethodGet, "/api/runs/"+started.RunID+"/events", ""))
+	coordinator, err := coordinator.Open(workspace, formations.NewPersonaStore(agentsDir), func(*formations.Store) formations.FormationExecutor { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = coordinator.Close() })
+	runtimeAPI := coordinator.Handler()
+	apiStatus := decodeAPIStatus(t, requestArchonFormationsAPI(t, runtimeAPI, http.MethodGet, "/api/runs/"+started.RunID, ""))
+	apiEvents := decodeAPIEvents(t, requestArchonFormationsAPI(t, runtimeAPI, http.MethodGet, "/api/runs/"+started.RunID+"/events", ""))
 
 	if apiBoard.ID != afterAuthoring.ID || apiBoard.Slug != afterAuthoring.Slug || apiBoard.Rev != afterAuthoring.Rev {
 		t.Fatalf("api board identity = %+v, archon board = %+v", apiBoard, afterAuthoring)
@@ -3139,7 +3146,7 @@ func decodeArchonBoard(t *testing.T, raw string) formations.BoardDocument {
 	return board
 }
 
-func requestArchonFormationsAPI(t *testing.T, mux *http.ServeMux, method, path, body string) []byte {
+func requestArchonFormationsAPI(t *testing.T, mux http.Handler, method, path, body string) []byte {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -3179,14 +3186,12 @@ func decodeAPILayout(t *testing.T, raw []byte) formations.LayoutDocument {
 func decodeAPIStatus(t *testing.T, raw []byte) formations.RunStatusProjection {
 	t.Helper()
 	var response struct {
-		Data struct {
-			Status formations.RunStatusProjection `json:"status"`
-		} `json:"data"`
+		Data formations.RunStatusProjection `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &response); err != nil {
 		t.Fatalf("decode api status: %v\n%s", err, string(raw))
 	}
-	return response.Data.Status
+	return response.Data
 }
 
 func decodeAPIEvents(t *testing.T, raw []byte) []formations.RunEvent {
