@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -1030,6 +1031,7 @@ lane = "work"
 	if withLayout {
 		writeArchonFile(t, store.LayoutPath(slug), layoutRaw)
 	}
+	writeArchonFile(t, filepath.Join(workspace, ".archon", "role-references.lock"), "")
 	writeArchonFile(t, store.BoardPath(slug)+".lock", "")
 	writeArchonFile(t, store.LayoutPath(slug)+".lock", "")
 	return &archonToolAuthoringHarness{
