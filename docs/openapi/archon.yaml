@@ -199,7 +199,7 @@ paths:
         description: Only open runs that need the operator, waiting at a human gate or blocked.
       responses:
         '200':
-          description: Canonical run projections
+          description: Compact run discovery summaries; full history is available on the selected run
           content:
             application/json:
               schema:
@@ -212,7 +212,7 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Projection'
+                      $ref: '#/components/schemas/RunSummary'
     post:
       parameters:
       - in: header
@@ -1532,6 +1532,72 @@ components:
       properties:
         runId:
           type: string
+    RunSummary:
+      type: object
+      additionalProperties: false
+      description: Discovery state only; no event history, full inputs, outputs or gate requests.
+      required:
+      - runId
+      - status
+      - final
+      - missionSlug
+      - missionId
+      - missionRev
+      - inputCardId
+      - beadId
+      - eventCount
+      - resumeAllowed
+      - inputExcerpt
+      - sessions
+      properties:
+        runId:
+          $ref: '#/components/schemas/Projection/properties/runId'
+        status:
+          $ref: '#/components/schemas/Projection/properties/status'
+        final:
+          $ref: '#/components/schemas/Projection/properties/final'
+        missionSlug:
+          $ref: '#/components/schemas/Projection/properties/missionSlug'
+        missionId:
+          $ref: '#/components/schemas/Projection/properties/missionId'
+        missionRev:
+          $ref: '#/components/schemas/Projection/properties/missionRev'
+        inputCardId:
+          $ref: '#/components/schemas/Projection/properties/inputCardId'
+        beadId:
+          $ref: '#/components/schemas/Projection/properties/beadId'
+        eventCount:
+          $ref: '#/components/schemas/Projection/properties/eventCount'
+        startedBy:
+          $ref: '#/components/schemas/Projection/properties/startedBy'
+        startedAt:
+          $ref: '#/components/schemas/Projection/properties/startedAt'
+        updatedAt:
+          $ref: '#/components/schemas/Projection/properties/updatedAt'
+        resumeAllowed:
+          $ref: '#/components/schemas/Projection/properties/resumeAllowed'
+        resumePolicy:
+          $ref: '#/components/schemas/Projection/properties/resumePolicy'
+        blockCode:
+          $ref: '#/components/schemas/Projection/properties/blockCode'
+        inputExcerpt:
+          type: string
+          maxLength: 90
+          description: First text input (else first input), whitespace collapsed and truncated with an ellipsis.
+        sessions:
+          type: array
+          description: Sessions still held by an open run, in creation order; kept-on-call seats remain listed.
+          items:
+            type: object
+            additionalProperties: false
+            required: [sessionName, nodeId, slotId]
+            properties:
+              sessionName:
+                type: string
+              nodeId:
+                type: string
+              slotId:
+                type: string
     Projection:
       type: object
       additionalProperties: false

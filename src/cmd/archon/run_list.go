@@ -12,7 +12,7 @@ import (
 
 // run list prints one line per run, newest first: run ID, mission, status,
 // Bead, started and updated, tab-separated (archon-lmg2). --json prints the
-// full projection.
+// list payload (compact summaries when reading through the daemon).
 
 // runListLine is one run as run list prints it.
 type runListLine struct {

@@ -10,14 +10,14 @@ import (
 )
 
 // run list prints one line per run, newest first, without the runs' events;
-// --json keeps the daemon's full projection (archon-lmg2).
+// --json keeps the daemon's compact discovery payload (archon-lmg2).
 func TestRunListPrintsOneLinePerRunNewestFirst(t *testing.T) {
 	previousLocal := time.Local
 	time.Local = time.FixedZone("TEST", 7200)
 	t.Cleanup(func() { time.Local = previousLocal })
 	const body = `{"success":true,"data":[` +
-		`{"runId":"run_old","missionSlug":"proof","status":"succeeded","beadId":"","startedAt":"2026-10-01T09:00:00.123Z","updatedAt":"2026-10-01T09:05:00Z","events":[{"seq":1,"type":"run_started"}]},` +
-		`{"runId":"run_new","missionSlug":"proof","status":"waiting_human","beadId":"archon-lmg2","startedAt":"2026-10-02T08:00:00Z","updatedAt":"2026-10-02T08:01:30.5Z","events":[{"seq":1,"type":"run_started"},{"seq":2,"type":"node_started"}]}]}`
+		`{"runId":"run_old","missionSlug":"proof","status":"succeeded","beadId":"","startedAt":"2026-10-01T09:00:00.123Z","updatedAt":"2026-10-01T09:05:00Z","inputExcerpt":"old input","sessions":[]},` +
+		`{"runId":"run_new","missionSlug":"proof","status":"waiting_human","beadId":"archon-lmg2","startedAt":"2026-10-02T08:00:00Z","updatedAt":"2026-10-02T08:01:30.5Z","inputExcerpt":"new input","sessions":[{"sessionName":"archon-seat","nodeId":"fmn_work","slotId":"slot_work"}]}]}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, body)
 	}))
@@ -32,7 +32,7 @@ func TestRunListPrintsOneLinePerRunNewestFirst(t *testing.T) {
 		t.Fatalf("run list printed:\n%s\nwant:\n%s", stdout, want)
 	}
 	stdout, _, code = runArchon(t, &fakeTmux{}, "--server", server.URL, "run", "list", "--json")
-	if code != 0 || !strings.Contains(stdout, `"events"`) {
+	if code != 0 || strings.Contains(stdout, `"events"`) || !strings.Contains(stdout, `"inputExcerpt":"new input"`) || !strings.Contains(stdout, `"sessionName":"archon-seat"`) {
 		t.Fatalf("run list --json = %d %s", code, stdout)
 	}
 }

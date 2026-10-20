@@ -300,45 +300,8 @@ func (c *Coordinator) Handler() http.Handler {
 	c.mu.Unlock()
 	api.NewAgentsHandlerWithStoreAndLiveness(c.personas, liveness).UseMissions(c.store).RegisterRoutes(mux)
 	api.NewCharactersHandler(formations.NewCharacterStore(c.personas.AgentsDir)).RegisterRoutes(mux)
-	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
-		// An optional ?mission= filter lets a cockpit poll only its mission's
-		// runs: those of the mission now under that slug or ID, not of a
-		// deleted mission that had the same slug (archon-n7u.15).
-		// A mission that does not exist has no runs.
-		filter := formations.RunListFilter{}
-		if mission := r.URL.Query().Get("mission"); mission != "" {
-			filter.MissionID = "-"
-			if slug, err := c.store.ResolveBoardSelector(mission); err == nil {
-				if board, err := c.store.ReadBoard(slug); err == nil {
-					filter.MissionID = board.ID
-				}
-			}
-		}
-		runs, err := c.store.ListRuns(filter)
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		// ?needs=you keeps the runs that need the operator: open runs waiting
-		// at a human gate or blocked (archon-n7u.29).
-		needsYou := r.URL.Query().Get("needs") == "you"
-		projections := make([]*Projection, 0, len(runs))
-		for _, run := range runs {
-			if needsYou && (run.Final || run.Status != formations.RunStatusBlocked && run.Status != formations.RunStatusRunning) {
-				continue
-			}
-			p, err := c.Project(run.RunID)
-			if err != nil {
-				failure(w, err)
-				return
-			}
-			if needsYou && p.Status != "waiting_human" && p.Status != formations.RunStatusBlocked {
-				continue
-			}
-			projections = append(projections, p)
-		}
-		reply(w, 200, projections)
-	})
+	mux.HandleFunc("GET /api/runs", c.listRuns)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			// Authoring handlers write definitions too. Retain writer ownership

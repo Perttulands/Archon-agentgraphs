@@ -24,12 +24,12 @@ func TestRunListFiltersByMission(t *testing.T) {
 		w := httptest.NewRecorder()
 		c.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		var body struct {
-			Data []Projection `json:"data"`
+			Data []RunSummary `json:"data"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 || body.Data == nil || len(body.Data) != want {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
 		}
-		if want == 1 && (body.Data[0].RunID != id || body.Data[0].Status != "waiting_human" || len(body.Data[0].WaitingGates) != 1) {
+		if want == 1 && (body.Data[0].RunID != id || body.Data[0].Status != "waiting_human") {
 			t.Fatalf("%s: %+v", path, body.Data[0])
 		}
 	}
@@ -54,12 +54,12 @@ func TestARecreatedMissionDoesNotInheritArchivedRuns(t *testing.T) {
 	if _, err := c.store.DeleteBoard("proof", formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev}); err != nil {
 		t.Fatal(err)
 	}
-	list := func(path string) []Projection {
+	list := func(path string) []RunSummary {
 		t.Helper()
 		w := httptest.NewRecorder()
 		c.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		var body struct {
-			Data []Projection `json:"data"`
+			Data []RunSummary `json:"data"`
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
@@ -76,7 +76,7 @@ func TestARecreatedMissionDoesNotInheritArchivedRuns(t *testing.T) {
 		t.Fatalf("recreated mission inherited %d archived runs", len(runs))
 	}
 	all := list("/api/runs")
-	if len(all) != 1 || all[0].RunID != id || all[0].BoardID != board.ID {
+	if len(all) != 1 || all[0].RunID != id || all[0].MissionID != board.ID {
 		t.Fatalf("all runs = %+v, want the archived run under its own mission ID", all)
 	}
 }
@@ -170,12 +170,12 @@ func TestFrozenRunGraphRedactsAuthoredTextAndOmitsDuplicateSource(t *testing.T) 
 	}
 }
 
-func listRuns(t *testing.T, c *Coordinator, path string) []Projection {
+func listRuns(t *testing.T, c *Coordinator, path string) []RunSummary {
 	t.Helper()
 	w := httptest.NewRecorder()
 	c.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 	var body struct {
-		Data []Projection `json:"data"`
+		Data []RunSummary `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 {
 		t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())

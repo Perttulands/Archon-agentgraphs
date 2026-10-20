@@ -1751,7 +1751,9 @@ a rejected start names.
 
 `run list` prints one line per run, newest first: its ID, mission, status,
 Bead (`-` when none), start, last change and driver, tab-separated; `--json` prints
-each run's full projection. Starting a run without `--cwd` allocates a workspace
+the list data as JSON. With `--server` that is the compact discovery summary
+described below; `run status` reads one run's full projection. Starting a run
+without `--cwd` allocates a workspace
 automatically; `--cwd` selects an existing project.
 
 For launch, follow, output chaining, abort and verdict commands, see [run a mission](../skills/archon/SKILL.md#run-a-mission).
@@ -1919,7 +1921,20 @@ between, and otherwise says to press Save again (archon-n7u.16). A note edit to 
 already has saves nothing in the same way (archon-62h). Runtime routes start/list/read runs
 (`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
 slug or ID, and none for a mission that does not exist; `needs=you` keeps the
-open runs waiting at a human gate or blocked), read projected
+open runs waiting at a human gate or blocked). Each list entry is a compact
+summary: `runId`, `status`, `final`, `missionSlug`, `missionId`, `missionRev`,
+`inputCardId`, `beadId`, `eventCount`, `resumeAllowed`, optional `resumePolicy`
+and `blockCode`, the start/change times and driver, `inputExcerpt` (the first
+text input, or first input, collapsed to one line and at most 90 Unicode
+characters including an ellipsis), and `sessions` (`sessionName`, `nodeId`,
+`slotId`) in creation order. A kept-on-call cleanup keeps its session; another
+cleanup removes it. Final runs list no sessions. Lists carry no event history,
+full inputs, outputs or pending gate requests. The selected run's read still
+returns its complete projection, including events. Listing reads and projects
+each ledger once and derives summary state from those same validated events;
+it does not read the run's frozen mission or project all events into HTTP DTOs.
+The cockpit shares one such discovery poll across its views and keeps finding
+externally started runs. Runtime routes also read projected
 events/escalations, stream SSE, abort, resume, read run evidence and record
 exact human verdicts and picks. They all use the coordinator; no request-local executor
 exists.

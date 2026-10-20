@@ -807,17 +807,41 @@ func (s *Store) ListRuns(filter RunListFilter) ([]RunStatusProjection, error) {
 	return runs, err
 }
 
-// ListRunsSkipping lists every run it can read and names the ledgers it could
-// not, such as a symlink whose target is gone, so one bad ledger never hides
-// the other runs or stops the daemon starting.
+// RunLedgerView pairs a run's status with the validated events that produced
+// it. Events share the parsed-ledger cache and must not be changed by callers.
+type RunLedgerView struct {
+	Status *RunStatusProjection
+	Events []RunEvent
+}
+
+// ListRunsSkipping lists readable runs and names any unreadable ledger.
 func (s *Store) ListRunsSkipping(filter RunListFilter) ([]RunStatusProjection, []Unreadable, error) {
+	views, unreadable, err := s.ListRunLedgerViews(filter)
+	if err != nil {
+		return nil, unreadable, err
+	}
+	runs := make([]RunStatusProjection, 0, len(views))
+	for _, view := range views {
+		runs = append(runs, *view.Status)
+	}
+	return runs, unreadable, nil
+}
+
+// ListRunLedgerViews reads and projects each ledger once. Discovery surfaces
+// can derive a compact summary without reopening or reprojecting each run.
+// One unreadable ledger never hides the readable runs.
+func (s *Store) ListRunLedgerViews(filter RunListFilter) ([]RunLedgerView, []Unreadable, error) {
 	runIDs, unreadable, err := s.listRunIDs()
 	if err != nil {
 		return nil, nil, err
 	}
-	runs := make([]RunStatusProjection, 0, len(runIDs))
+	views := make([]RunLedgerView, 0, len(runIDs))
 	for _, runID := range runIDs {
-		status, err := s.ProjectRun(runID)
+		events, err := s.ReadRunEvents(runID)
+		var status *RunStatusProjection
+		if err == nil {
+			status, err = ProjectRunEvents(runID, events)
+		}
 		if err != nil {
 			unreadable = append(unreadable, Unreadable{Name: runID, Reason: err.Error()})
 			continue
@@ -825,9 +849,9 @@ func (s *Store) ListRunsSkipping(filter RunListFilter) ([]RunStatusProjection, [
 		if filter.MissionID != "" && status.BoardID != filter.MissionID {
 			continue
 		}
-		runs = append(runs, *status)
+		views = append(views, RunLedgerView{Status: status, Events: events})
 	}
-	return runs, unreadable, nil
+	return views, unreadable, nil
 }
 
 func (s *Store) ProjectRunNodeReport(runID, nodeID string) (*RunNodeReport, error) {
