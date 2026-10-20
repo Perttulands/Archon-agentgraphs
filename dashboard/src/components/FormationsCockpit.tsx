@@ -26,6 +26,7 @@ import {
   deleteBoard,
   fetchAgentRoster,
   fetchBoardChanged,
+  fetchBoardLayout,
   fetchBoardNotes,
   fetchBoardSummaries,
   fetchBoardValidation,
@@ -521,11 +522,15 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // ----- data loading -----
   useEffect(() => {
     let cancelled = false
-    fetchBoardSummaries()
+    let timer = 0
+    let initialized = false
+    const refresh = () => fetchBoardSummaries()
       .then(list => {
         if (cancelled) return
         setBoards(list)
         setMissionsLoaded(true)
+        if (initialized) return
+        initialized = true
         if (list[0]) {
           const { slug, missingLinked } = chooseCurrentBoard(openableSlugs(list), window.location.search)
           if (missingLinked) {
@@ -551,8 +556,10 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         setMissionsLoaded(true)
         setError(err instanceof Error ? err.message : 'Failed to load missions')
       })
-    return () => { cancelled = true }
-  }, [])
+      .finally(() => { if (!cancelled && active) timer = window.setTimeout(refresh, 3000) })
+    void refresh()
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [active])
 
   useEffect(() => {
     let cancelled = false
@@ -618,27 +625,35 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [active, noteWindowsOpen, notesMode, selectedSlug])
 
   useEffect(() => {
-    // Paused while the tab is hidden (keep-alive); reactivation re-runs this
-    // effect and refreshes immediately via the leading checkChanges() call.
     if (!active || !selectedSlug || !currentBoard?.etag) return
     let cancelled = false
+    let timer = 0
     const checkChanges = async () => {
+      const beforeBoard = boardRef.current
+      const beforeLayout = layoutRef.current
       try {
-        const changed = await fetchBoardChanged(selectedSlug, currentBoard.etag)
-        if (cancelled || !changed) return
-        const { board: nextBoard, layout: nextLayout } = await fetchBoardWithLayout(selectedSlug)
+        const [changed, nextLayout] = await Promise.all([
+          fetchBoardChanged(selectedSlug, currentBoard.etag),
+          fetchBoardLayout(selectedSlug),
+        ])
         if (cancelled) return
-        setBoard(nextBoard)
-        setLayout(nextLayout)
-        setError('')
+        if (changed) {
+          const next = await fetchBoardWithLayout(selectedSlug)
+          if (cancelled || writes.busy || boardRef.current !== beforeBoard || layoutRef.current !== beforeLayout) return
+          setBoard(next.board)
+          setLayout(next.layout)
+        } else if (!writes.busy && layoutRef.current === beforeLayout && nextLayout.etag !== beforeLayout?.etag) {
+          setLayout(nextLayout)
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to check mission changes')
+      } finally {
+        if (!cancelled) timer = window.setTimeout(checkChanges, 600)
       }
     }
     void checkChanges()
-    const timer = window.setInterval(() => { void checkChanges() }, 600)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [active, currentBoard?.etag, selectedSlug])
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [active, currentBoard?.etag, selectedSlug, writes])
 
   useEffect(() => {
     // Draft markers follow each board revision. A rejected run keeps its nodes
@@ -1813,48 +1828,21 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // ▶ on a formation asks for the mission's inputs before running it alone (archon-o7p.4).
   const [startStep, setStartStep] = useState<FormationNode | null>(null)
 
-  const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs) => {
+  const runMission = useCallback(async (mission: MissionNode, inputs: RunInputs, owner = captureEditOwner()) => {
+    assertEditOwner(owner)
     if (historicalRef.current) throw new Error('Choose Edit current mission before starting a new run.')
     const current = boardRef.current
     if (!current) return
-      const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
-        .catch(err => {
-          if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
-          throw err
-        })
-      setAdmissionFindings([])
-      const status = { ...result.status, runId: result.status.runId || result.runId }
-      const events = await fetchRunEvents(status.runId)
-      setRunEvents(events)
-      setActiveRun(status)
-      setEscalations([])
-      setPinnedRun({ slug: current.slug, runId: status.runId })
-      if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
-      else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
-      setError('')
-  }, [])
-
-  // A human channel changed in Start mission is saved first, with undo, so the run's frozen board carries it.
-  const startMissionRun = useCallback(async (mission: MissionNode, inputs: RunInputs, channel: HumanChannel) => {
-    const current = boardRef.current?.inputCards?.find(item => item.id === mission.id)
-    if (current && humanChannelOf(current) !== channel && !await updateMissionFields(mission.id, { humanChannel: humanChannelField(channel) })) {
-      throw new Error('The human channel was not saved, so the mission did not start.')
-    }
-    await runMission(mission, inputs)
-  }, [runMission, updateMissionFields])
-
-  const runFormation = useCallback(async (formation: FormationNode, inputs: RunInputs) => {
-    if (historicalRef.current) throw new Error('Choose Edit current mission before running a formation.')
-    const current = boardRef.current
-    if (!current) return
-    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
+    const result = await startRun(current.etag, { ...inputs, mission: current.slug, inputCardId: mission.id, expectedRev: current.rev, actor: 'human:ui' })
       .catch(err => {
-        if (err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+        if (editOwnerRef.current === owner && err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
         throw err
       })
+    if (editOwnerRef.current !== owner) return
     setAdmissionFindings([])
     const status = { ...result.status, runId: result.status.runId || result.runId }
     const events = await fetchRunEvents(status.runId)
+    if (editOwnerRef.current !== owner) return
     setRunEvents(events)
     setActiveRun(status)
     setEscalations([])
@@ -1862,7 +1850,41 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
     else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
     setError('')
-  }, [])
+  }, [captureEditOwner, assertEditOwner])
+
+  // A human channel changed in Start mission is saved first, with undo, so the run's frozen board carries it.
+  const startMissionRun = useCallback(async (mission: MissionNode, inputs: RunInputs, channel: HumanChannel) => {
+    const owner = captureEditOwner()
+    const current = boardRef.current?.inputCards?.find(item => item.id === mission.id)
+    if (current && humanChannelOf(current) !== channel && !await updateMissionFields(mission.id, { humanChannel: humanChannelField(channel) })) {
+      throw new Error('The human channel was not saved, so the mission did not start.')
+    }
+    await runMission(mission, inputs, owner)
+  }, [runMission, updateMissionFields, captureEditOwner])
+
+  const runFormation = useCallback(async (formation: FormationNode, inputs: RunInputs) => {
+    const owner = captureEditOwner()
+    if (historicalRef.current) throw new Error('Choose Edit current mission before running a formation.')
+    const current = boardRef.current
+    if (!current) return
+    const result = await startRun(current.etag, { ...inputs, mission: current.slug, formationId: formation.id, expectedRev: current.rev, actor: 'human:ui' })
+      .catch(err => {
+        if (editOwnerRef.current === owner && err instanceof ApiRequestError && err.findings.length) setAdmissionFindings(err.findings)
+        throw err
+      })
+    if (editOwnerRef.current !== owner) return
+    setAdmissionFindings([])
+    const status = { ...result.status, runId: result.status.runId || result.runId }
+    const events = await fetchRunEvents(status.runId)
+    if (editOwnerRef.current !== owner) return
+    setRunEvents(events)
+    setActiveRun(status)
+    setEscalations([])
+    setPinnedRun({ slug: current.slug, runId: status.runId })
+    if (status.final) window.localStorage.removeItem(activeRunStorageKey(current.slug))
+    else window.localStorage.setItem(activeRunStorageKey(current.slug), status.runId)
+    setError('')
+  }, [captureEditOwner, assertEditOwner])
 
   const refreshRunEvents = useCallback(async (runId: string) => {
     const events = await fetchRunEvents(runId)
@@ -2982,7 +3004,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       if (err instanceof ApiRequestError && err.status === 409) setNotesConflict(true)
       setNoteErrors(current => ({ ...current, [target]: err instanceof Error ? err.message : 'Failed to save the note' }))
     } finally {
-      if (editOwnerRef.current === owner && noteSaveRequestRef.current === request) setNoteSaving('')
+      if (noteSaveRequestRef.current === request) setNoteSaving('')
     }
   }, [submitNotePatch])
 
@@ -3020,6 +3042,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
   const reloadSharedNotes = useCallback(async () => {
     const owner = editOwnerRef.current
+    const request = {}
+    noteSaveRequestRef.current = request
     const drafts = noteDraftsRef.current
     const currentBoard = boardRef.current
     if (!currentBoard) return
@@ -3040,7 +3064,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       if (editOwnerRef.current !== owner) return
       setNoteErrors(current => ({ ...current, [BOARD_NOTE_TARGET]: err instanceof Error ? err.message : 'Failed to reload shared notes' }))
     } finally {
-      if (editOwnerRef.current === owner) setNoteSaving('')
+      if (noteSaveRequestRef.current === request) setNoteSaving('')
     }
   }, [])
 

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { cockpitFixture, reviewMarkdown } from './cockpit-fixture'
-import { arrangedLayoutNodes } from '../src/components/formationsCanvas'
+import { arrangedLayoutNodes } from '../src/components/formationsArrange'
 
 /* Runs are listed under their mission and open onto what they produced
  * (archon-o7p.2). The routes answer as archond does: the run list holds the
@@ -127,9 +127,6 @@ test('an old run link is rejected when its slug now belongs to a recreated missi
   await expect(page.getByTestId('formations-error')).toContainText('belongs to an earlier mission "browser" that was deleted')
   await expect(page.getByTestId('run-banner')).toHaveCount(0)
   await expect(page.getByTestId('new-formation')).toBeEnabled()
-    await expect(first).toHaveCSS('left', `${saved.x}px`)
-    await expect(first).toHaveCSS('top', `${saved.y}px`)
-    expect(fixture.writes).toEqual([])
 })
 
 // Every run that needs the operator is counted on the mission picker and in

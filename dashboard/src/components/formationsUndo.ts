@@ -98,9 +98,12 @@ export class UndoHistory {
   undo(runner: UndoRunner): Promise<UndoOutcome> { return this.run(runner, false) }
   redo(runner: UndoRunner): Promise<UndoOutcome> { return this.run(runner, true) }
   private run(runner: UndoRunner, redo: boolean): Promise<UndoOutcome> {
+    const requestedBoard = runner.board()
+    const requestedScope = runner.scope?.()
+    const requestedGeneration = this.generation
     const run = this.queue.then(async (): Promise<UndoOutcome> => {
       await runner.idle()
-      if (runner.canEdit?.() === false) return { status: 'empty' }
+      if (requestedBoard !== runner.board() || requestedScope !== runner.scope?.() || requestedGeneration !== this.generation || runner.canEdit?.() === false) return { status: 'empty' }
       const source = redo ? this.redos : this.entries
       const destination = redo ? this.entries : this.redos
       const inverse: UndoStep[] = []

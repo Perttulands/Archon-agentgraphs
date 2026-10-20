@@ -1451,7 +1451,9 @@ describe('FormationsCockpit reference parity', () => {
     const refreshes: TestBoard[] = []
     const changePolls: Array<() => void> = []
     let timerId = 0
-    vi.spyOn(window, 'setInterval').mockImplementation((handler, timeout) => {
+    const originalTimeout = window.setTimeout
+    vi.spyOn(window, 'setTimeout').mockImplementation((handler, timeout, ...args) => {
+      if (timeout !== 600) return originalTimeout(handler, timeout, ...args)
       timerId += 1
       if (timeout === 600) changePolls.push(() => handler())
       return timerId as unknown as ReturnType<typeof setInterval>
@@ -3568,4 +3570,58 @@ describe('FormationsCockpit reference parity', () => {
     unmount()
     expect(viewport).not.toHaveClass('panning')
   })
+  it('REVIEW note save survives a historical view visit without leaving Saving stuck', async () => {
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01FROZEN')
+    installRunsMock([{runId:'run_01FROZEN',status:'succeeded',final:true,missionSlug:'test-board',missionId:'brd_test',missionRev:5,inputCardId:'mis_showcase',eventCount:0}])
+    await renderCockpit()
+    fireEvent.click(await screen.findByRole('button',{name:'Edit current mission · revision 7'}))
+    const originalFetch=globalThis.fetch
+    let release!: () => void
+    const held=new Promise<void>(resolve=>{release=resolve})
+    globalThis.fetch=vi.fn(async (input,init)=>{
+      const response=await originalFetch(input,init)
+      if(String(input).endsWith('/notes')&&init?.method==='PATCH')await held
+      return response
+    })
+    fireEvent.click(screen.getByRole('button',{name:'Mission notes'}))
+    const note=await screen.findByRole('textbox',{name:'Note for the mission'})
+    fireEvent.change(note,{target:{value:'Submitted before history'}})
+    fireEvent.click(screen.getByRole('button',{name:'Add note'}))
+    await screen.findByRole('button',{name:'Saving…'})
+    fireEvent.click(screen.getByTestId('nav-run-run_01FROZEN'))
+    await screen.findByRole('button',{name:'Edit current mission · revision 7'})
+    await act(async()=>{release();await held})
+    fireEvent.click(screen.getByRole('button',{name:'Edit current mission · revision 7'}))
+    await waitFor(()=>expect(note).not.toHaveAttribute('readonly'))
+    expect(screen.queryByRole('button',{name:'Saving…'})).toBeNull()
+    expect(screen.getByRole('button',{name:/^(Add note|Reply)$/})).toBeEnabled()
+  })
+
+  it('REVIEW channel-save start must not launch another mission after navigation', async () => {
+    const second={...makeBoard(),id:'second',slug:'second-board',title:'Second board',etag:'second-etag'}
+    patches=installFetchMock({boards:[makeBoard(),second],runStatus:{status:'succeeded',final:true}})
+    await renderCockpit()
+    const originalFetch=globalThis.fetch
+    let release!: () => void
+    const held=new Promise<void>(resolve=>{release=resolve})
+    const started: Array<Record<string,unknown>>=[]
+    globalThis.fetch=vi.fn(async(input,init)=>{
+      if(String(input)==='/api/runs'&&init?.method==='POST')started.push(JSON.parse(String(init.body)))
+      const response=await originalFetch(input,init)
+      if(init?.method==='PATCH'&&String(init.body).includes('updateInputCard'))await held
+      return response
+    })
+    fireEvent.click(screen.getByTestId('run-mission-mis_showcase'))
+    const dialog=await screen.findByRole('dialog',{name:'Start mission'})
+    fireEvent.change(within(dialog).getByLabelText('Brief'),{target:{value:'Work intended for first mission'}})
+    fireEvent.click(within(dialog).getByRole('radio',{name:/Talk with the agents/}))
+    fireEvent.click(within(dialog).getByRole('button',{name:'Start mission'}))
+    await waitFor(()=>expect(patches.some(patch=>patch.body.updateInputCard)).toBe(true))
+    pickMission('second-board')
+    await waitFor(()=>expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission','second-board'))
+    await act(async()=>{release();await held})
+    await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Start mission'})).toBeEnabled())
+    expect(started).toHaveLength(0)
+  })
+
 })

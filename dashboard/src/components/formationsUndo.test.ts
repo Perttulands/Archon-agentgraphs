@@ -145,6 +145,33 @@ describe('UndoHistory', () => {
     expect(applied).toEqual([boardStep({ newest: 1 })])
   })
 
+
+  it('keeps an undo invocation bound to its mission while waiting for pending edits', async () => {
+    const history = historyOn('a')
+    history.record({ board: 'a', label: 'A edit', steps: [boardStep({ a: 1 })] })
+    let release!: () => void
+    let entered!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const started = new Promise<void>(resolve => { entered = resolve })
+    let selected = 'a'
+    let scope = {}
+    const applied: string[] = []
+    const pending = history.undo(runner(async () => { applied.push(selected) }, {
+      board: () => selected,
+      scope: () => scope,
+      idle: async () => { entered(); await held },
+    }).value)
+    await started
+    selected = 'b'
+    scope = {}
+    history.setBoard('b')
+    history.record({ board: 'b', label: 'B edit', steps: [boardStep({ b: 1 })] })
+    release()
+    await pending
+    expect(applied).toEqual([])
+    expect(history.size).toBe(1)
+  })
+
   it.each([false, true])('stops remaining undo steps after a view switch (return=%s)', async returnToOriginal => {
     const history = historyOn('a')
     history.record({ board: 'a', label: 'compound', steps: [boardStep({ first: 1 }), boardStep({ second: 2 })] })
