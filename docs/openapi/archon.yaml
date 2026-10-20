@@ -7,6 +7,50 @@ info:
     details follow internal/api.go and agents.go; run projections are sanitized, and run evidence routes serve
     capped, confined content (ADR-0017).
 paths:
+  /api/runs/{runId}/storage:
+    parameters:
+    - $ref: '#/components/parameters/RunID'
+    get:
+      summary: Inventory evidence, frozen retention policy and known protection
+      responses:
+        '200':
+          description: Enveloped data.storage is the run storage report; logical bytes and unique-inode allocated bytes are measured separately. Legacy runs are inventoried without automatic removal.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      storage:
+                        $ref: '#/components/schemas/RunStorageReport'
+        '404':
+          description: No such run
+    post:
+      summary: Explicitly archive, unarchive or dispose run evidence
+      description: Archive exempts retained evidence from ordinary budgets and can unblock an over-budget output after a separate resume. It cannot restore expired files. Dispose requires a final settled run without nonfinal downstream references and preserves compact history. Unarchive returns evidence to ordinary retention. Partial deletion remains explicit and retryable. Legacy evidence may be explicitly disposed but is never automatically removed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              additionalProperties: false
+              properties:
+                action:
+                  type: string
+                  enum: [archive, unarchive, dispose]
+      responses:
+        '200':
+          description: Enveloped data.storage contains the updated RunStorageReport
+        '400':
+          description: Invalid action or request
+        '404':
+          description: No such run
+        '409':
+          description: A command is still writing, the run is nonfinal or referenced, or removed evidence cannot be archived
   /api/runs/{runId}/seats:
     parameters:
     - in: path
@@ -510,6 +554,9 @@ paths:
           description: Enveloped data.artifacts lists name (relative), size and modifiedAt, declared output artifacts first (one representative per nonempty output), then other files by name; data.omitted counts files beyond 500 (the limit expands to retain output representatives), and data.truncated also marks directories beyond 16 levels. Directory cycles are skipped. Symlinks and hard links are followed; special files are omitted.
         '404':
           description: No such run
+        '410':
+          description: Evidence expired or disposal is incomplete; inspect the run storage report for current lifecycle state
+
   /api/runs/{runId}/evidence/attempts:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -553,6 +600,9 @@ paths:
           description: Enveloped data.artifact contains name, size, modifiedAt, kind (markdown, json, text, image, pdf, video, model, binary), path (its absolute path on the daemon host) and, for textual kinds, text capped at 256 KiB.
         '404':
           description: No such run or artifact, or a name that leaves the run's artifact directory through .., a symlink or a hard link
+        '410':
+          description: Evidence expired or disposal is incomplete; inspect the run storage report for current lifecycle state
+
   /api/runs/{runId}/artifacts/{name}:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -572,6 +622,9 @@ paths:
           description: No such run or artifact, or a name that leaves the run's artifact directory
         '413':
           description: Buffered artifact exceeds 16 MiB
+        '410':
+          description: Evidence expired or disposal is incomplete; inspect the run storage report for current lifecycle state
+
   /api/files/preview:
     parameters:
     - in: query
@@ -1075,6 +1128,52 @@ components:
       schema:
         type: string
   schemas:
+    RunStorageReport:
+      type: object
+      required: [runId, policy, final, archived, state, trimmed, bytes, allocatedBytes, retainedBytes, budgetBytes, poolBudgetBytes, protectedBy, activeSeats]
+      properties:
+        runId:
+          type: string
+        policy:
+          type: string
+          enum: [bounded, legacy]
+        final:
+          type: boolean
+        archived:
+          type: boolean
+        state:
+          type: string
+          enum: [retained, partial, expired]
+        trimmed:
+          type: boolean
+        bytes:
+          type: integer
+          description: All current logical regular-file bytes in the artifact directory
+        allocatedBytes:
+          type: integer
+          description: Unique-inode allocated bytes estimate
+        retainedBytes:
+          type: integer
+          description: Persisted kept evidence after trimming; accepted outputs before trimming
+        budgetBytes:
+          type: integer
+          description: Ordinary per-run evidence budget, default 33554432 bytes
+        poolBudgetBytes:
+          type: integer
+          description: Ordinary completed evidence pool budget, default 268435456 bytes
+        activeSeats:
+          type: array
+          items:
+            type: integer
+          description: Seat creation sequences not confirmed ended or absent; these protect evidence even in a final run
+        protectedBy:
+          type: array
+          items:
+            type: string
+          description: Nonfinal runs whose recorded inputs reference this evidence
+        lastError:
+          type: string
+          description: Latest incomplete removal error; retry disposal after resolving it
     EndNode:
       type: object
       description: Ends a path on purpose. A run whose path ends at a rejected End node fails with

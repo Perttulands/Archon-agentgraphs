@@ -113,6 +113,9 @@ type Coordinator struct {
 	terminalObserver *terminal.Observer
 	needsYou         *needsYouDispatcher
 	agentLiveness    api.AgentLivenessProvider
+	storageCancel    context.CancelFunc
+	storageWake      chan struct{}
+	storageDone      chan struct{}
 	// channels caches each run's frozen human channel; guarded by mu.
 	channels map[string]string
 }
@@ -166,7 +169,22 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 			notify.queue(event.RunID)
 		}
 	}
-	c.engine = formations.NewRunEngine(store, personas, makeExecutor(store))
+	store.RunStorageRunBusy = func(runID string) bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		state := c.runs[runID]
+		return state != nil && state.busy
+	}
+	executor := makeExecutor(store)
+	if keeper, ok := executor.(formations.SeatKeeper); ok {
+		store.RunStorageSeatAbsent = func(ctx context.Context, seat formations.KeptSeat) bool {
+			probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			present, outcome := keeper.ProbeKeptSeat(probe, seat)
+			return !present && outcome == formations.SeatOutcomeGone
+		}
+	}
+	c.engine = formations.NewRunEngine(store, personas, executor)
 	c.engine.SetExecutionContext(func(runID string) context.Context {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -179,6 +197,7 @@ func Open(stateDir string, personas *formations.PersonaStore, makeExecutor func(
 		return state.ctx
 	})
 	c.engine.SetGateEvaluator(formations.NewCodeGateEvaluator())
+	c.startStorageMaintenance()
 	return c, nil
 }
 
@@ -188,6 +207,7 @@ func (c *Coordinator) BeginShutdown() {
 	c.shutdownOnce.Do(func() {
 		c.mu.Lock()
 		c.closed = true
+		c.storageCancel()
 		close(c.stopping)
 		c.mu.Unlock()
 		deadline := time.AfterFunc(c.shutdownTimeout, func() { close(c.shutdownExpired) })
@@ -210,6 +230,7 @@ func (c *Coordinator) BeginShutdown() {
 			if notify != nil {
 				<-notify.done
 			}
+			<-c.storageDone
 			c.closeErr = c.lock.Close()
 			deadline.Stop()
 			close(c.shutdownDone)
@@ -287,6 +308,8 @@ func (c *Coordinator) Handler() http.Handler {
 	// mission definitions and authoring, so no request can construct an engine.
 	mux.HandleFunc("POST /api/runs", c.start)
 	mux.HandleFunc("GET /api/runs/{runId}", c.get)
+	mux.HandleFunc("GET /api/runs/{runId}/storage", c.runStorage)
+	mux.HandleFunc("POST /api/runs/{runId}/storage", c.changeRunStorage)
 	mux.HandleFunc("GET /api/runs/{runId}/events", c.events)
 	mux.HandleFunc("GET /api/runs/{runId}/stream", c.stream)
 	mux.HandleFunc("POST /api/runs/{runId}/resume", c.resume)
@@ -397,6 +420,9 @@ func (c *Coordinator) release(id string) {
 		state.changed = make(chan struct{})
 	}
 	c.mu.Unlock()
+	if id != "" {
+		c.wakeStorageMaintenance()
+	}
 	if id != "" && notify != nil {
 		// The run's command has settled; only now may it announce a block.
 		notify.settled(id)

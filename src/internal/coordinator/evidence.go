@@ -113,6 +113,8 @@ func (c *Coordinator) artifactRaw(w http.ResponseWriter, r *http.Request) {
 
 func evidenceFailure(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, formations.ErrRunEvidenceExpired):
+		reply(w, http.StatusGone, map[string]string{"error": "run evidence expired; inspect this run's storage report for its lifecycle state"})
 	case errors.Is(err, formations.ErrNotFound), errors.Is(err, os.ErrNotExist):
 		reply(w, http.StatusNotFound, map[string]string{"error": "run evidence not found"})
 	case errors.Is(err, formations.ErrEvidenceTooLarge):

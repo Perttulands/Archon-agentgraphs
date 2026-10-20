@@ -133,6 +133,9 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 	if args[0]+" "+args[1] == "run attempts" {
 		return remoteRunAttempts(client, args[2:], stdout, stderr)
 	}
+	if args[0]+" "+args[1] == "run storage" {
+		return runStorage(nil, client, args[2:], stdout, stderr)
+	}
 	request := client.raw
 	name := args[0] + " " + args[1]
 	verdict := name == "gate approve" || name == "gate reject"

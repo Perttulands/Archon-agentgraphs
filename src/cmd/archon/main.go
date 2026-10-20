@@ -329,6 +329,8 @@ func run(args []string, stdout, stderr io.Writer, runner tmuxRunner) int {
 		switch args[1] {
 		case "list":
 			return runList(store, args[2:], stdout, stderr)
+		case "storage":
+			return runStorage(store, nil, args[2:], stdout, stderr)
 		case "status":
 			return runStatus(store, args[2:], stdout, stderr)
 		case "logs":
