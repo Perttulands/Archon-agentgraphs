@@ -1344,9 +1344,11 @@ or a directory as the kind says, blocks the step with `invalid_output_ref` or
 accepted, Archon keeps a copy of it in the attempt directory, at
 `outputs/<port-id>/<base name>`, wherever the seat wrote it, the attempt
 directory included: a copy-on-write clone (`FICLONE`) where the file system
-supports one, otherwise an ordinary copy, never a hard link. Only a path the
-seat itself wrote under `outputs/` is kept where it is. In a folder, a symlink
-to something inside the folder stays a link (to the copy), a symlink that
+supports one, otherwise an ordinary copy, never a hard link. Paths already
+under `outputs/`, including the destination itself, are independently copied
+before replacement too; preserving a copy never changes a shared source file's
+permissions. In a folder, a symlink to something inside the folder stays a link
+(to the copy), a symlink that
 leads out of the folder is replaced by a copy of what it points at, a dangling
 one is kept as it is, special files are left out, and the run's artifact
 directory inside it is not copied. The kept copy is read-only, its files and

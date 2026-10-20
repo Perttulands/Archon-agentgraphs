@@ -247,17 +247,11 @@ func (s *Store) acceptAttemptOutputs(ctx context.Context, runID string, formatio
 }
 
 // keepOutput keeps one file or folder output in the attempt's outputs
-// directory, outputs/<port>/, read-only, and returns the kept path. An output
-// the seat itself wrote under outputs/ is kept where it is.
+// directory, outputs/<port>/, read-only, and returns the kept path. Even an
+// output already at that path is copied before replacement: its files may
+// share inodes with mutable work outside the attempt.
 func keepOutput(ctx context.Context, path, dir, portID string, artifactRoots []string) (string, error) {
 	outputsDir := filepath.Join(dir, attemptOutputsDir)
-	if resolvedPathWithin(path, outputsDir) {
-		resolved, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return "", err
-		}
-		return path, freezeTree(resolved)
-	}
 	// An attempt accepted again, on resume, replaces its earlier copy.
 	parent := filepath.Join(outputsDir, portID)
 	for _, kept := range []string{outputsDir, parent} {
@@ -298,19 +292,6 @@ func pathWithin(path, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// resolvedPathWithin says whether path, its symlinks followed, lies in dir.
-func resolvedPathWithin(path, dir string) bool {
-	resolvedPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return false
-	}
-	resolvedDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return false
-	}
-	return pathWithin(resolvedPath, resolvedDir)
-}
-
 // snapshotOutput copies a file or a directory tree into parent, keeping its
 // base name, makes the copy read-only and returns its path. A copy already
 // there is replaced. In a directory, a link to something inside the tree
@@ -334,27 +315,42 @@ func snapshotOutput(ctx context.Context, source, parent string, exclude []string
 		name = "root"
 	}
 	target := filepath.Join(parent, name)
-	if err := removeKept(target); err != nil {
+	// Stage the independent copy before touching target, which may itself be
+	// the source. Keep staging outside that target and exclude it from a
+	// source tree that contains parent, so accepting outputs/ cannot recurse.
+	stage, err := os.MkdirTemp(parent, ".snapshot-")
+	if err != nil {
 		return "", err
 	}
+	defer func() { _ = removeKept(stage) }()
+	staged := filepath.Join(stage, name)
 	info, err := os.Stat(resolved)
 	if err != nil {
 		return "", err
 	}
 	if !info.IsDir() {
-		if err := cloneOrCopyFile(ctx, resolved, target, info.Mode().Perm()); err != nil {
+		if err := cloneOrCopyFile(ctx, resolved, staged, info.Mode().Perm()); err != nil {
 			return "", err
 		}
-		return target, freezeTree(target)
-	}
-	copier := &treeCopier{ctx: ctx, skipped: map[string]bool{}}
-	for _, dir := range append(exclude, parent) {
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			dir = real
+	} else {
+		copier := &treeCopier{ctx: ctx, skipped: map[string]bool{}}
+		for _, dir := range append(exclude, parent, stage) {
+			if real, err := filepath.EvalSymlinks(dir); err == nil {
+				dir = real
+			}
+			copier.skipped[dir] = true
 		}
-		copier.skipped[dir] = true
+		if err := copier.copyTree(resolved, staged); err != nil {
+			return "", err
+		}
 	}
-	if err := copier.copyTree(resolved, target); err != nil {
+	if err := copyStopped(ctx); err != nil {
+		return "", err
+	}
+	if err := removeKept(target); err != nil {
+		return "", err
+	}
+	if err := os.Rename(staged, target); err != nil {
 		return "", err
 	}
 	return target, freezeTree(target)
