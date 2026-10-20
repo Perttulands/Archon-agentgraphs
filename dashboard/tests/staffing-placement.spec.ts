@@ -216,10 +216,12 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 2560, height: 1440 }
   }
 }
 
-test('at the default fit, established slots open their sentence by the dropdown rule', async ({ page }) => {
+test('at explicit overview fit, established slots open their sentence by the dropdown rule', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await cockpitFixture(page, { roles, extraAgents: 30, newRow: true })
   await page.goto('/')
+  await expect(page.locator('.zoomlevel')).toHaveText('100%')
+  await page.getByTitle('Fit', { exact: true }).click()
   await expect(page.locator('.zoomlevel')).not.toHaveText('100%')
   for (const [testId, label] of [['slot-execution-controller', 'Controller'], ['slot-execution-worker', 'Worker 1'], ['slot-peer-peer_1', 'Reviewer'], ['slot-judge-judge_1', 'Judge']]) {
     await checkCanvasSlot(page, testId, label, `fit ${label}`)
@@ -231,6 +233,8 @@ for (const size of [{ width: 1920, height: 1080 }, { width: 2560, height: 1440 }
     await page.setViewportSize(size)
     await cockpitFixture(page, { roles, extraAgents: 30, newRow: true })
     await page.goto('/')
+    // These distant saved positions require an explicit overview at reading scale.
+    await page.getByTitle('Fit', { exact: true }).click()
     for (const id of ['new_1', 'new_2', 'new_3']) {
       await checkCanvasSlot(page, `slot-${id}-agent`, 'Agent', `new row ${id}`)
     }
