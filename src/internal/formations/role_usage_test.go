@@ -3,6 +3,7 @@ package formations
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -23,13 +24,13 @@ func TestRoleUsageNamesEverySlotInEveryMission(t *testing.T) {
 		{MissionID: "brd_other", MissionSlug: "other", MissionTitle: "Other", FormationID: "fmn_research", FormationTitle: "Research", SlotID: "slot_research", SlotLabel: "Researcher"},
 		{MissionID: "brd_01J9_sesssearch", MissionSlug: "session-search", MissionTitle: "Improve session search", FormationID: "fmn_research", FormationTitle: "Research", SlotID: "slot_research", SlotLabel: "Researcher"},
 	}
-	if !reflect.DeepEqual(uses, want) {
+	if !reflect.DeepEqual(uses.Usage, want) || !uses.Complete || len(uses.Unreadable) != 0 {
 		t.Fatalf("usage = %+v, want %+v", uses, want)
 	}
-	if got := RoleInUseError("scout", uses).Error(); got != `role_in_use: role "scout" staffs 2 slots: Other › Research › Researcher; Improve session search › Research › Researcher; restaff them, or retire the role instead` {
+	if got := RoleInUseError("scout", uses.Usage).Error(); got != `role_in_use: role "scout" staffs 2 slots: Other › Research › Researcher; Improve session search › Research › Researcher; restaff them, or retire the role instead` {
 		t.Fatalf("in-use error = %s", got)
 	}
-	if uses, err := store.RoleUsage("judge"); err != nil || len(uses) != 0 {
+	if uses, err := store.RoleUsage("judge"); err != nil || len(uses.Usage) != 0 {
 		t.Fatalf("judge usage = %+v, %v", uses, err)
 	}
 }
@@ -133,5 +134,31 @@ func TestARetiredRoleStopsItsSlotsUntilBroughtBack(t *testing.T) {
 	retire(false)
 	if report := ValidateRunAdmission(board, personas, RunAdmissionScope{}); len(report.Errors) != 0 {
 		t.Fatalf("validation after bringing the role back = %+v", report.Errors)
+	}
+}
+
+func TestRoleUsageRetainsKnownSlotsWhenOtherSourcesAreUnreadable(t *testing.T) {
+	store, _ := s4RunFixture(t)
+	writeFixture(t, store.BoardPath("session-search"), s4RunBoardFixture())
+	writeFixture(t, store.BoardPath("malformed"), "this is not a TOML mission")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "missing"), store.BoardPath("dangling")); err != nil {
+		t.Fatal(err)
+	}
+	report, err := store.RoleUsage("scout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Complete || len(report.Usage) != 1 || len(report.Unreadable) != 2 || report.Unreadable[0].Name != "dangling" || report.Unreadable[1].Name != "malformed" {
+		t.Fatalf("partial report = %+v", report)
+	}
+	if err := report.CheckUnused("scout"); !errors.Is(err, ErrRoleInUse) {
+		t.Fatalf("known role use lost: %v", err)
+	}
+	unused, err := store.RoleUsage("unused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unused.CheckUnused("unused"); !errors.Is(err, ErrRoleUsageIncomplete) || !strings.Contains(err.Error(), "dangling") || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("incomplete scan asserted absence: %v", err)
 	}
 }

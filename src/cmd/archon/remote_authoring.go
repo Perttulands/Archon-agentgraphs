@@ -146,6 +146,8 @@ func (e *remoteHTTPError) Unwrap() error {
 		return formations.ErrInvalidPortDirection
 	case "INVALID_AGENT_CARD":
 		return formations.ErrInvalidAgentCard
+	case "ROLE_USAGE_INCOMPLETE":
+		return formations.ErrRoleUsageIncomplete
 	case "ROLE_IN_USE":
 		return formations.ErrRoleInUse
 	case "BUILTIN_ROLE":
@@ -1121,16 +1123,12 @@ func writeRemoteAgent(stdout, stderr io.Writer, data json.RawMessage, jsonOut bo
 }
 
 // remoteAgentUsage reads which slots use a role, through the daemon.
-func remoteAgentUsage(c *remoteClient, id string) ([]formations.RoleUse, error) {
+func remoteAgentUsage(c *remoteClient, id string) (*formations.RoleUsageReport, error) {
 	data, _, err := c.call("GET", "/api/agents/"+url.PathEscape(id)+"/usage", nil, "")
 	if err != nil {
 		return nil, err
 	}
-	uses, err := decodeRemote[[]formations.RoleUse](data, "usage")
-	if err != nil {
-		return nil, err
-	}
-	return *uses, nil
+	return decodeRemote[formations.RoleUsageReport](data, "")
 }
 
 func remoteAgentRetire(restore bool) func(*remoteClient, []string, io.Writer, io.Writer) int {

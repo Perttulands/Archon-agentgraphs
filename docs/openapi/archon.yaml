@@ -1000,7 +1000,7 @@ paths:
         '404':
           description: No such role
         '409':
-          description: ROLE_IN_USE while any slot, in any mission, names the role (the message names each slot);
+          description: ROLE_IN_USE while any slot, in any readable mission, names the role (the message names each slot); ROLE_USAGE_INCOMPLETE when unreadable missions prevent establishing that the role is unused;
             BUILTIN_ROLE for a built-in role, which has no card to delete; CONFLICT for a stale ETag
         '428':
           description: Missing If-Match
@@ -1059,8 +1059,11 @@ paths:
     get:
       responses:
         '200':
-          description: data.usage lists every slot, in every mission, that names the role, each as {missionId,
-            missionSlug, missionTitle, formationId, formationTitle, slotId, slotLabel}
+          description: data.usage lists known slots naming the role, each as {missionId,
+            missionSlug, missionTitle, formationId, formationTitle, slotId, slotLabel}.
+            data.complete is false when any mission could not be read; data.unreadable
+            always lists those sources as {name, reason}, otherwise an empty array.
+            Known uses remain present in an incomplete report.
         '404':
           description: No such role
 components:

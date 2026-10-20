@@ -669,21 +669,24 @@ func runAgentRetire(store *formations.PersonaStore, missions *formations.Store, 
 
 // writeRoleRetired says what retiring or restoring a role did, offline and
 // remote.
-func writeRoleRetired(stdout io.Writer, id string, retired bool, uses []formations.RoleUse, jsonOut bool) int {
+func writeRoleRetired(stdout io.Writer, id string, retired bool, report *formations.RoleUsageReport, jsonOut bool) int {
 	status := "active"
 	if retired {
 		status = "retired"
 	}
 	if jsonOut {
-		return writeJSON(stdout, map[string]any{"id": id, "status": status, "usage": uses})
+		return writeJSON(stdout, map[string]any{"id": id, "status": status, "usage": report.Usage, "complete": report.Complete, "unreadable": report.Unreadable})
+	}
+	if !report.Complete {
+		fmt.Fprintf(stdout, "warning: role usage is incomplete: %s\n", report.IncompleteReason())
 	}
 	if !retired {
 		fmt.Fprintf(stdout, "restored %s\n", id)
 		return 0
 	}
 	fmt.Fprintf(stdout, "retired %s\n", id)
-	if len(uses) > 0 {
-		fmt.Fprintf(stdout, "these slots do not run until they are restaffed: %s\n", formations.RoleUsageWords(uses))
+	if len(report.Usage) > 0 {
+		fmt.Fprintf(stdout, "these slots do not run until they are restaffed: %s\n", formations.RoleUsageWords(report.Usage))
 	}
 	return 0
 }
@@ -704,8 +707,8 @@ func runAgentDelete(store *formations.PersonaStore, missions *formations.Store, 
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "agent", id)
 	}
-	if len(uses) > 0 {
-		return failJSON(stderr, formations.RoleInUseError(id, uses), *jsonOut, "agent", id)
+	if err := uses.CheckUnused(id); err != nil {
+		return failJSON(stderr, err, *jsonOut, "agent", id)
 	}
 	card, err := store.ReadPersona(id)
 	if err != nil {
@@ -3060,6 +3063,8 @@ func archonErrorCode(err error) string {
 		return "invalid_port_direction"
 	case errors.Is(err, formations.ErrInvalidAgentCard):
 		return "invalid_agent_card"
+	case errors.Is(err, formations.ErrRoleUsageIncomplete):
+		return "role_usage_incomplete"
 	case errors.Is(err, formations.ErrRoleInUse):
 		return "role_in_use"
 	case errors.Is(err, formations.ErrBuiltinRole):

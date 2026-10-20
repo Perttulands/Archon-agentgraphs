@@ -66,7 +66,7 @@ func (h *AgentsHandler) AgentUsage(w http.ResponseWriter, r *http.Request) {
 		writeAgentError(w, err)
 		return
 	}
-	core.WriteSuccess(w, map[string]interface{}{"usage": uses})
+	core.WriteSuccess(w, uses)
 }
 
 // DeleteAgent removes a role's card once no slot names it. Deleting a card
@@ -78,8 +78,8 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 		writeAgentError(w, err)
 		return
 	}
-	if len(uses) > 0 {
-		writeAgentError(w, formations.RoleInUseError(id, uses))
+	if err := uses.CheckUnused(id); err != nil {
+		writeAgentError(w, err)
 		return
 	}
 	builtin, err := h.store.DeletePersona(id, r.Header.Get("If-Match"))
@@ -90,7 +90,7 @@ func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	core.WriteSuccess(w, map[string]interface{}{"deleted": id, "builtinRemains": builtin})
 }
 
-func (h *AgentsHandler) usage(id string) ([]formations.RoleUse, error) {
+func (h *AgentsHandler) usage(id string) (*formations.RoleUsageReport, error) {
 	if h.missions == nil {
 		return nil, errors.New("this agents handler has no missions to read role usage from")
 	}
@@ -231,6 +231,8 @@ func writeAgentError(w http.ResponseWriter, err error) {
 		core.WriteError(w, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match precondition is required")
 	case errors.Is(err, formations.ErrAlreadyExists):
 		core.WriteError(w, http.StatusConflict, "AGENT_EXISTS", "Agent id already exists")
+	case errors.Is(err, formations.ErrRoleUsageIncomplete):
+		core.WriteError(w, http.StatusConflict, "ROLE_USAGE_INCOMPLETE", strings.TrimPrefix(err.Error(), formations.ErrRoleUsageIncomplete.Error()+": "))
 	case errors.Is(err, formations.ErrRoleInUse):
 		core.WriteError(w, http.StatusConflict, "ROLE_IN_USE", strings.TrimPrefix(err.Error(), formations.ErrRoleInUse.Error()+": "))
 	case errors.Is(err, formations.ErrBuiltinRole):

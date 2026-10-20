@@ -176,7 +176,13 @@ a role and bring it back, naming the slots that use it; a retired role is no
 longer offered for staffing, and a slot that still names it stops validation
 and admission with `retired_persona` until it is restaffed or the role comes
 back. `archon agent delete <id>` removes a role's card only while no slot
-names it, so no slot ever points at a missing role. The inspector lists a
+names it, so no slot ever points at a missing role. `GET /api/agents/{id}/usage` returns known slots as `usage`, a `complete`
+boolean, and `unreadable` mission sources (`name`, `reason`, an empty array
+when complete). A broken unrelated mission never hides known uses. An
+incomplete scan cannot establish that a role is unused: deletion refuses with
+HTTP 409 `ROLE_USAGE_INCOMPLETE`, naming the sources.
+
+The inspector lists a
 role's notes, oldest first, each with its author and time; a note written there
 is the operator's (`human:ui`), sent as `updatedBy` on `PATCH /api/agents/{id}`,
 and other writers' notes default to `agent:archon`. The cockpit calls the card

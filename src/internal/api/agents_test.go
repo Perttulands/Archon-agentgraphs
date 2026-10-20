@@ -490,3 +490,57 @@ effort = "medium"
 		}
 	}
 }
+
+func TestAgentUsageRetainsKnownSlotsAndRefusesDeleteWithUnreadableMissions(t *testing.T) {
+	missions := formations.NewStore(t.TempDir())
+	agentsDir := t.TempDir()
+	writeAgentFixture(t, agentsDir, "spare", minimalAgentFixture("spare", "builder", nil))
+	if _, err := missions.CreateBoard(formations.BoardCreateRequest{Slug: "good"}); err != nil {
+		t.Fatal(err)
+	}
+	board, err := missions.ReadBoard("good")
+	if err != nil {
+		t.Fatal(err)
+	}
+	made, err := missions.CreateFormation("good", formations.FormationCreateRequest{Type: "solo", Title: "Work"}, formations.WriteOptions{ExpectedETag: board.ETag, ExpectedRev: board.Rev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = missions.AssignFormationSlot("good", formations.FormationSlotAssignmentRequest{FormationID: made.Formation.ID, SlotID: made.Formation.Slots[0].ID, AgentID: "builder", Harness: "claude-code", Effort: "medium"}, formations.WriteOptions{ExpectedETag: made.Board.ETag, ExpectedRev: made.Board.Rev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "missing"), missions.BoardPath("dangling")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(missions.BoardPath("malformed"), []byte("invalid mission"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	NewAgentsHandler(agentsDir, nil).UseMissions(missions).RegisterRoutes(mux)
+	usage := httptest.NewRecorder()
+	mux.ServeHTTP(usage, httptest.NewRequest(http.MethodGet, "/api/agents/builder/usage", nil))
+	var result struct {
+		Data formations.RoleUsageReport `json:"data"`
+	}
+	if err := json.Unmarshal(usage.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if usage.Code != 200 || result.Data.Complete || len(result.Data.Usage) != 1 || len(result.Data.Unreadable) != 2 {
+		t.Fatalf("usage: %d %s", usage.Code, usage.Body.String())
+	}
+	card, err := formations.NewPersonaStore(agentsDir).ReadPersona("spare")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "/api/agents/spare", nil)
+	req.Header.Set("If-Match", card.ETag)
+	deleted := httptest.NewRecorder()
+	mux.ServeHTTP(deleted, req)
+	if deleted.Code != http.StatusConflict || !strings.Contains(deleted.Body.String(), "ROLE_USAGE_INCOMPLETE") || !strings.Contains(deleted.Body.String(), "dangling") || !strings.Contains(deleted.Body.String(), "malformed") {
+		t.Fatalf("delete: %d %s", deleted.Code, deleted.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(agentsDir, "spare.toml")); err != nil {
+		t.Fatal(err)
+	}
+}

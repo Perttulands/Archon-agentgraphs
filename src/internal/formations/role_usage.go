@@ -15,6 +15,35 @@ var ErrRoleInUse = errors.New("role_in_use")
 // ErrBuiltinRole marks a built-in role, which has no card to delete.
 var ErrBuiltinRole = errors.New("builtin_role")
 
+// ErrRoleUsageIncomplete refuses to establish absence from unreadable missions.
+var ErrRoleUsageIncomplete = errors.New("role_usage_incomplete")
+
+// RoleUsageReport keeps known uses visible even when some mission sources
+// cannot be read. Only a complete report can establish that a role is unused.
+type RoleUsageReport struct {
+	Usage      []RoleUse    `json:"usage"`
+	Complete   bool         `json:"complete"`
+	Unreadable []Unreadable `json:"unreadable"`
+}
+
+func (r RoleUsageReport) IncompleteReason() string {
+	entries := make([]string, 0, len(r.Unreadable))
+	for _, entry := range r.Unreadable {
+		entries = append(entries, entry.Name+": "+entry.Reason)
+	}
+	return strings.Join(entries, "; ")
+}
+
+func (r RoleUsageReport) CheckUnused(roleID string) error {
+	if len(r.Usage) > 0 {
+		return RoleInUseError(roleID, r.Usage)
+	}
+	if !r.Complete {
+		return fmt.Errorf("%w: cannot establish that role %q is unused; unreadable missions: %s", ErrRoleUsageIncomplete, roleID, r.IncompleteReason())
+	}
+	return nil
+}
+
 // RoleUse is one slot that names a role.
 type RoleUse struct {
 	MissionID      string `json:"missionId"`
@@ -36,23 +65,28 @@ func (u RoleUse) Words() string {
 }
 
 // RoleUsage lists every slot, in every mission, that names the role.
-func (s *Store) RoleUsage(roleID string) ([]RoleUse, error) {
+func (s *Store) RoleUsage(roleID string) (*RoleUsageReport, error) {
 	missions, err := s.ListBoards()
 	if err != nil {
 		return nil, err
 	}
-	uses := []RoleUse{}
+	report := &RoleUsageReport{Usage: []RoleUse{}, Complete: true, Unreadable: []Unreadable{}}
 	for _, summary := range missions {
+		if summary.Broken != "" {
+			report.Unreadable = append(report.Unreadable, Unreadable{Name: summary.Slug, Reason: summary.Broken})
+			continue
+		}
 		mission, err := s.ReadBoard(summary.Slug)
 		if err != nil {
-			return nil, err
+			report.Unreadable = append(report.Unreadable, Unreadable{Name: summary.Slug, Reason: err.Error()})
+			continue
 		}
 		for _, formation := range mission.Formations {
 			for _, slot := range formation.Slots {
 				if slot.AgentID != roleID {
 					continue
 				}
-				uses = append(uses, RoleUse{
+				report.Usage = append(report.Usage, RoleUse{
 					MissionID: mission.ID, MissionSlug: mission.Slug, MissionTitle: mission.Title,
 					FormationID: formation.ID, FormationTitle: formation.Title,
 					SlotID: slot.ID, SlotLabel: slot.Label,
@@ -60,7 +94,8 @@ func (s *Store) RoleUsage(roleID string) ([]RoleUse, error) {
 			}
 		}
 	}
-	return uses, nil
+	report.Complete = len(report.Unreadable) == 0
+	return report, nil
 }
 
 // RoleUsageWords names the slots in one line for a refusal or a notice.
