@@ -17,17 +17,17 @@ describe('AgentsView', () => {
     vi.unstubAllGlobals()
   })
 
-  it('lists a role\'s slots in every mission, and a use opens its mission', async () => {
+  it.each([true, false])('lists known role slots even when scan completeness is %s', async complete => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/agents') {
         return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' }), agent('builder', { displayName: 'Builder' })], count: 2 } }))
       }
       if (url === '/api/agents/builder') return Promise.resolve(jsonResponse({ success: true, data: persona('builder', { displayName: 'Builder' }) }, 200, { ETag: 'builder-etag' }))
-      if (url === '/api/agents/builder/usage') return Promise.resolve(jsonResponse({ success: true, data: { usage: [] } }))
+      if (url === '/api/agents/builder/usage') return Promise.resolve(jsonResponse({ success: true, data: { complete: true, unreadable: [], usage: [] } }))
       if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic' }) }, 200, { ETag: 'critic-etag' }))
       if (url === '/api/agents/critic/usage') {
-        return Promise.resolve(jsonResponse({ success: true, data: { usage: [
+        return Promise.resolve(jsonResponse({ success: true, data: { complete, unreadable: complete ? [] : [{ name: 'broken', reason: 'missing source' }], usage: [
           { missionId: 'judged', missionSlug: 'judged', missionTitle: 'Judged', formationId: 'judge-a', formationTitle: 'First judge', slotId: 'agent', slotLabel: 'Agent' },
           { missionId: 'other', missionSlug: 'other', missionTitle: 'Other', formationId: 'check', formationTitle: 'Check', slotId: 'agent', slotLabel: 'Checker' },
         ] } }))
@@ -48,6 +48,10 @@ describe('AgentsView', () => {
     const usedBy = await within(detail).findByRole('region', { name: 'Used by' })
     await waitFor(() => expect(Array.from(usedBy.querySelectorAll('.agx-role-use')).map(row => row.textContent)).toEqual(['Judged › First judge › Agent', 'Other › Check › Checker']))
     expect(within(detail).getByText('in 2 slots')).toBeInTheDocument()
+    if (!complete) {
+      expect(within(usedBy).getByRole('status')).toHaveTextContent('broken: missing source')
+      expect(within(usedBy).getByRole('button', { name: 'Delete' })).toBeDisabled()
+    }
     fireEvent.click(within(usedBy).getByRole('button', { name: /Other › Check/ }))
     expect(onOpenMission).toHaveBeenCalledWith('other')
   })
@@ -95,7 +99,7 @@ describe('AgentsView', () => {
       const url = String(input)
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: [agent('critic', { displayName: 'Critic' })], count: 1, harnesses: HARNESSES } }))
       if (url === '/api/agents/critic') return Promise.resolve(jsonResponse({ success: true, data: persona('critic', { displayName: 'Critic', summary: 'Reviews the brief.', notes: [{ ts: '2026-10-02T20:00:00Z', actor: 'operator', text: 'Read /tmp/brief.md for archon-o7p.13.2' }] }) }, 200, { ETag: 'critic-etag' }))
-      if (url === '/api/agents/critic/usage') return Promise.resolve(jsonResponse({ success: true, data: { usage: [{ missionId: 'empty', missionSlug: 'empty', missionTitle: 'Empty', formationId: 'review', formationTitle: 'Review', slotId: 'reviewer', slotLabel: 'Reviewer' }] } }))
+      if (url === '/api/agents/critic/usage') return Promise.resolve(jsonResponse({ success: true, data: { complete: true, unreadable: [], usage: [{ missionId: 'empty', missionSlug: 'empty', missionTitle: 'Empty', formationId: 'review', formationTitle: 'Review', slotId: 'reviewer', slotLabel: 'Reviewer' }] } }))
       return Promise.reject(new Error(`unexpected fetch ${url}`))
     })
 
@@ -129,7 +133,7 @@ describe('AgentsView', () => {
       const method = init?.method || 'GET'
       if (url === '/api/agents') return Promise.resolve(jsonResponse({ success: true, data: { agents: Object.values(cards).map(card => agent(String(card.id), { displayName: card.displayName })), count: 3 } }))
       const usage = url.match(/^\/api\/agents\/([^/]+)\/usage$/)
-      if (usage) return Promise.resolve(jsonResponse({ success: true, data: { usage: uses[usage[1]] } }))
+      if (usage) return Promise.resolve(jsonResponse({ success: true, data: { complete: true, unreadable: [], usage: uses[usage[1]] } }))
       const role = url.match(/^\/api\/agents\/([^/]+)$/)
       if (role) {
         const id = role[1]

@@ -58,7 +58,7 @@ interface PersonaCard {
 }
 
 /** Which slots, in every mission, use a role; read when the role is inspected. */
-type RoleUsage = { uses?: RoleUse[]; error?: string }
+type RoleUsage = { uses?: RoleUse[]; complete?: boolean; unreadable?: { name: string; reason: string }[]; error?: string }
 
 type CachedPersona = {
   card?: PersonaCard
@@ -194,8 +194,8 @@ export default function AgentsView({ onOpenMission }: {
 
   const loadUsage = useCallback(async (agentId: string) => {
     try {
-      const uses = await fetchRoleUsage(agentId)
-      setUsage(current => ({ ...current, [agentId]: { uses } }))
+      const scan = await fetchRoleUsage(agentId)
+      setUsage(current => ({ ...current, [agentId]: { uses: scan.usage, complete: scan.complete, unreadable: scan.unreadable } }))
     } catch (err) {
       setUsage(current => ({ ...current, [agentId]: { error: err instanceof Error ? err.message : 'Could not read which slots use this role' } }))
     }
@@ -639,8 +639,9 @@ function RoleUsageSection({ name, card, usage, onRetire, onDelete, onShowUse }: 
     <section className="note-section" aria-label="Used by">
       <h3>Used by</h3>
       {usage?.error ? <p className="note-empty" role="alert">{usage.error}</p> : null}
+      {usage?.complete === false ? <div role="status"><p>Usage scan incomplete. These mission sources could not be read:</p><ul>{usage.unreadable?.map(source => <li key={source.name}>{source.name}: {source.reason}</li>)}</ul></div> : null}
       {!usage ? <p className="note-empty">Reading which slots use this role…</p> : null}
-      {uses && uses.length === 0 ? <p className="note-empty">No slot uses this role.</p> : null}
+      {usage?.complete && uses && uses.length === 0 ? <p className="note-empty">No slot uses this role.</p> : null}
       {uses && uses.length > 0 ? (
         <div className="tool-detail-list">
           {uses.map(use => (
@@ -677,7 +678,7 @@ function RoleUsageSection({ name, card, usage, onRetire, onDelete, onShowUse }: 
           {retired
             ? <button className="cancel" type="button" disabled={!card} onClick={() => onRetire(false)}>Bring back</button>
             : <button className="cancel" type="button" disabled={!card || !uses} onClick={() => setConfirm('retire')}>Retire</button>}
-          {deletable ? <button className="cancel" type="button" disabled={!uses} onClick={() => setConfirm('delete')}>{card?.customized ? 'Delete changes' : 'Delete'}</button> : null}
+          {deletable ? <button className="cancel" type="button" disabled={!uses || !usage?.complete} onClick={() => setConfirm('delete')}>{card?.customized ? 'Delete changes' : 'Delete'}</button> : null}
         </div>
       )}
     </section>

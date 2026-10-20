@@ -111,7 +111,7 @@ export async function agentsFixture(page: Page) {
       .filter(slot => slot.agentId === id)
       .map(slot => ({ missionId: mission.id, missionSlug: mission.slug, missionTitle: mission.title, formationId: formation.id, formationTitle: formation.title, slotId: slot.id, slotLabel: slot.label }))))
     const usageMatch = path.match(/^\/api\/agents\/([^/]+)\/usage$/)
-    if (usageMatch) return cards[usageMatch[1]] ? respond({ usage: usageOf(usageMatch[1]) }) : fail(404, 'NOT_FOUND', 'Agent not found')
+    if (usageMatch) return cards[usageMatch[1]] ? respond({ complete: true, unreadable: [], usage: usageOf(usageMatch[1]) }) : fail(404, 'NOT_FOUND', 'Agent not found')
     const agentMatch = path.match(/^\/api\/agents\/([^/]+)$/)
     if (agentMatch) {
       const card = cards[agentMatch[1]]

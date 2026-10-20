@@ -3597,7 +3597,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByRole('button',{name:/^(Add note|Reply)$/})).toBeEnabled()
   })
 
-  it('REVIEW channel-save start must not launch another mission after navigation', async () => {
+  it('channel-save start must not launch another mission after navigation', async () => {
     const second={...makeBoard(),id:'second',slug:'second-board',title:'Second board',etag:'second-etag'}
     patches=installFetchMock({boards:[makeBoard(),second],runStatus:{status:'succeeded',final:true}})
     await renderCockpit()
@@ -3620,7 +3620,7 @@ describe('FormationsCockpit reference parity', () => {
     pickMission('second-board')
     await waitFor(()=>expect(screen.getByTestId('mission-title')).toHaveAttribute('data-mission','second-board'))
     await act(async()=>{release();await held})
-    await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Start mission'})).toBeEnabled())
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: 'Start mission' })).getByRole('button', { name: 'Start mission' })).toBeEnabled())
     expect(started).toHaveLength(0)
   })
 

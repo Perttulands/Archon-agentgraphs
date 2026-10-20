@@ -217,9 +217,11 @@ export interface RoleUse {
 }
 
 /** Every slot, in every mission, that names the role. */
-export async function fetchRoleUsage(agentID: string): Promise<RoleUse[]> {
-  const result = await fetchApi<{ usage: RoleUse[] }>(`/api/agents/${encodeURIComponent(agentID)}/usage`)
-  return result.data.usage || []
+export type RoleUsageScan = { usage: RoleUse[]; complete: boolean; unreadable: { name: string; reason: string }[] }
+
+export async function fetchRoleUsage(agentID: string): Promise<RoleUsageScan> {
+  const result = await fetchApi<RoleUsageScan>(`/api/agents/${encodeURIComponent(agentID)}/usage`)
+  return result.data
 }
 
 /** Retires a role (true) or brings it back (false). */
