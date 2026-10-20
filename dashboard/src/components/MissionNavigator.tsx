@@ -3,7 +3,7 @@
  * panel (dashboard/src/components/SessionPanel in the CHROTE repository):
  * collapsible groups with a count, 28px rows, the current row marked on its
  * left edge. A run's state is a word; nothing here is a status dot. */
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { BoardSummary, RunStatusProjection } from './formationsTypes'
 import { runInputExcerpt, runsInListOrder, shortTime } from './runList'
 import './missionNavigator.css'
@@ -72,8 +72,12 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
   const needing = runsInListOrder(runs.filter(run => live.has(run.missionSlug) && needsOperator(run)), null).filter(run => matches(run, titleOf(run.missionSlug)))
   const sessions = runs.filter(run => live.has(run.missionSlug) && !run.final).flatMap(run => runSessions(run).map(session => ({ ...session, run })))
     .filter(session => !needle || [session.sessionName, titleOf(session.run.missionSlug)].some(text => text.toLowerCase().includes(needle)))
-  const isOpen = (key: string, fallback: boolean) => needle ? true : opened[key] ?? fallback
-  const toggle = (key: string, fallback: boolean) => setOpened(current => ({ ...current, [key]: !(current[key] ?? fallback) }))
+  const initialOpen = useRef(new Map<string, boolean>())
+  const isOpen = (key: string, fallback: boolean) => {
+    if (!initialOpen.current.has(key)) initialOpen.current.set(key, fallback)
+    return needle ? true : opened[key] ?? initialOpen.current.get(key)!
+  }
+  const toggle = (key: string, fallback: boolean) => setOpened(current => ({ ...current, [key]: !(current[key] ?? initialOpen.current.get(key) ?? fallback) }))
 
   const group = (key: string, title: string, count: number, fallback: boolean, body: () => React.ReactNode, actions?: React.ReactNode, problem?: string) => {
     const open = isOpen(key, fallback)
@@ -143,6 +147,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
                   <span className="nav-state rev">rev {mission.rev}</span>
                 </span>
               </button>
+              {visible.length ? <div className="nav-runs-heading"><span>Runs</span><span>State</span></div> : null}
               {visible.map(run => runRow(run, workOf(run)))}
               {shown.length > visible.length ? (
                 <button type="button" className="nav-row nav-more" onClick={() => setAllRuns(current => ({ ...current, [mission.slug]: true }))}>

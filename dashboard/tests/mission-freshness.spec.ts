@@ -7,7 +7,7 @@ for (const width of [1536, 1680, 1920, 2560]) {
     await page.setViewportSize({ width, height: 1080 })
     const fixture = await cockpitFixture(page)
     let changed = false
-    let snapshot: LayoutDocument
+    const snapshot: { current?: LayoutDocument } = {}
     const reason = '/workspace/missing.mission.toml: source does not exist'
     await page.route('**/api/missions', route => route.fulfill({ json: { success: true, data: { missions: [
       { ...fixture.board(), title: changed ? 'Renamed externally' : fixture.board().title },
@@ -15,8 +15,8 @@ for (const width of [1536, 1680, 1920, 2560]) {
     ] } } }))
     await page.route('**/api/missions/browser/layout', async route => {
       if (!changed) return route.fallback()
-      await route.fulfill({ json: { success: true, data: { layout: { ...snapshot, etag: 'external-layout',
-        nodes: snapshot.nodes.map((node, i) => i === 0 ? { ...node, x: 280, y: 280 } : node),
+      await route.fulfill({ json: { success: true, data: { layout: { ...snapshot.current!, etag: 'external-layout',
+        nodes: snapshot.current!.nodes.map((node, i) => i === 0 ? { ...node, x: 280, y: 280 } : node),
       } } } })
     })
     await page.goto('/?mission=browser')
@@ -31,7 +31,7 @@ for (const width of [1536, 1680, 1920, 2560]) {
     await expect(problem).toBeVisible()
     await page.getByRole('radio', { name: 'Canvas', exact: true }).click()
     const layout = await page.evaluate(async () => (await (await fetch('/api/missions/browser/layout')).json()).data.layout)
-    snapshot = layout
+    snapshot.current = layout
     const card = page.locator(`[data-node="${layout.nodes[0].id}"]`).first()
     changed = true
     await expect(page.getByTestId('nav-group-browser')).toContainText('Renamed externally')

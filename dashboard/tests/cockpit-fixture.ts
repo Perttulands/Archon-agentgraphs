@@ -313,6 +313,28 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
   let themeFetches = 0
   const writes: string[] = []
   if (options.run || options.waitingHuman || options.blockedAtLimit) await page.addInitScript(() => localStorage.setItem('archon.activeRun.browser', 'run_browser'))
+  // A pick ends in the gate's pass with the picked attempt, as an ordinary pass routes.
+  const pickEvents = [{ seq: blockEvents.length + 2, type: 'pick_started', nodeId: 'gate', gateId: 'gate' },
+    { seq: blockEvents.length + 3, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'pass' }]
+  const eventSnapshot = () => {
+    if (options.blockedAtLimit) return granted
+    ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, { seq: blockEvents.length + 2, type: 'node_started', nodeId: 'execution', attempt: timeBlock ? 2 : 3 }]
+    : picked ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, ...pickEvents]
+      : blockEvents
+    if (options.waitingHuman) return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
+    { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' },
+    ...(options.secondGate ? [{ seq: 4, type: 'human_input_requested', nodeId: 'second', gateId: 'second' }] : [])]
+    if (options.blockedAtJudge) return blockedAtJudgeEvents
+    if (options.canceled) return [
+    { seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
+    { seq: 3, type: 'run_canceled', nodeId: 'execution', reason: 'Stopped by the operator.' },
+  ]
+    if (options.failedGate) return [...succeededEvents.slice(0, 3),
+    { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail', reason: 'Review needs another attempt.' },
+    { seq: 5, type: 'run_failed', nodeId: 'gate', gateId: 'gate' }]
+    if (options.succeeded) return options.picked ? pickedEvents : succeededEvents
+    return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }]
+  }
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
     const path = url.pathname
@@ -322,28 +344,6 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     // Once the mission holds Limit cards its writes carry its own ETag, so the
     // cockpit fetches validation again after each one, as against the daemon.
     const etag = () => path.startsWith('/api/missions/browser') && currentBoard.limits?.length ? currentBoard.etag : 'fixture-etag'
-    // A pick ends in the gate's pass with the picked attempt, as an ordinary pass routes.
-    const pickEvents = [{ seq: blockEvents.length + 2, type: 'pick_started', nodeId: 'gate', gateId: 'gate' },
-      { seq: blockEvents.length + 3, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'pass' }]
-    const eventSnapshot = () => {
-      if (options.blockedAtLimit) return granted
-      ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, { seq: blockEvents.length + 2, type: 'node_started', nodeId: 'execution', attempt: timeBlock ? 2 : 3 }]
-      : picked ? [...blockEvents, { seq: blockEvents.length + 1, type: 'run_resumed' }, ...pickEvents]
-        : blockEvents
-      if (options.waitingHuman) return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' },
-      { seq: 3, type: 'human_input_requested', nodeId: 'loose', gateId: 'loose' },
-      ...(options.secondGate ? [{ seq: 4, type: 'human_input_requested', nodeId: 'second', gateId: 'second' }] : [])]
-      if (options.blockedAtJudge) return blockedAtJudgeEvents
-      if (options.canceled) return [
-      { seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution', attempt: 1 },
-      { seq: 3, type: 'run_canceled', nodeId: 'execution', reason: 'Stopped by the operator.' },
-    ]
-      if (options.failedGate) return [...succeededEvents.slice(0, 3),
-      { seq: 4, type: 'gate_verdict', nodeId: 'gate', gateId: 'gate', verdict: 'fail', reason: 'Review needs another attempt.' },
-      { seq: 5, type: 'run_failed', nodeId: 'gate', gateId: 'gate' }]
-      if (options.succeeded) return options.picked ? pickedEvents : succeededEvents
-      return [{ seq: 1, type: 'run_started' }, { seq: 2, type: 'node_started', nodeId: 'execution' }]
-    }
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data: path === '/api/runs/run_browser' ? { ...(data as object), events: eventSnapshot().map(event => ({ ...event, runId: 'run_browser' })) } : data }, headers: { ETag: etag() } })
     const refuseLimit = (target: string | undefined, knobs: Knobs) => {
       const message = limitRefusal(target, knobs)
@@ -677,5 +677,5 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  return { writes, patches, characterWrites, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
+  return { writes, patches, characterWrites, events: eventSnapshot, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
 }

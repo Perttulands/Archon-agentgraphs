@@ -48,3 +48,5 @@
 .nav-source-problem { padding: 4px 12px 8px; font-size: 12px; }
 .nav-source-problem summary { cursor: pointer; color: var(--terra); }
 .nav-source-problem p { overflow-wrap: anywhere; white-space: normal; margin: 6px 0; line-height: 1.5; }
+
+.fmx .nav-runs-heading{display:flex;justify-content:space-between;padding:5px 12px 5px 28px;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;}
