@@ -101,7 +101,9 @@ func (s *Store) openNotesDefinition(slug string, createDirectory bool) (*definit
 }
 
 func (s *Store) withBoardDefinitionLock(slug string, fn func(*definitionFile) error) error {
-	return s.withDefinitionLock(boardDefinitionKind, slug, fn)
+	return s.withRoleReferencesLock(func() error {
+		return s.withDefinitionLock(boardDefinitionKind, slug, fn)
+	})
 }
 
 func (s *Store) withLayoutDefinitionLock(slug string, fn func(*definitionFile) error) error {

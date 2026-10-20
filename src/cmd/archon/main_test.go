@@ -900,6 +900,7 @@ func TestArchonBoardNewRequiresSlugAndDefaultsTitle(t *testing.T) {
 func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
+	t.Setenv("ARCHON_AGENTS_DIR", t.TempDir())
 	runner := &fakeTmux{live: map[string]bool{}}
 
 	for _, args := range [][]string{
@@ -910,6 +911,9 @@ func TestArchonOfflineCommandsNeedAWorkspaceOrServer(t *testing.T) {
 		{"end", "create", "poems"},
 		{"tool", "inspect", "poems", "tool"},
 		{"run", "list"},
+		{"agent", "retire", "builder"},
+		{"agent", "restore", "builder"},
+		{"agent", "delete", "builder"},
 	} {
 		_, stderr, code := runArchon(t, runner, args...)
 		want := "archon " + args[0] + " " + args[1] + " needs --workspace <state-dir> or --server <url>: there is no default workspace"

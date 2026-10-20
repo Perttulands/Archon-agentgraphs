@@ -66,45 +66,47 @@ func (s *Store) publishDefinitionPair(
 	if definitionPairCandidateSupplied(request.candidate) == (request.build != nil) {
 		return errors.New("definition pair requires exactly one candidate source")
 	}
-	request.candidate = cloneDefinitionPairState(request.candidate)
+	return s.withRoleReferencesLock(func() error {
+		request.candidate = cloneDefinitionPairState(request.candidate)
 
-	board, err := s.openBoardDefinition(slug, false)
-	if err != nil {
-		return err
-	}
-	defer board.close()
-	if err := confirmPresentDefinitionPairFile(board); err != nil {
-		return err
-	}
-
-	return board.withLock(func(board *definitionFile) error {
+		board, err := s.openBoardDefinition(slug, false)
+		if err != nil {
+			return err
+		}
+		defer board.close()
 		if err := confirmPresentDefinitionPairFile(board); err != nil {
 			return err
 		}
-		layoutDirectory, err := s.openDefinitionDirectoryWithLeafParentSync(
-			layoutDefinitionKind,
-			true,
-			func() error {
-				return runDefinitionPairFault(fault, "preflight:layout-directory-parent:dir-sync")
-			},
-		)
-		if err != nil {
-			return definitionPathError(err)
-		}
-		layoutName := slug + layoutDefinitionKind.suffix
-		layout, err := newDefinitionFile(layoutDirectory, layoutName, filepath.Join(
-			s.workspaceRoot(),
-			".archon",
-			layoutDefinitionKind.directory,
-			layoutName,
-		))
-		if err != nil {
-			return definitionPathError(err)
-		}
-		defer layout.close()
 
-		return layout.withLock(func(layout *definitionFile) error {
-			return publishDefinitionPairLocked(board, layout, request, fault)
+		return board.withLock(func(board *definitionFile) error {
+			if err := confirmPresentDefinitionPairFile(board); err != nil {
+				return err
+			}
+			layoutDirectory, err := s.openDefinitionDirectoryWithLeafParentSync(
+				layoutDefinitionKind,
+				true,
+				func() error {
+					return runDefinitionPairFault(fault, "preflight:layout-directory-parent:dir-sync")
+				},
+			)
+			if err != nil {
+				return definitionPathError(err)
+			}
+			layoutName := slug + layoutDefinitionKind.suffix
+			layout, err := newDefinitionFile(layoutDirectory, layoutName, filepath.Join(
+				s.workspaceRoot(),
+				".archon",
+				layoutDefinitionKind.directory,
+				layoutName,
+			))
+			if err != nil {
+				return definitionPathError(err)
+			}
+			defer layout.close()
+
+			return layout.withLock(func(layout *definitionFile) error {
+				return publishDefinitionPairLocked(board, layout, request, fault)
+			})
 		})
 	})
 }

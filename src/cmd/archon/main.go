@@ -384,13 +384,16 @@ func warnFileRefs(stderr io.Writer, files []string) {
 // directory. Agent cards live in their own directory, run wait answers that it
 // needs the daemon, and help needs nothing.
 func needsWorkspace(args []string) bool {
-	if args[0] == "agent" || (args[0] == "run" && args[1] == "wait") {
+	if args[0] == "run" && args[1] == "wait" {
 		return false
 	}
 	for _, arg := range args[2:] {
 		if arg == "-h" || arg == "--help" || arg == "-help" {
 			return false
 		}
+	}
+	if args[0] == "agent" {
+		return args[1] == "retire" || args[1] == "restore" || args[1] == "delete"
 	}
 	return true
 }
@@ -703,18 +706,11 @@ func runAgentDelete(store *formations.PersonaStore, missions *formations.Store, 
 		return 2
 	}
 	id := fs.Arg(0)
-	uses, err := missions.RoleUsage(id)
-	if err != nil {
-		return failJSON(stderr, err, *jsonOut, "agent", id)
-	}
-	if err := uses.CheckUnused(id); err != nil {
-		return failJSON(stderr, err, *jsonOut, "agent", id)
-	}
 	card, err := store.ReadPersona(id)
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "agent", id)
 	}
-	builtin, err := store.DeletePersona(id, card.ETag)
+	builtin, err := missions.DeleteUnusedRole(store, id, card.ETag)
 	if err != nil {
 		return failJSON(stderr, err, *jsonOut, "agent", id)
 	}

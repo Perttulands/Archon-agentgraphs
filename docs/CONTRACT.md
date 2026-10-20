@@ -176,7 +176,19 @@ a role and bring it back, naming the slots that use it; a retired role is no
 longer offered for staffing, and a slot that still names it stops validation
 and admission with `retired_persona` until it is restaffed or the role comes
 back. `archon agent delete <id>` removes a role's card only while no slot
-names it, so no slot ever points at a missing role. `GET /api/agents/{id}/usage` returns known slots as `usage`, a `complete`
+names it. The usage check and deletion serialize with every supported mission
+writer, offline and through the daemon: an assignment that lands first prevents
+deletion; deletion that lands first may be followed by an author deliberately
+saving a missing-role draft. Unknown-role references remain legal in drafts and
+block admission until resolved. Raw external file edits do not take the advisory
+write locks and can also create missing references. The lock order is mission
+role references, then mission and layout or role card; a role-card lock remains
+on disk after its card is deleted so concurrent creates and edits share it.
+Offline `agent retire`, `agent restore` and `agent delete` require the mission
+workspace as well as the role directory; the role directory alone cannot name
+the mission references to check.
+
+`GET /api/agents/{id}/usage` returns known slots as `usage`, a `complete`
 boolean, and `unreadable` mission sources (`name`, `reason`, an empty array
 when complete). A broken unrelated mission never hides known uses. An
 incomplete scan cannot establish that a role is unused: deletion refuses with

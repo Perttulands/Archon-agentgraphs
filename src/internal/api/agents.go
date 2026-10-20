@@ -73,16 +73,11 @@ func (h *AgentsHandler) AgentUsage(w http.ResponseWriter, r *http.Request) {
 // that overrides a built-in role brings the built-in role back.
 func (h *AgentsHandler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("agentId")
-	uses, err := h.usage(id)
-	if err != nil {
-		writeAgentError(w, err)
+	if h.missions == nil {
+		writeAgentError(w, errors.New("this agents handler has no missions to read role usage from"))
 		return
 	}
-	if err := uses.CheckUnused(id); err != nil {
-		writeAgentError(w, err)
-		return
-	}
-	builtin, err := h.store.DeletePersona(id, r.Header.Get("If-Match"))
+	builtin, err := h.missions.DeleteUnusedRole(h.store, id, r.Header.Get("If-Match"))
 	if err != nil {
 		writeAgentError(w, err)
 		return

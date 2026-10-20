@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
@@ -116,10 +117,38 @@ func RoleInUseError(roleID string, uses []RoleUse) error {
 	return fmt.Errorf("%w: role %q staffs %d %s: %s; restaff them, or retire the role instead", ErrRoleInUse, roleID, len(uses), slots, RoleUsageWords(uses))
 }
 
-// DeletePersona removes a role's card from the agents directory. A built-in
+// withRoleReferencesLock serializes supported mission writers and a role's
+// usage-check-plus-delete across processes. Lock order is references, then
+// mission (and layout), or persona. Unknown-role draft references stay legal.
+func (s *Store) withRoleReferencesLock(fn func() error) error {
+	if strings.TrimSpace(s.workspaceRoot()) == "" {
+		return errors.New("mission writes require an explicit workspace")
+	}
+	return withFileLock(filepath.Join(s.workspaceRoot(), ".archon", "role-references"), fn)
+}
+
+// DeleteUnusedRole checks usage and removes the card in the same write
+// transaction. A later author may still deliberately write a missing-role
+// draft; admission diagnoses it as before.
+func (s *Store) DeleteUnusedRole(personas *PersonaStore, id, expectedETag string) (builtin bool, err error) {
+	err = s.withRoleReferencesLock(func() error {
+		report, err := s.RoleUsage(id)
+		if err != nil {
+			return err
+		}
+		if err := report.CheckUnused(id); err != nil {
+			return err
+		}
+		builtin, err = personas.deletePersona(id, expectedETag)
+		return err
+	})
+	return builtin, err
+}
+
+// deletePersona removes a role's card from the agents directory. A built-in
 // role has no card to delete; deleting a card that overrides one brings the
-// built-in role back. The caller checks that no slot uses the role.
-func (s *PersonaStore) DeletePersona(id, expectedETag string) (builtin bool, err error) {
+// built-in role back. DeleteUnusedRole owns the usage check and reference lock.
+func (s *PersonaStore) deletePersona(id, expectedETag string) (builtin bool, err error) {
 	if err := validatePersonaID(id); err != nil {
 		return false, err
 	}
@@ -146,8 +175,8 @@ func (s *PersonaStore) DeletePersona(id, expectedETag string) (builtin bool, err
 	return builtin, err
 }
 
-// removePersonaFile unlinks a role's card and its lock; the caller holds the
-// lock through its open descriptor.
+// removePersonaFile unlinks a role's card. Its lock file remains stable so a
+// concurrent create or edit cannot acquire a new inode while this one is held.
 func (s *PersonaStore) removePersonaFile(id string) error {
 	directory, err := s.openPersonaDirectory(false)
 	if err != nil {
@@ -157,6 +186,5 @@ func (s *PersonaStore) removePersonaFile(id string) error {
 	if err := syscall.Unlinkat(int(directory.Fd()), id+".toml"); err != nil {
 		return err
 	}
-	_ = syscall.Unlinkat(int(directory.Fd()), id+".toml.lock")
 	return directory.Sync()
 }

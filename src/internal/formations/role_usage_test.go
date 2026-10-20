@@ -35,7 +35,7 @@ func TestRoleUsageNamesEverySlotInEveryMission(t *testing.T) {
 	}
 }
 
-// A card goes with its lock; a built-in role has no card to delete, and
+// A deleted card leaves a stable lock; a built-in role has no card to delete, and
 // deleting a card that overrides one brings the built-in back.
 func TestDeletePersonaRemovesTheCardAndKeepsBuiltinRoles(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())
@@ -43,28 +43,31 @@ func TestDeletePersonaRemovesTheCardAndKeepsBuiltinRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.DeletePersona("writer", ""); !errors.Is(err, ErrPreconditionRequired) {
+	if _, err := store.deletePersona("writer", ""); !errors.Is(err, ErrPreconditionRequired) {
 		t.Fatalf("delete without an ETag = %v", err)
 	}
-	if _, err := store.DeletePersona("writer", "stale"); !errors.Is(err, ErrConflict) {
+	if _, err := store.deletePersona("writer", "stale"); !errors.Is(err, ErrConflict) {
 		t.Fatalf("delete with a stale ETag = %v", err)
 	}
-	if builtin, err := store.DeletePersona("writer", card.ETag); err != nil || builtin {
+	if builtin, err := store.deletePersona("writer", card.ETag); err != nil || builtin {
 		t.Fatalf("delete = %v, %v", builtin, err)
 	}
-	for _, name := range []string{"writer.toml", "writer.toml.lock"} {
+	for _, name := range []string{"writer.toml"} {
 		if _, err := os.Stat(store.AgentsDir + "/" + name); !os.IsNotExist(err) {
 			t.Fatalf("%s remains: %v", name, err)
 		}
 	}
+	if _, err := os.Stat(store.PersonaPath("writer") + ".lock"); err != nil {
+		t.Fatalf("stable persona lock removed: %v", err)
+	}
 	if _, err := store.ReadPersona("writer"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("read after delete = %v", err)
 	}
-	if _, err := store.DeletePersona("writer", card.ETag); !errors.Is(err, ErrNotFound) {
+	if _, err := store.deletePersona("writer", card.ETag); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("second delete = %v", err)
 	}
 
-	if _, err := store.DeletePersona("judge", "x"); !errors.Is(err, ErrBuiltinRole) || !strings.Contains(err.Error(), `"judge" is a built-in role with no card to delete; retire it instead`) {
+	if _, err := store.deletePersona("judge", "x"); !errors.Is(err, ErrBuiltinRole) || !strings.Contains(err.Error(), `"judge" is a built-in role with no card to delete; retire it instead`) {
 		t.Fatalf("delete a built-in role = %v", err)
 	}
 	summary := "Judges plans only."
@@ -73,7 +76,7 @@ func TestDeletePersonaRemovesTheCardAndKeepsBuiltinRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remains, err := store.DeletePersona("judge", override.ETag); err != nil || !remains {
+	if remains, err := store.deletePersona("judge", override.ETag); err != nil || !remains {
 		t.Fatalf("delete the override = %v, %v", remains, err)
 	}
 	if card, err := store.ReadPersona("judge"); err != nil || card.Customized || card.Summary == summary {
