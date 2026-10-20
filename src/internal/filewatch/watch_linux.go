@@ -25,7 +25,8 @@ type Watcher struct {
 
 // New watches an existing directory tree and any directories subsequently added.
 func New(root string) (*Watcher, error) {
-	root = filepath.Clean(root)
+	// Preserve a trailing /. used to traverse descriptor-backed directories.
+	watchedRoot := filepath.Clean(root)
 	fd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC | syscall.IN_NONBLOCK)
 	if err != nil {
 		return nil, err
@@ -92,7 +93,7 @@ func New(root string) (*Watcher, error) {
 					continue
 				}
 				if mask&(syscall.IN_DELETE_SELF|syscall.IN_MOVE_SELF|syscall.IN_DELETE|syscall.IN_MOVED_FROM) != 0 {
-					if path == root {
+					if path == watchedRoot {
 						emit(Event{Err: errors.New("transcript root moved or removed")})
 						return
 					}
@@ -100,6 +101,7 @@ func New(root string) (*Watcher, error) {
 					// bookkeeping, not failure of every seat observing the root.
 					// Also stop watching descendants moved outside the tree.
 					for watched, candidate := range paths {
+						candidate = filepath.Clean(candidate)
 						if candidate == path || strings.HasPrefix(candidate, path+string(filepath.Separator)) {
 							syscall.InotifyRmWatch(fd, uint32(watched))
 							delete(paths, watched)

@@ -1,6 +1,7 @@
 package filewatch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,5 +37,32 @@ func TestReportsExistingAndNewDirectoryWrites(t *testing.T) {
 			}
 		}
 		deadline.Stop()
+	}
+}
+
+// Peer conversations watch an already-open directory through /proc. Keeping
+// the trailing /. makes WalkDir traverse it instead of stopping at the link.
+func TestReportsDescriptorDirectoryWrites(t *testing.T) {
+	root := t.TempDir()
+	dir, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	w, err := New(fmt.Sprintf("/proc/self/fd/%d/.", dir.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := os.WriteFile(filepath.Join(root, "conversation.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-w.Events:
+		if e.Err != nil || filepath.Base(e.Path) != "conversation.json" {
+			t.Fatalf("event = %+v", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no descriptor-directory write event")
 	}
 }
