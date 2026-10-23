@@ -415,6 +415,14 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   noteEditingRef.current = noteEditing
   const noteSaveRequestRef = useRef<object | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  // The providers around the canvas are keyed by mission, so switching
+  // missions replaces the viewport element while the cockpit stays mounted.
+  // Listeners bind to the element in state, never once on mount.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null)
+  const bindViewport = useCallback((element: HTMLDivElement | null) => {
+    viewportRef.current = element
+    setViewportEl(element)
+  }, [])
   const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current), () => cockpitScene(viewportRef.current || document))
   const { focus: focusWindow, reflow: reflowWindows } = windows
   // The canvas changes size when the run bar appears or the roster collapses;
@@ -2005,7 +2013,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // Native non-passive listener: React's onWheel is passive in the embedded
   // dashboard, so preventDefault there cannot stop the page from scrolling.
   useEffect(() => {
-    const viewport = viewportRef.current
+    const viewport = viewportEl
     if (!viewport) return
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
@@ -2015,7 +2023,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
     viewport.addEventListener('wheel', onWheel, { passive: false })
     return () => viewport.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [viewportEl])
 
   const zoomBy = useCallback((factor: number) => {
     const rect = viewportRef.current?.getBoundingClientRect()
@@ -3431,7 +3439,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               </div>
             ) : null}
           </div>
-        <div className={`viewport${showFlow ? ' flow-mode' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+        <div className={`viewport${showFlow ? ' flow-mode' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={bindViewport} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           {showFlow && board ? (
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}

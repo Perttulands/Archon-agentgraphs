@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { scouting, scoutingFixture } from './scouting-fixture'
+import { agentsFixture } from './agents-fixture'
 
 type Node = { id: string; title: string }
 
@@ -48,4 +49,28 @@ test('the canvas never scrolls natively: card clicks and keyboard focus leave th
     await expectUnscrolled(`Tab ${tab + 1}`)
   }
   expect(fixture.writes).toEqual([])
+})
+
+test('the wheel zooms the canvas toward the pointer, also after switching missions', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await agentsFixture(page)
+  await page.goto('/?mission=alpha')
+  await expect(page.locator('.formation').first()).toBeVisible()
+  const scale = () => page.locator('.world').evaluate(world => new DOMMatrix(getComputedStyle(world).transform).a)
+  const wheelOnEmptyCanvas = async () => {
+    const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
+    await page.mouse.move(canvas.x + 40, canvas.y + canvas.height - 120)
+    for (let notch = 0; notch < 3; notch++) { await page.mouse.wheel(0, -100); await page.waitForTimeout(60) }
+  }
+  const before = await scale()
+  await wheelOnEmptyCanvas()
+  await expect.poll(scale).toBeGreaterThan(before)
+
+  // Switching missions replaces the canvas element; the wheel must follow it.
+  await page.getByTestId('nav-group-delivery').locator('.nav-group-toggle').click()
+  await page.getByTestId('nav-mission-delivery').click()
+  await expect(page.getByText('Beads review').first()).toBeVisible()
+  const switched = await scale()
+  await wheelOnEmptyCanvas()
+  await expect.poll(scale).toBeGreaterThan(switched)
 })
