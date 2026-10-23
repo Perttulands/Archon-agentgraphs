@@ -1873,16 +1873,22 @@ than the one it asked about, is blocked at startup ("coordinator restarted
 between steps; resume to continue"), and resuming continues it while its gates
 keep waiting.
 
-`run resume --mode redispatch` abandons an open dispatch without completed
-evidence and runs the node again as a new attempt. A plain resume reattaches
-only a block's single open dispatch; a block that names several, as a
-shutdown while steps work at once leaves, records `dispatch_reattach_failed`
-and stays blocked until resumed with `--mode redispatch`, which abandons each
-and runs every one of those steps again.
-The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
-the node's next attempt is one more round for a Limit card that covers it. A failed reattach never
-finishes the run: it records `dispatch_reattach_failed` with the reason and
-leaves the run blocked and resumable.
+A plain resume reattaches each open dispatch its block names, in the order
+they were sent: a restart while steps work at once leaves one for each
+(archon-1uyi). Each completed turn records its step's output; a dispatch
+without one costs the others nothing, and the run blocks again naming only
+those, with `dispatch_reattach_failed` and each one's reason. A failed reattach
+never finishes the run: it leaves the run blocked and resumable.
+`run resume --mode redispatch` abandons every open dispatch the block names
+and runs each of those steps again as a new attempt. Startup recovers
+completed native evidence only for a run with a single open dispatch; it
+leaves a run with several blocked for that resume.
+
+An abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
+the node's next attempt is one more round for a Limit card that covers it. A
+step cut short whose dispatch no block names, such as one working when another
+step's error stopped the run, runs again on resume, and the run abandons its
+open dispatch first.
 
 A single step's run resumes as a mission run does, a Limit card grant
 included: once its step's latest attempt has its output the run succeeds,

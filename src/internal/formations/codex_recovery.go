@@ -143,22 +143,33 @@ func (e *TmuxFormationExecutor) readCompletedFormationDispatch(req FormationReat
 	return result, nil
 }
 
+// unresolvedDispatches lists the dispatches without a slot_result, in the
+// order they were sent.
 func unresolvedDispatches(events []RunEvent) []openDispatchRef {
-	pending := map[string]openDispatchRef{}
-	for _, event := range events {
-		id := stringFromEventData(event, "dispatchId")
-		if event.Type == RunEventSlotDispatch && id != "" {
-			pending[id] = openDispatchRef{DispatchID: id, NodeID: event.NodeID, SlotID: event.SlotID}
-		}
-		if event.Type == RunEventSlotResult {
-			delete(pending, id)
-		}
+	var refs []openDispatchRef
+	for _, dispatch := range unresolvedDispatchEvents(events) {
+		refs = append(refs, openDispatchRef{DispatchID: stringFromEventData(dispatch, "dispatchId"), NodeID: dispatch.NodeID, SlotID: dispatch.SlotID})
 	}
-	refs := make([]openDispatchRef, 0, len(pending))
-	for _, ref := range pending {
-		refs = append(refs, ref)
+	if refs == nil {
+		refs = []openDispatchRef{}
 	}
 	return refs
+}
+
+func unresolvedDispatchEvents(events []RunEvent) []RunEvent {
+	resolved := map[string]bool{}
+	for _, event := range events {
+		if event.Type == RunEventSlotResult {
+			resolved[stringFromEventData(event, "dispatchId")] = true
+		}
+	}
+	var open []RunEvent
+	for _, event := range events {
+		if id := stringFromEventData(event, "dispatchId"); event.Type == RunEventSlotDispatch && id != "" && !resolved[id] {
+			open = append(open, event)
+		}
+	}
+	return open
 }
 
 func (e *RunEngine) prepareCompletedRecovery(runID string, board *BoardDocument, events []RunEvent) (openDispatchRef, FormationExecutionResult, error) {

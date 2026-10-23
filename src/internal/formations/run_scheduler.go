@@ -291,6 +291,9 @@ func (s *runScheduler) act(events []RunEvent, replay *runReplay) (bool, error) {
 		}
 		attempt := replay.attempts[formation.ID] + 1
 		if open, ok := replay.open[formation.ID]; ok {
+			if err := s.e.abandonCutShortDispatches(s.runID, formation.ID, open.Attempt, events); err != nil {
+				return false, err
+			}
 			return true, s.start(formation, open.Inputs, attempt, events)
 		}
 		if replay.unread(formation.ID) && formationReady(formation, replay.ports[formation.ID]) {
@@ -356,6 +359,26 @@ func (s *runScheduler) start(formation FormationNode, inputs []RunInputRef, atte
 			})
 		}
 	})
+	return nil
+}
+
+// abandonCutShortDispatches records as abandoned each dispatch a cut-short
+// attempt left open, before the step runs again. Several steps can stop at
+// once, and a block names only its own stop's dispatches; the others' would
+// otherwise stay open, and a later block would name a dispatch of an attempt
+// the run has moved past for a reattach (archon-1uyi).
+func (e *RunEngine) abandonCutShortDispatches(runID, nodeID string, attempt int, events []RunEvent) error {
+	for _, dispatch := range unresolvedDispatchEvents(events) {
+		if dispatch.NodeID != nodeID || dispatch.Attempt != attempt {
+			continue
+		}
+		if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventSlotResult, NodeID: nodeID, SlotID: dispatch.SlotID, Data: map[string]any{
+			"dispatchId": stringFromEventData(dispatch, "dispatchId"), "nodeId": nodeID, "slotId": dispatch.SlotID, "status": "abandoned",
+			"reason": fmt.Sprintf("attempt %d was cut short and runs again", attempt),
+		}}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

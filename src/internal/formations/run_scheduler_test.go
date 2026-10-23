@@ -451,7 +451,7 @@ func TestTheMissionWarningGoesToEveryStepWorkingWhenItFires(t *testing.T) {
 	executor := newHeldExecutor()
 	store, _, _, done := startHeldRun(t, fanOutJoinBoardFixture(), executor, nil)
 	branches := executor.take(t, 2)
-	mission :=LimitWarning{LimitID: "lim_mission", Mission: true, Text: "mission"}
+	mission := LimitWarning{LimitID: "lim_mission", Mission: true, Text: "mission"}
 	claim := func(call *heldCall) bool { return store.claimLimitWarning(call.req, "slot_"+call.req.NodeID, mission) }
 	if !claim(branches["fmn_a"]) || !claim(branches["fmn_b"]) || claim(branches["fmn_a"]) {
 		t.Fatal("each working step's seat gets the mission's warning once")

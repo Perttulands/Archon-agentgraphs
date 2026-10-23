@@ -16,7 +16,6 @@ import (
 )
 
 var (
-	errRunStopped               = errors.New("archon run stopped")
 	ErrRunExecutorUnavailable   = errors.New("archon run executor unavailable")
 	ErrGateEvaluatorUnavailable = errors.New("archon gate evaluator unavailable")
 )
@@ -645,21 +644,11 @@ func (e *RunEngine) ResumeRun(runID string, req RunResumeRequest) (*RunStatusPro
 				}
 			}
 		} else {
-			handled, err := e.reattachOpenDispatches(runID, board, openDispatches)
-			if errors.Is(err, errRunStopped) {
-				return e.projectAndNotify(runID)
-			}
+			stopped, err := e.reattachOpenDispatches(runID, board, openDispatches)
 			if err != nil {
-				// A failed reattach keeps the run resumable; the reason is durable.
-				if blockErr := e.appendOpenDispatchReattachFailure(runID, openDispatches, err.Error()); blockErr != nil {
-					return nil, blockErr
-				}
-				return e.projectAndNotify(runID)
+				return nil, err
 			}
-			if !handled {
-				if err := e.appendOpenDispatchReattachFailure(runID, openDispatches, "could not reattach open dispatch without live capture"); err != nil {
-					return nil, err
-				}
+			if stopped {
 				return e.projectAndNotify(runID)
 			}
 		}
@@ -1029,18 +1018,58 @@ func enrichOpenDispatchRefs(events []RunEvent, refs []openDispatchRef) []openDis
 	return enriched
 }
 
+// reattachOpenDispatches takes up the completed turn of each open dispatch a
+// block named, in the order they were sent, and records its step's output as
+// the step would have when it finished. Steps that worked at once leave one
+// each (archon-1uyi). A dispatch that cannot be taken up costs no other its
+// output: the run blocks naming only those, for another resume or a
+// redispatch. An output that cannot be kept stops the run as it would have
+// when its step finished. It reports whether the run blocked.
 func (e *RunEngine) reattachOpenDispatches(runID string, board *BoardDocument, refs []openDispatchRef) (bool, error) {
-	reattacher, ok := e.executor.(FormationReattachExecutor)
-	if !ok || reattacher == nil || len(refs) == 0 {
-		return false, nil
+	reattacher, _ := e.executor.(FormationReattachExecutor)
+	var failed []openDispatchRef
+	var reasons []string
+	var stop *runStop
+	for _, ref := range refs {
+		reason, kept, err := e.reattachOpenDispatch(runID, board, reattacher, ref)
+		if err != nil {
+			return false, err
+		}
+		if reason != "" {
+			failed = append(failed, ref)
+			reasons = append(reasons, reason)
+		}
+		if kept != nil && stop == nil {
+			stop = kept
+		}
 	}
-	if len(refs) != 1 {
-		return false, nil
+	if len(failed) > 0 {
+		// A failed reattach keeps the run resumable; the reason is durable.
+		reason := reasons[0]
+		if len(failed) > 1 {
+			for i := range reasons {
+				reasons[i] = failed[i].NodeID + ": " + reasons[i]
+			}
+			reason = strings.Join(reasons, "; ")
+		}
+		return true, e.appendOpenDispatchReattachFailure(runID, failed, reason)
 	}
-	ref := refs[0]
+	if stop != nil {
+		return true, stop.leave(e, runID)
+	}
+	return false, nil
+}
+
+// reattachOpenDispatch takes up one open dispatch's completed turn. It returns
+// why the dispatch could not be taken up, or the stop its step's output left
+// when it could not be kept; err is a fault of the ledger.
+func (e *RunEngine) reattachOpenDispatch(runID string, board *BoardDocument, reattacher FormationReattachExecutor, ref openDispatchRef) (string, *runStop, error) {
+	if reattacher == nil {
+		return "could not reattach open dispatch without live capture", nil, nil
+	}
 	formation, ok := findFormation(board.Formations, ref.NodeID)
 	if !ok {
-		return false, nil
+		return "the open dispatch's step is not in the run's mission", nil, nil
 	}
 	result, err := reattacher.ReattachFormationDispatch(FormationReattachRequest{
 		RunID:      runID,
@@ -1050,41 +1079,32 @@ func (e *RunEngine) reattachOpenDispatches(runID string, board *BoardDocument, r
 		Formation:  formation,
 	})
 	if err != nil {
-		return true, err
+		return err.Error(), nil, nil
 	}
 	if result.Status == "" {
 		result.Status = "done"
 	}
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
-		return true, err
+		return "", nil, err
 	}
 	attempt := latestNodeAttempt(events, formation.ID)
-	if result, err = e.keepAttemptOutputs(runID, formation, attempt, isJudgeFormation(board, formation.ID), result); err != nil {
-		var pending *pendingOutputError
-		if errors.As(err, &pending) {
-			if blockErr := e.appendExecutionFailureAndBlock(runID, formation.ID, err); blockErr != nil {
-				return true, blockErr
-			}
-			return true, errRunStopped
-		}
-		return true, err
+	if result, err = e.keepAttemptOutputs(runID, formation, attempt, isJudgeFormation(board, formation.ID), result); err == nil {
+		err = checkFormationOutputPayloads(formation, result)
 	}
-	if err := checkFormationOutputPayloads(formation, result); err != nil {
-		if blockErr := e.appendExecutionFailureAndBlock(runID, formation.ID, err); blockErr != nil {
-			return true, blockErr
+	if err != nil {
+		stop, err := e.stopFor(runID, formation.ID, err)
+		if err != nil {
+			return "", nil, err
 		}
-		return true, errRunStopped
+		return "", &stop, nil
 	}
-	if err := e.store.AppendRunEvent(runID, RunEvent{
+	return "", nil, e.store.AppendRunEvent(runID, RunEvent{
 		Type:    RunEventNodeOutput,
 		NodeID:  ref.NodeID,
 		Attempt: attempt,
 		Data:    formationOutputEventData(result),
-	}); err != nil {
-		return true, err
-	}
-	return true, nil
+	})
 }
 
 func (e *RunEngine) appendOpenDispatchReattachFailure(runID string, refs []openDispatchRef, reason string) error {

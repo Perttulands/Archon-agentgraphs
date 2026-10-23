@@ -610,6 +610,10 @@ type fakeReattachExecutor struct {
 	result         FormationExecutionResult
 	executeResults map[string]FormationExecutionResult
 	reattachCalls  []FormationReattachRequest
+	// reattached and unfinished, when set, answer a step's reattach: its
+	// completed turn, or why it has none.
+	reattached map[string]FormationExecutionResult
+	unfinished map[string]error
 }
 
 func (f *fakeReattachExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
@@ -623,7 +627,152 @@ func (f *fakeReattachExecutor) ExecuteFormation(req FormationExecution) (Formati
 
 func (f *fakeReattachExecutor) ReattachFormationDispatch(req FormationReattachRequest) (FormationExecutionResult, error) {
 	f.reattachCalls = append(f.reattachCalls, req)
+	if err := f.unfinished[req.NodeID]; err != nil {
+		return FormationExecutionResult{}, err
+	}
+	if result, ok := f.reattached[req.NodeID]; ok {
+		return result, nil
+	}
 	return f.result, nil
+}
+
+// fanOutWithOpenDispatches starts the fan-out board's run as a restart leaves
+// it while A and B work at once: each has an attempt open and a dispatch out.
+func fanOutWithOpenDispatches(t *testing.T) (*Store, string, map[string]string) {
+	t.Helper()
+	store, personas := s4RunFixture(t)
+	store.Now = fixedClock()
+	personas.Now = fixedClock()
+	createS4Persona(t, personas, "scout")
+	writeFixture(t, store.BoardPath("session-search"), fanOutJoinBoardFixture())
+	started, err := store.StartRun("session-search", RunStartRequest{MissionID: "mis_showcase", Actor: "agent:test", Personas: personas})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := started.RunID
+	events := []RunEvent{
+		{Type: RunEventNodeStarted, NodeID: "mis_showcase", Data: map[string]any{"nodeKind": "mission", "reason": "initial", "inputRefs": []RunInputRef{}}},
+		{Type: RunEventNodeOutput, NodeID: "mis_showcase", Data: map[string]any{"status": "done", "outputs": map[string]any{"out": map[string]any{"text": "brief"}}}},
+	}
+	for _, branch := range []string{"fmn_a", "fmn_b"} {
+		events = append(events, RunEvent{Type: RunEventNodeStarted, NodeID: branch, Attempt: 1, Data: map[string]any{"nodeKind": "formation", "reason": "initial", "inputRefs": []RunInputRef{
+			{EdgeID: "edge_m_" + strings.TrimPrefix(branch, "fmn_"), FromNodeID: "mis_showcase", FromPortID: "out", ToPortID: "port_" + branch + "_in", Text: "brief"},
+		}}})
+	}
+	for _, event := range events {
+		if err := store.AppendRunEvent(runID, event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dispatches := map[string]string{}
+	for _, branch := range []string{"fmn_a", "fmn_b"} {
+		lease, err := NewSlotDispatcher(store, &fakeDispatchAdapter{}).DispatchSlot(runID, SlotDispatchRequest{
+			NodeID: branch, SlotID: "slot_" + branch, AgentID: "scout", Harness: "openai-codex", SessionStem: "scout", SessionRef: "tmux:" + branch, Prompt: "Do " + branch, Attempt: 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dispatches[branch] = lease.DispatchID
+	}
+	return store, runID, dispatches
+}
+
+func branchOutput(branch string) FormationExecutionResult {
+	return FormationExecutionResult{Status: "done", Text: branch + " output", Outputs: map[string]FormationOutputPayload{"port_" + branch + "_out": {Text: branch + " output"}}}
+}
+
+// A restart while fan-out branches work leaves a dispatch open for each. A
+// resume takes up every completed turn; one still unfinished costs the other
+// nothing and stays named in the block, and a later resume takes it up.
+func TestResumeReattachesEachOpenDispatchOfStepsThatWorkedAtOnce(t *testing.T) {
+	store, runID, dispatches := fanOutWithOpenDispatches(t)
+	engine := NewRunEngine(store, nil, nil)
+	if err := engine.BlockInterruptedRun(runID); err != nil {
+		t.Fatal(err)
+	}
+	executor := &fakeReattachExecutor{
+		reattached:     map[string]FormationExecutionResult{"fmn_a": branchOutput("fmn_a"), "fmn_b": branchOutput("fmn_b")},
+		unfinished:     map[string]error{"fmn_b": errors.New("the turn has not finished")},
+		executeResults: map[string]FormationExecutionResult{"fmn_join": {Status: "done", Text: "joined", Outputs: map[string]FormationOutputPayload{"port_join_out": {Text: "joined"}}}},
+	}
+	engine = NewRunEngine(store, nil, executor)
+	status, err := engine.ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "the daemon restarted"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := mustEvents(t, store, runID)
+	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
+		t.Fatalf("status = %+v, want blocked on B:\n%s", status, eventTypeTrail(events))
+	}
+	if output := lastEventOfType(t, events, RunEventNodeOutput); output.NodeID != "fmn_a" || output.Attempt != 1 {
+		t.Fatalf("output = %+v, want A's reattached attempt", output)
+	}
+	failure := lastEventOfType(t, events, RunEventError)
+	block := lastEventOfType(t, events, RunEventBlocked)
+	named := openDispatchRefsFromEvent(block)
+	if failure.NodeID != "fmn_b" || failure.Data["code"] != "dispatch_reattach_failed" || len(named) != 1 || named[0].DispatchID != dispatches["fmn_b"] {
+		t.Fatalf("failure = %+v, block names %+v, want only B's dispatch", failure, named)
+	}
+
+	executor.unfinished = nil
+	status, err = engine.ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "reattach", Reason: "B finished"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events = mustEvents(t, store, runID)
+	if status.Status != RunStatusSucceeded {
+		t.Fatalf("status = %+v, want succeeded:\n%s", status, eventTypeTrail(events))
+	}
+	var reattached []string
+	for _, call := range executor.reattachCalls {
+		reattached = append(reattached, call.NodeID)
+	}
+	if !reflect.DeepEqual(reattached, []string{"fmn_a", "fmn_b", "fmn_b"}) {
+		t.Fatalf("reattached %v, want A and B, then B alone", reattached)
+	}
+	if countEventsForNode(events, RunEventNodeStarted, "fmn_a") != 1 || countEventsForNode(events, RunEventNodeStarted, "fmn_b") != 1 || countEventsForNode(events, RunEventNodeStarted, "fmn_join") != 1 {
+		t.Fatalf("no branch runs again, and the join runs once:\n%s", eventTypeTrail(events))
+	}
+}
+
+// A block names only its own stop's dispatches, here none, so a resume runs
+// the steps cut short again. Each one's open dispatch is abandoned first, so
+// no later block names a dispatch of an attempt the run moved past.
+func TestARerunAbandonsTheDispatchItsCutShortAttemptLeftOpen(t *testing.T) {
+	store, runID, dispatches := fanOutWithOpenDispatches(t)
+	engine := NewRunEngine(store, nil, nil)
+	if err := engine.appendErrorAndBlock(runID, "native_turn_failed", "A's seat died", "executor", "fmn_a", "A's seat died"); err != nil {
+		t.Fatal(err)
+	}
+	executor := &fakeReattachExecutor{executeResults: map[string]FormationExecutionResult{
+		"fmn_a": branchOutput("fmn_a"), "fmn_b": branchOutput("fmn_b"),
+		"fmn_join": {Status: "done", Text: "joined", Outputs: map[string]FormationOutputPayload{"port_join_out": {Text: "joined"}}},
+	}}
+	status, err := NewRunEngine(store, nil, executor).ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Reason: "run them again"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := mustEvents(t, store, runID)
+	if status.Status != RunStatusSucceeded {
+		t.Fatalf("status = %+v, want succeeded:\n%s", status, eventTypeTrail(events))
+	}
+	if open := unresolvedDispatches(events); len(open) != 0 {
+		t.Fatalf("open dispatches %+v, want none", open)
+	}
+	for branch, dispatchID := range dispatches {
+		abandoned, rerun := -1, -1
+		for i, event := range events {
+			if event.Type == RunEventSlotResult && event.Data["dispatchId"] == dispatchID && event.Data["status"] == "abandoned" {
+				abandoned = i
+			}
+			if event.Type == RunEventNodeStarted && event.NodeID == branch && event.Attempt == 2 {
+				rerun = i
+			}
+		}
+		if abandoned < 0 || rerun < abandoned {
+			t.Fatalf("%s: abandoned at %d, attempt 2 at %d, want abandoned first:\n%s", branch, abandoned, rerun, eventTypeTrail(events))
+		}
+	}
 }
 
 func lastEventOfType(t *testing.T, events []RunEvent, eventType string) RunEvent {
