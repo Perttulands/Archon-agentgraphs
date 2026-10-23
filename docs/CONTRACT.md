@@ -688,7 +688,7 @@ JSON keeps the full value. Status also carries
 `startedAt` and `updatedAt`, the times of its first and latest ledger events; a final run ended at
 `updatedAt`. CLI status and attempts render timestamps in local time and
 elapsed time as durations; JSON retains the stored timestamps. Status names
-the mission revision and stopped step (ID plus its frozen title), and attempts
+the mission revision and stopped step (ID plus its title on the current mission), and attempts
 include their stop reason. A stopped attempt uses the run's terminal reason
 when that end stopped it, ahead of intermediate cancellation errors. A run
 ending while blocked names the last blocked step, even when it has no open
@@ -2297,10 +2297,6 @@ a UTF-8 boundary, and the ledger's secret patterns are redacted.
   `text`, `image`, `pdf`, `video`, `model` or `binary`, and `path`, its absolute path on the
   daemon host), with `text` capped at 256 KiB for textual kinds. A `.pdf` file
   that starts with `%PDF-` is `pdf`.
-- `/api/runs/{runId}/evidence/mission` returns `data.mission`
-  (`missionRev`, `graph`, `text` capped at 256 KiB): the structured graph and
-  mission's TOML as the run froze
-  it at admission, which later edits never change.
 - `/api/runs/{runId}/artifacts/{name...}` returns the artifact's bytes
   with MP4, WebM, GLB, glTF and binary glTF sidecars (`.bin`) streamed
   directly from disk without a size cap. Other files are buffered up to

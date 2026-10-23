@@ -93,7 +93,6 @@ test('Flow opens windows beside the clicked title or route link, and its run poi
   await expect(map).toBeVisible()
   expect(await beside(loop, map), 'Map the territory window leaves the route link uncovered').toBe(true)
   expect(await beside(steps.nth(1).getByRole('button', { name: '2 Framing review' }), map), 'and the row title').toBe(true)
-  await page.keyboard.press('Escape')
 
   const point = steps.nth(5).getByTestId('run-point')
   await expect(point).toHaveText('blocked at Adversarial review: invalid judge result: missing verdict block')
@@ -104,6 +103,12 @@ test('Flow opens windows beside the clicked title or route link, and its run poi
   await expect(review).toBeVisible()
   expect(await beside(point, review), 'the gate window leaves the run point uncovered').toBe(true)
   expect(await beside(steps.nth(5).getByRole('button', { name: '6 Adversarial review' }), review), 'and the gate title').toBe(true)
+  // One card window at a time (archon-kiwt.2): the run point replaced the route's window, and a title replaces the point's.
+  await expect(map).toHaveCount(0)
+  await steps.nth(4).getByRole('button', { name: '5 Draft the brief' }).click()
+  await expect(draft).toBeVisible()
+  await expect(review).toHaveCount(0)
+  await expect(page.locator('.fwin[data-window-id^="node:"]')).toHaveCount(1)
   expect(fixture.writes).toEqual([])
 })
 

@@ -57,6 +57,7 @@ import { END_SVG, FORMATION_SVG, LIMIT_SVG, FormationSeats, GATE_SVG, PLAY_SVG, 
 import { useEscapeKey } from './useEscapeKey'
 import MissionNavigator, { type ListedRun } from './MissionNavigator'
 import '../styles/formations-shell.css'
+import '../styles/formations-wires.css'
 const RunEvidence = lazy(() => import('../evidence/RunEvidence'))
 import NodeWindow from '../nodeWindow/NodeWindow'
 const FlowView = lazy(() => import('../flow/FlowView'))
@@ -77,7 +78,6 @@ import { moveStaffing, staff, type StaffingHost } from '../staffing/staffingActi
 import { captionText, retiredRolesOf, roleName, rolesOf, sameStaffing, slotSettings, staffingOf, type Staffing, type StaffingCatalog } from '../staffing/staffingModel'
 import { StaffingStore, slotKey, type SlotRef } from '../staffing/staffingStore'
 import { buildFlow } from '../flow/flowModel'
-import CanvasLegend from './CanvasLegend'
 import { FileWindowsLayer, FileWindowsProvider, type WindowClosing } from '../files/FileWindows'
 import { AttemptsButton, AttemptsWindowsLayer, AttemptsWindowsProvider, type AttemptsRun, type StepPick } from '../attempts/AttemptsWindows'
 import { attemptsWindowId } from '../attempts/attemptsModel'
@@ -314,7 +314,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [answerGateId, setAnswerGateId] = useState('')
   // The card the run bar's phrase last located, marked briefly on the canvas.
   const [locatedNodeId, setLocatedNodeId] = useState('')
-  // Missions, formations and gates open in node windows, oldest first.
+  // The card open in the one card window (archon-kiwt.2); empty when none is.
   const [nodeWindows, setNodeWindows] = useState<string[]>([])
   const nodeWindowsRef = useRef(nodeWindows)
   nodeWindowsRef.current = nodeWindows
@@ -433,21 +433,24 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   }, [focusWindow])
   // Where a node window opens beside, when the control that opened it says: a Flow title or route link.
   const nodeWindowAnchors = useRef(new Map<string, WindowRect>())
-  // A card clicked on the canvas replaces the open card window, and the files
-  // and attempts opened from the one it replaces close with it (archon-kiwt.2).
-  // A route followed from a window, or a step shown from the run bar, opens beside.
-  const openNodeWindow = useCallback((nodeId: string, anchor?: WindowRect, replace = false) => {
+  // One card window at a time (archon-kiwt.2): opening a card's window, from
+  // the canvas, a route link, the run bar, the Sessions list or Flow, replaces
+  // the open one, and the files and attempts opened from the one it replaces
+  // close with it. A control that says where opens it beside that control.
+  const openNodeWindow = useCallback((nodeId: string, anchor?: WindowRect) => {
     if (anchor) nodeWindowAnchors.current.set(nodeId, anchor)
     else nodeWindowAnchors.current.delete(nodeId)
-    if (replace) {
-      const replaced = nodeWindowsRef.current.filter(open => open !== nodeId)
-      if (replaced.length) closeWindowsOf(replaced)
-      setCreationWindow(null)
-    }
-    setNodeWindows(current => replace ? [nodeId] : current.includes(nodeId) ? current : [...current, nodeId])
+    const replaced = nodeWindowsRef.current.filter(open => open !== nodeId)
+    if (replaced.length) closeWindowsOf(replaced)
+    setCreationWindow(null)
+    setNodeWindows([nodeId])
     focusWindow(`node:${nodeId}`)
   }, [closeWindowsOf, focusWindow])
-  const openCardWindow = useCallback((nodeId: string) => openNodeWindow(nodeId, undefined, true), [openNodeWindow])
+  // Closing a card window, by × or Esc, closes the files and attempts opened from it too.
+  const closeNodeWindow = useCallback((nodeId: string) => {
+    setNodeWindows(current => current.filter(open => open !== nodeId))
+    closeWindowsOf([nodeId])
+  }, [closeWindowsOf])
   // A session chosen in the navigator opens its step's window once its run is on the canvas.
   useEffect(() => {
     const pending = pendingNode.current
@@ -1473,11 +1476,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       const node: FormationNode = { id: tempId, title, type, inputs: [], outputs: [], slots: [] }
       // Use the same title field before and after the server assigns identity.
       // Its caret and draft never remount when the create response arrives.
-      flushSync(() => setCreationWindow({ key: tempId, id: tempId, view: creationViewRef.current, node, ready, anchor: {
+      // A new card's window is the one card window too.
+      if (nodeWindowsRef.current.length) closeWindowsOf(nodeWindowsRef.current)
+      flushSync(() => { setNodeWindows([]); setCreationWindow({ key: tempId, id: tempId, view: creationViewRef.current, node, ready, anchor: {
         left: (rect?.left || 0) + view.x + placement.x * view.scale,
         top: (rect?.top || 0) + view.y + placement.y * view.scale,
         width: 300, height: 150,
-      } }))
+      } }) })
     }
     const before = boardRef.current
     const result = await patchBoard({ createFormation: { type, title, x: placement.x, y: placement.y } }, owner)
@@ -1491,7 +1496,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     if (tempId) setCreationWindow(current => current?.key === tempId ? (created ? { ...current, id: created.id, node: created } : null) : current)
     if (created && record) recordUndo(`the new formation ${quoted(created.title, '')}`.trim(), boardStep({ deleteFormation: { id: created.id } }))
     return created ?? null
-  }, [patchBoard, placementForNewNode, recordUndo])
+  }, [closeWindowsOf, patchBoard, placementForNewNode, recordUndo])
 
   const createMissionAt = useCallback((x: number, y: number) => {
     flushSync(() => setMissionEditor({ initial: { title: boardRef.current?.title || 'Input', goal: '' }, x, y }))
@@ -2373,7 +2378,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         if (!drag.moved) {
           // A click without a drag opens the node where it can be read and edited.
           const current = boardRef.current
-          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || []), ...(current.limits || [])].some(node => node.id === drag.id)) openCardWindow(drag.id)
+          if (current && [...(current.inputCards || []), ...current.formations, ...(current.gates || []), ...(current.ends || []), ...(current.limits || [])].some(node => node.id === drag.id)) openNodeWindow(drag.id)
           return
         }
         const scale = viewRef.current.scale || 1
@@ -2390,7 +2395,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         setDragPos(null)
       },
     })
-  }, [interactionOwner, openCardWindow, persistPositions, positionOf, recordUndo])
+  }, [interactionOwner, openNodeWindow, persistPositions, positionOf, recordUndo])
 
   const endpointWorldCenter = useCallback((endpoint: string, direction: 'out' | 'in') => {
     const world = worldRef.current
@@ -2724,7 +2729,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
       },
       finalize: pointer => {
         if (!drag.moved) {
-          openCardWindow(limit.id)
+          openNodeWindow(limit.id)
           return
         }
         const target = findLimitTargetAt(pointer.clientX, pointer.clientY)
@@ -2736,7 +2741,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
         setLimitHover('')
       },
     })
-  }, [interactionOwner, openCardWindow, screenToWorld, setLimit])
+  }, [interactionOwner, openNodeWindow, screenToWorld, setLimit])
 
   const gateHasJudge = useCallback((gateId: string): boolean => {
     return (boardRef.current?.connections || []).some(connection =>
@@ -3432,7 +3437,6 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
             <button type="button" className="board-action" disabled={!undoHistory.size} onClick={() => void performUndo()} title="Undo · Ctrl+Z">Undo</button>
             <button type="button" className="board-action" disabled={!undoHistory.redoSize} onClick={() => void performRedo()} title="Redo · Ctrl+Shift+Z">Redo</button>
             <div className="spacer" />
-            <CanvasLegend />
             <div className="notes-switch view-switch" role="radiogroup" aria-label="Mission view">
               {(['canvas', 'flow'] as const).map(view => (
                 <button key={view} type="button" role="radio" aria-checked={boardView === view} className={boardView === view ? 'on' : ''}
@@ -3993,7 +3997,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               anchor={nodeWindowAnchors.current.get(nodeId)}
               runState={nodeStates.has(nodeId) ? nodeStates.get(nodeId) || '' : undefined}
               limitWarnings={runEvents.filter(event => event.type === 'limit_warning' && event.nodeId === nodeId)}
-              onClose={() => setNodeWindows(current => current.filter(open => open !== nodeId))} />
+              onClose={() => closeNodeWindow(nodeId)} />
           </Suspense>
         )) : null}
         {gateTalk.windows}

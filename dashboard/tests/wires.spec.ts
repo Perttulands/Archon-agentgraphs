@@ -58,11 +58,6 @@ test('Scouting loops are labelled back-references and no two share a channel seg
       }
     }
   }
-  // Legend and slot words are one look away.
-  await page.getByRole('button', { name: 'Legend' }).click()
-  await expect(page.getByRole('dialog', { name: 'Canvas legend' })).toContainText('A gate sends work back to an earlier step')
   await page.screenshot({ path: test.info().outputPath('scouting-loops.png') })
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: 'Canvas legend' })).toHaveCount(0)
   expect(fixture.writes).toEqual([])
 })

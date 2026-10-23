@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -153,43 +152,6 @@ func TestRunsSayWhoStartedThemWhenAndWhatTheyRan(t *testing.T) {
 	preview := decodeEvidence[formations.RunArtifactPreview](t, getEvidence(c, "/api/runs/"+id+"/evidence/artifacts/notes/plan.md"), "artifact")
 	if want, _ := filepath.Abs(filepath.Join(artifacts, "notes", "plan.md")); preview.Path != want {
 		t.Fatalf("artifact path %q, want %q", preview.Path, want)
-	}
-
-	original, err := os.ReadFile(c.store.BoardPath("proof"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(strings.Replace(string(original), "rev = 1", "rev = 2", 1)+"\n# edited later\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ran := decodeEvidence[formations.RunMissionEvidence](t, getEvidence(c, "/api/runs/"+id+"/evidence/mission"), "mission")
-	if ran.MissionRev != 1 || ran.Text.Text != string(original) || ran.Text.Truncated {
-		t.Fatalf("mission as it ran = rev %d %q", ran.MissionRev, ran.Text.Text)
-	}
-	if w := getEvidence(c, "/api/runs/run_01NOSUCHRUN0000000000000000/evidence/mission"); w.Code != 404 {
-		t.Fatalf("unknown run mission = %d %s", w.Code, w.Body.String())
-	}
-}
-
-func TestFrozenRunGraphRedactsAuthoredTextAndOmitsDuplicateSource(t *testing.T) {
-	c, _, _ := fixture(t)
-	source := strings.ReplaceAll(testBoard, "PRIVATE-OBJECTIVE", "password=hunter2")
-	source = strings.ReplaceAll(source, "PRIVATE-CRITERION", "api_key=sk-abcdefghijklmnop")
-	if err := os.WriteFile(c.store.BoardPath("proof"), []byte(source), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	id := startRun(t, c)
-	w := getEvidence(c, "/api/runs/"+id+"/evidence/mission")
-	if strings.Contains(w.Body.String(), "hunter2") || strings.Contains(w.Body.String(), "sk-abcdefghijklmnop") {
-		t.Fatalf("frozen graph bypassed evidence redaction: %s", w.Body.String())
-	}
-	ran := decodeEvidence[formations.RunMissionEvidence](t, w, "mission")
-	if ran.Graph.TOML != "" || ran.Graph.ID != "brd_proof" || ran.Graph.Missions[0].Goal != "password=[REDACTED]" || len(ran.Graph.Connections) == 0 {
-		t.Fatalf("graph lost identity/routing or included duplicate source: %+v", ran.Graph)
-	}
-	original, err := os.ReadFile(c.store.BoardPath("proof"))
-	if err != nil || string(original) != source {
-		t.Fatalf("evidence read changed authored source: %v", err)
 	}
 }
 

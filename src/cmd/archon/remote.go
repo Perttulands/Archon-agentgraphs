@@ -345,21 +345,20 @@ func runRemote(server string, args []string, stdout, stderr io.Writer) int {
 			if err := json.Unmarshal(raw, &problems); err != nil {
 				return fail(stderr, err)
 			}
+			// Steps are titled from the current mission, as the cockpit shows
+			// a run; a mission since deleted leaves them named by ID.
 			var board *formations.BoardDocument
-			if args[1] != "logs" {
-				raw, err := request("GET", "/api/runs/"+url.PathEscape(envelope.Data.RunID)+"/evidence/mission", nil)
-				if err != nil {
-					return fail(stderr, err)
+			if args[1] != "logs" && envelope.Data.BoardSlug != "" {
+				if raw, err := request("GET", "/api/missions/"+url.PathEscape(envelope.Data.BoardSlug), nil); err == nil {
+					var mission struct {
+						Data struct {
+							Board formations.BoardDocument `json:"mission"`
+						} `json:"data"`
+					}
+					if json.Unmarshal(raw, &mission) == nil {
+						board = &mission.Data.Board
+					}
 				}
-				var mission struct {
-					Data struct {
-						Mission formations.RunMissionEvidence `json:"mission"`
-					} `json:"data"`
-				}
-				if err := json.Unmarshal(raw, &mission); err != nil {
-					return fail(stderr, err)
-				}
-				board = mission.Data.Mission.Graph
 			}
 			if args[1] == "logs" {
 				for _, problem := range problems.Data.Problems {

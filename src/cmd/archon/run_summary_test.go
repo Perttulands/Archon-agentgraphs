@@ -83,7 +83,7 @@ func TestFinalRunStatusExplainsTerminalOutcome(t *testing.T) {
 		{"succeeded", "", "", "", ""}, {"picked", "", "", "", ""},
 	} {
 		t.Run(tc.status, func(t *testing.T) {
-			status := formations.RunStatusProjection{RunID: "run_proof", Status: tc.status, Final: true, EndedBy: tc.actor}
+			status := formations.RunStatusProjection{RunID: "run_proof", BoardSlug: "proof", Status: tc.status, Final: true, EndedBy: tc.actor}
 			problems := []formations.RunProblem{{EvidenceProblem: formations.EvidenceProblem{Type: formations.RunEventBlocked, Code: "executor_failed", Reason: formations.EvidenceText{Text: "old resumed block"}}}}
 			if tc.event != "" {
 				problems = append(problems, formations.RunProblem{NodeIDs: []string{"fmn_work"}, EvidenceProblem: formations.EvidenceProblem{Type: tc.event, Code: tc.code, Reason: formations.EvidenceText{Text: tc.reason}, Actor: tc.actor}})
@@ -92,8 +92,8 @@ func TestFinalRunStatusExplainsTerminalOutcome(t *testing.T) {
 				switch r.URL.Path {
 				case "/api/runs/run_proof":
 					json.NewEncoder(w).Encode(map[string]any{"data": status})
-				case "/api/runs/run_proof/evidence/mission":
-					fmt.Fprint(w, `{"data":{"mission":{"graph":{"formations":[{"id":"fmn_work","title":"Frozen work"}]}}}}`)
+				case "/api/missions/proof":
+					fmt.Fprint(w, `{"data":{"mission":{"formations":[{"id":"fmn_work","title":"Current work"}]}}}`)
 				case "/api/runs/run_proof/evidence/problems":
 					json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"problems": problems}})
 				default:
@@ -112,7 +112,7 @@ func TestFinalRunStatusExplainsTerminalOutcome(t *testing.T) {
 				}
 			}
 			if tc.event != "" {
-				if !strings.Contains(out.String(), `step	fmn_work "Frozen work"`) {
+				if !strings.Contains(out.String(), `step	fmn_work "Current work"`) {
 					t.Fatalf("missing titled stop: %s", &out)
 				}
 				want := "reason\t"
@@ -142,8 +142,8 @@ func TestRunAttemptAndStatusPrintReadableTimeAndStop(t *testing.T) {
 	}
 	out.Reset()
 	writeRunStatusLines(&out, &formations.RunStatusProjection{BoardRev: 7, StartedBy: "agent:tester", StartedAt: "2026-10-17T10:00:00.123456789Z", UpdatedAt: "2026-10-17T10:02:03.123456789Z", Final: true})
-	writeCurrentRunBlock(&out, []formations.RunProblem{{NodeIDs: []string{"fmn_work"}, EvidenceProblem: formations.EvidenceProblem{Type: formations.RunEventBlocked, Reason: formations.EvidenceText{Text: "executor disconnected"}}}}, &formations.BoardDocument{Formations: []formations.FormationNode{{ID: "fmn_work", Title: "Frozen work"}}})
-	for _, want := range []string{"missionRev\t7", "startedBy\tagent:tester", "duration\t2m3s", "step\tfmn_work \"Frozen work\""} {
+	writeCurrentRunBlock(&out, []formations.RunProblem{{NodeIDs: []string{"fmn_work"}, EvidenceProblem: formations.EvidenceProblem{Type: formations.RunEventBlocked, Reason: formations.EvidenceText{Text: "executor disconnected"}}}}, &formations.BoardDocument{Formations: []formations.FormationNode{{ID: "fmn_work", Title: "Current work"}}})
+	for _, want := range []string{"missionRev\t7", "startedBy\tagent:tester", "duration\t2m3s", "step\tfmn_work \"Current work\""} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q: %s", want, out.String())
 		}

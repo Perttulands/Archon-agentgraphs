@@ -117,3 +117,47 @@ test('a run turns the row into the run bar, a card replaces the open card window
   await expect(executionAttempts).toHaveCount(0)
   await expect(page.locator('.fwin')).toHaveCount(0)
 })
+
+test('one card window at a time: a route link replaces it, and × or Esc closes what it opened', async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear())
+  await cockpitFixture(page, { succeeded: true })
+  await page.goto('/?mission=browser&run=run_browser')
+  await expect(page.getByTestId('run-banner').locator('.badge')).toHaveText('Succeeded')
+  const cardWindows = page.locator('.fwin[data-window-id^="node:"]')
+  const peer = page.getByRole('dialog', { name: 'Formation · Peer review' })
+  const attempts = page.getByRole('dialog', { name: 'Attempts of Peer review' })
+  const file = page.getByRole('dialog', { name: /review\.md/ })
+  // Peer review's window, its attempts and a file from those.
+  const openPeerWork = async () => {
+    await clickCard(page, 'peer')
+    await expect(peer).toBeVisible()
+    await peer.getByTestId('attempts-open-peer').click()
+    await attempts.getByRole('button', { name: 'review.md', exact: true }).click()
+    await expect(file).toBeVisible()
+  }
+
+  // A route followed from the window replaces it, and what it opened closes with it.
+  await openPeerWork()
+  // The attempts window may lie over it; the click goes to the route itself.
+  await peer.locator('.nwin-route').first().dispatchEvent('click')
+  await expect(peer).toHaveCount(0)
+  await expect(cardWindows).toHaveCount(1)
+  await expect(attempts).toHaveCount(0)
+  await expect(file).toHaveCount(0)
+
+  // Its × closes the window and what it opened.
+  await openPeerWork()
+  await expect(cardWindows).toHaveCount(1)
+  await peer.locator('.fwin-close').dispatchEvent('click')
+  await expect(peer).toHaveCount(0)
+  await expect(attempts).toHaveCount(0)
+  await expect(file).toHaveCount(0)
+
+  // So does Esc in it.
+  await openPeerWork()
+  await peer.focus()
+  await page.keyboard.press('Escape')
+  await expect(peer).toHaveCount(0)
+  await expect(attempts).toHaveCount(0)
+  await expect(file).toHaveCount(0)
+})

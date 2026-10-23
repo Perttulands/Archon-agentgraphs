@@ -1820,10 +1820,9 @@ func runStatus(store *formations.Store, args []string, stdout, stderr io.Writer)
 		if err != nil {
 			return fail(stderr, err)
 		}
-		board, err := store.ReadRunBoard(status.RunID)
-		if err != nil {
-			return fail(stderr, err)
-		}
+		// Steps are titled from the current mission, as the cockpit shows a
+		// run; a mission since deleted leaves them named by ID.
+		board, _ := store.ReadBoard(status.BoardSlug)
 		if status.Final {
 			writeRunEnd(stdout, status, problems, board)
 		} else {

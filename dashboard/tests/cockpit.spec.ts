@@ -99,26 +99,20 @@ for (const width of [1440, 390]) test(`a seated step's window shows the seat's w
   for (const frame of frames) expect(frame[0]).toMatch(/[{0123]/)
 })
 
-test('two step windows open, resize, stack and stay off the zoom column', async ({ page }) => {
+test('a step window from the run bar replaces the open one, resizes and stays off the zoom column', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await cockpitFixture(page, { run: true })
   await page.routeWebSocket('**/seats/*/terminal', () => {})
   await page.goto('/')
   await page.getByTestId('formation-node-peer').locator('.tt').click()
-  // A card's click replaces the open card window (archon-kiwt.2); a step shown from the run bar opens beside it.
-  await expect(page.locator('[data-window-id="node:peer"]')).toBeVisible()
-  await page.getByTestId('run-banner').getByRole('button', { name: 'running Execution' }).click()
   const peer = page.locator('[data-window-id="node:peer"]')
   const run = page.locator('[data-window-id="node:execution"]')
   await expect(peer).toBeVisible()
+  // One card window at a time (archon-kiwt.2): a step shown from the run bar replaces it.
+  await page.getByTestId('run-banner').getByRole('button', { name: 'running Execution' }).click()
   await expect(run.getByTestId('seat-pane')).toBeVisible()
-  const z = (win: typeof run) => win.evaluate(el => Number(getComputedStyle(el).zIndex))
-  await expect.poll(async () => await z(run) > await z(peer)).toBe(true)
+  await expect(peer).toHaveCount(0)
   const before = await settledBox(page, run)
-  // The second window opens clear of the first one's title bar, so both can still be grabbed.
-  const peerHead = await settledBox(page, peer.locator('.fwin-head'))
-  expect(before.y >= peerHead.y + peerHead.height || before.y + before.height <= peerHead.y
-    || before.x >= peerHead.x + peerHead.width || before.x + before.width <= peerHead.x).toBe(true)
 
   // Shrink it from a corner: its opposite corner stays put.
   const corner = (await run.locator('[data-handle="nw"]').boundingBox())!
@@ -131,32 +125,28 @@ test('two step windows open, resize, stack and stay off the zoom column', async 
   expect(after.y + after.height).toBeCloseTo(before.y + before.height, 0)
   expect(after.width * after.height).toBeLessThan(before.width * before.height)
 
-  // Once the operator deliberately overlaps windows, a title remains a
-  // keyboard handle as well as a pointer handle. Move and raise the peer.
-  await peer.locator('.fwin-title').focus()
+  // A title is a keyboard handle as well as a pointer handle.
+  await run.locator('.fwin-title').focus()
   await page.keyboard.press('ArrowRight')
-  await expect.poll(async () => await z(peer) > await z(run)).toBe(true)
+  await expect.poll(async () => (await settledBox(page, run)).x).toBeGreaterThan(after.x)
 
   const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
   for (const zone of [page.locator('.zoomctl'), page.locator('.zoomlevel')]) {
     const box = (await zone.boundingBox())!
-    for (const win of [run, peer]) {
-      const rect = await settledBox(page, win)
-      const overlaps = rect.x < box.x + box.width && rect.x + rect.width > box.x && rect.y < box.y + box.height && rect.y + rect.height > box.y
-      expect(overlaps).toBe(false)
-      expect(rect.x).toBeGreaterThanOrEqual(canvas.x)
-      expect(rect.y).toBeGreaterThanOrEqual(canvas.y)
-      expect(rect.x + rect.width).toBeLessThanOrEqual(canvas.x + canvas.width)
-      expect(rect.y + rect.height).toBeLessThanOrEqual(canvas.y + canvas.height)
-    }
+    const rect = await settledBox(page, run)
+    const overlaps = rect.x < box.x + box.width && rect.x + rect.width > box.x && rect.y < box.y + box.height && rect.y + rect.height > box.y
+    expect(overlaps).toBe(false)
+    expect(rect.x).toBeGreaterThanOrEqual(canvas.x)
+    expect(rect.y).toBeGreaterThanOrEqual(canvas.y)
+    expect(rect.x + rect.width).toBeLessThanOrEqual(canvas.x + canvas.width)
+    expect(rect.y + rect.height).toBeLessThanOrEqual(canvas.y + canvas.height)
   }
-  // The zoom column stays usable with both windows pressed against it.
+  // The zoom column stays usable beside the window.
   await page.getByRole('button', { name: 'FIT' }).click()
 
-  await peer.locator('.fwin-title').focus()
+  await run.locator('.fwin-title').focus()
   await page.keyboard.press('Escape')
-  await expect(peer).toHaveCount(0)
-  await expect(run).toBeVisible()
+  await expect(run).toHaveCount(0)
 })
 
 test('a ?mission=&run= link opens that mission and run and keeps the link', async ({ page }) => {

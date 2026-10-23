@@ -815,22 +815,11 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByTestId('wire-label-edge_frame_gate')).toBeNull()
   })
 
-  it('explains the canvas notation in a legend and staffing in slot tooltips', async () => {
+  it('explains staffing in slot tooltips', async () => {
     await renderCockpit()
     expect(screen.getByTestId('slot-fmn_frame-slot_lead')).toHaveAttribute('title', 'Lead (controller) is Mason on Codex · mason-model · medium.')
     expect(screen.getByTestId('slot-fmn_frame-slot_worker')).toHaveAttribute('title', 'Worker: open slot. Click to staff it, or drag a role here.')
-
-    const toggle = screen.getByRole('button', { name: 'Legend' })
-    fireEvent.click(toggle)
-    const legend = screen.getByRole('dialog', { name: 'Canvas legend' })
-    for (const words of ['A gate sends work back to an earlier step', 'A judge chain: the gate asks a formation to decide', 'You decide', 'Waiting for your answer', 'Blocked or failed; the run bar says why', 'Claude Code', 'Codex', 'Produced chips', 'Drag a role']) {
-      expect(legend).toHaveTextContent(words)
-    }
-    expect(legend.querySelector('path.wire.fail.loop')).not.toBeNull()
-    expect(within(legend).getByText('↺ Earlier step')).toBeInTheDocument()
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByRole('dialog', { name: 'Canvas legend' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Legend' })).toBeNull()
     expect(patches).toEqual([])
   })
 
@@ -1771,9 +1760,14 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(within(review).getByRole('button', { name: 'Judged by Judge' }))
     const judge = await screen.findByRole('dialog', { name: 'Formation · Judge' })
     expect(within(judge).getByText('Judge of 2 Review · solo')).toBeInTheDocument()
-    expect(within(judge).getByRole('button', { name: 'Judges 2 Review' })).toBeInTheDocument()
-    fireEvent.click(within(review).getByRole('button', { name: 'Fed by 1 Frame' }))
+    // A followed route replaces the window it was followed from (archon-kiwt.2).
+    expect(review).not.toBeInTheDocument()
+    fireEvent.click(within(judge).getByRole('button', { name: 'Judges 2 Review' }))
+    const again = await screen.findByRole('dialog', { name: 'Gate · Review' })
+    expect(judge).not.toBeInTheDocument()
+    fireEvent.click(within(again).getByRole('button', { name: 'Fed by 1 Frame' }))
     const frame = await screen.findByRole('dialog', { name: 'Formation · Frame' })
+    expect(screen.getAllByRole('dialog').filter(dialog => dialog.classList.contains('fwin'))).toHaveLength(1)
     expect(within(frame).getByRole('button', { name: 'Fed by Showcase' })).toBeInTheDocument()
     expect(within(frame).getByRole('button', { name: 'Feeds → 2 Review' })).toBeInTheDocument()
   })
