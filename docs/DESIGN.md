@@ -26,7 +26,8 @@ changes it; a variant that needs more proposes the addition in its set.
   it lives, in a floating window, rather than in a fixed side panel or a
   read-only mode.
 - Notes are how the operator records and communicates ideas; agents answer
-  there, or explain a step in plain terms.
+  there, or explain a step in plain terms. Notes are stickies on the canvas,
+  like a whiteboard's: written and read where they sit, never floating over it.
 - A run's result is the work it produced. Its outputs and files open at the
   operator's fingertips through the file viewers ported from CHROTE, and a
   gate's rubric opens from the gate. Output folders lead with their nested

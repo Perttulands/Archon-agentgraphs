@@ -105,7 +105,7 @@ import { LIMIT_ROOM, limitCoversWords, limitKnobWords, limitMeaning, limitSpentW
 import { inverseUndoStep } from './formationsRedo'
 import { portKindMenuItems } from './portKind'
 import { UndoHistory, WriteTracker, boardStep, combineUndo, nodeDeleteUndo, portRemoveUndo, portUpdateUndo, quoted, restoreBlocker, undoOutcomeMessage, type UndoDraft, type UndoStep } from './formationsUndo'
-import { NOTE_CARDS, NoteLayer, NOTES_MODES, noteWindowAnchor, readNotesMode, sameNoteAnchors, writeNotesMode, type NoteAnchor, type NotesMode } from './NoteLayer'
+import { NOTE_CARDS, NoteLayer, noteLayoutId, sameNoteAnchors, stickyHome, type CanvasNote, type CanvasNoteActions, type NoteAnchor } from './NoteLayer'
 import NoteWindow, { BOARD_NOTE_TARGET, noteWindowId } from './NoteWindow'
 import RoleWindow, { roleWindowId } from './RoleWindow'
 import { FormationTypeChip, formationTypeChoices } from './FormationTypeChip'
@@ -370,9 +370,9 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   const [agentEditor, setAgentEditor] = useState<{ agent: AgentProjection; trigger: HTMLElement | null } | null>(null)
   const { characters, reload: reloadCharacters } = useCharacters()
   const [characterEditor, setCharacterEditor] = useState<{ character: Character | null; staffing?: Staffing; trigger: HTMLElement | null } | null>(null)
-  const [notesMode, setNotesMode] = useState<NotesMode>(() => readNotesMode())
   const [notes, setNotes] = useState<BoardNotesDocument | null>(null)
-  // Open note windows by thread target (a node ID or the board), in opening order.
+  // Open notes by thread target (a node ID or the mission): expanded in place on
+  // the canvas, or windows in Flow, which has no canvas.
   const [noteWindows, setNoteWindows] = useState<string[]>([])
   // Unsaved text per thread; closing a note window keeps its draft.
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
@@ -382,6 +382,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // The entry being edited per thread; its text is in that thread's draft.
   const [noteEditing, setNoteEditing] = useState<Record<string, string>>({})
   const [noteAnchors, setNoteAnchors] = useState<ReadonlyMap<string, NoteAnchor>>(() => new Map())
+  // A sticky being dragged, in world coordinates.
+  const [noteDrag, setNoteDrag] = useState<{ target: string; x: number; y: number } | null>(null)
   const noteAnchorsRef = useRef(noteAnchors)
   const [inspectedToolId, setInspectedToolId] = useState<string | null>(null)
   useEscapeKey(active && inspectedToolId !== null, () => setInspectedToolId(null))
@@ -415,6 +417,14 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   noteEditingRef.current = noteEditing
   const noteSaveRequestRef = useRef<object | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  // The providers around the canvas are keyed by mission, so switching
+  // missions replaces the viewport element while the cockpit stays mounted.
+  // Listeners bind to the element in state, never once on mount.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null)
+  const bindViewport = useCallback((element: HTMLDivElement | null) => {
+    viewportRef.current = element
+    setViewportEl(element)
+  }, [])
   const windows = useWindowManager(() => cockpitWorkspace(viewportRef.current), () => cockpitScene(viewportRef.current || document))
   const { focus: focusWindow, reflow: reflowWindows } = windows
   // The canvas changes size when the run bar appears or the roster collapses;
@@ -613,13 +623,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
     if (!notesRef.current) void loadNotes()
     // Open note windows follow replies closely; stickies on the canvas refresh slowly.
-    const interval = noteWindowsOpen ? 3000 : notesMode !== 'hidden' ? 15000 : 0
-    const timer = active && interval ? window.setInterval(() => { void loadNotes() }, interval) : 0
+    const interval = noteWindowsOpen ? 3000 : 15000
+    const timer = active ? window.setInterval(() => { void loadNotes() }, interval) : 0
     return () => {
       cancelled = true
       if (timer) window.clearInterval(timer)
     }
-  }, [active, noteWindowsOpen, notesMode, selectedSlug])
+  }, [active, noteWindowsOpen, selectedSlug])
 
   useEffect(() => {
     if (!active || !selectedSlug || !currentBoard?.etag) return
@@ -2005,9 +2015,12 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
   // Native non-passive listener: React's onWheel is passive in the embedded
   // dashboard, so preventDefault there cannot stop the page from scrolling.
   useEffect(() => {
-    const viewport = viewportRef.current
+    const viewport = viewportEl
     if (!viewport) return
     const onWheel = (event: WheelEvent) => {
+      // An open note's long thread scrolls under the pointer; everywhere else the wheel zooms.
+      const thread = (event.target as Element | null)?.closest?.('.note-scroll, .note-reply')
+      if (thread && thread.scrollHeight > thread.clientHeight) return
       event.preventDefault()
       const rect = viewport.getBoundingClientRect()
       const cursor = { x: event.clientX - rect.left, y: event.clientY - rect.top }
@@ -2015,7 +2028,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
     viewport.addEventListener('wheel', onWheel, { passive: false })
     return () => viewport.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [viewportEl])
 
   const zoomBy = useCallback((factor: number) => {
     const rect = viewportRef.current?.getBoundingClientRect()
@@ -2914,18 +2927,10 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     ]
   }, [board])
 
-  const nodeNotes = useMemo(
-    () => noteElements.filter(element => noteByNode.has(element.id)).map(element => ({ nodeId: element.id, title: element.title, entries: noteByNode.get(element.id) || [] })),
-    [noteByNode, noteElements],
-  )
   const noteTitleOf = (target: string) => target === BOARD_NOTE_TARGET
     ? board?.title || 'Mission'
     : noteElements.find(element => element.id === target)?.title || target
 
-  const changeNotesMode = useCallback((mode: NotesMode) => {
-    writeNotesMode(mode)
-    setNotesMode(mode)
-  }, [])
 
   // A write that races another author reloads the notes and tries once more:
   // appends and entry-addressed edits are safe to repeat on the new revision.
@@ -3043,14 +3048,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     }
   }, [])
 
-  // Stickies sit in their own layer, so they follow each noted card's box.
+  // Stickies sit in their own layer; one not yet dragged follows its card's box.
   useLayoutEffect(() => {
     const world = worldRef.current
     const next = new Map<string, NoteAnchor>()
-    if (world && notesMode !== 'hidden') {
+    if (world) {
       for (const card of world.querySelectorAll<HTMLElement>(NOTE_CARDS)) {
         const nodeId = card.dataset.node || ''
-        if (!noteByNode.has(nodeId)) continue
         next.set(nodeId, { x: parseFloat(card.style.left) || 0, y: parseFloat(card.style.top) || 0, width: card.offsetWidth, height: card.offsetHeight })
       }
     }
@@ -3060,6 +3064,91 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
     noteAnchorsRef.current = next
     setNoteAnchors(next)
   })
+
+  // Every thread with entries, every open one, and the mission notepad, at the
+  // spot it was dropped on or under its card.
+  const canvasNotes = useMemo<CanvasNote[]>(() => {
+    // Flow has no canvas; its notes open as windows.
+    if (!board || boardView === 'flow') return []
+    const placed = (target: string, home: { x: number; y: number }) => {
+      if (noteDrag?.target === target) return { x: noteDrag.x, y: noteDrag.y }
+      const saved = layoutByNode.get(noteLayoutId(target))
+      return saved ? { x: saved.x, y: saved.y } : home
+    }
+    const note = (target: string, title: string, entries: NoteEntry[], home: { x: number; y: number }): CanvasNote => ({
+      target, title, entries, ...placed(target, home),
+      open: noteWindows.includes(target),
+      draft: noteDrafts[target] || '',
+      editingEntryId: noteEditing[target],
+      error: noteErrors[target] || '',
+    })
+    const shown: CanvasNote[] = []
+    for (const element of noteElements) {
+      // The notes API addresses the mission thread as "mission"; a card with that ID shares it.
+      if (element.id === BOARD_NOTE_TARGET) continue
+      const entries = noteByNode.get(element.id) || []
+      const anchor = noteAnchors.get(element.id)
+      if (!anchor || (!entries.length && !noteWindows.includes(element.id))) continue
+      shown.push(note(element.id, element.title, entries, stickyHome(anchor)))
+    }
+    // The mission notepad sits at the graph's top-left, under the Input card (below its own sticky, if any).
+    const input = (board.inputCards || []).map(card => noteAnchors.get(card.id)).find(Boolean)
+    const corner = [...noteAnchors.values()].reduce((best, box) => (!best || box.x + box.y < best.x + best.y ? box : best), null as NoteAnchor | null)
+    const below = input && shown.some(item => item.target === board.inputCards?.[0]?.id && !layoutByNode.has(noteLayoutId(item.target))) ? 130 : 0
+    const home = input ? { ...stickyHome(input, below), x: input.x } : corner ? { x: corner.x, y: corner.y + corner.height + 6 } : { x: 40, y: 40 }
+    shown.push(note(BOARD_NOTE_TARGET, board.title || 'Mission', notes?.mission || [], home))
+    return shown
+  }, [board, boardView, layoutByNode, noteAnchors, noteByNode, noteDrafts, noteDrag, noteEditing, noteElements, noteErrors, noteWindows, notes?.mission])
+  const canvasNotesRef = useRef(canvasNotes)
+  canvasNotesRef.current = canvasNotes
+
+  // A press on a sticky drags it like a card; a press without a drag opens it.
+  const beginNoteDrag = useCallback((event: ReactPointerEvent<HTMLElement>, target: string) => {
+    if (event.button !== 0) return
+    const origin = canvasNotesRef.current.find(item => item.target === target)
+    if (!origin) return
+    const drag = { startX: event.clientX, startY: event.clientY, moved: false }
+    interactionOwner.begin({
+      kind: 'note',
+      pointerId: event.pointerId,
+      project: pointer => {
+        if (historicalRef.current) return
+        if (!drag.moved && Math.abs(pointer.clientX - drag.startX) + Math.abs(pointer.clientY - drag.startY) < 3) return
+        drag.moved = true
+        const scale = viewRef.current.scale || 1
+        setNoteDrag({ target, x: Math.round(origin.x + (pointer.clientX - drag.startX) / scale), y: Math.round(origin.y + (pointer.clientY - drag.startY) / scale) })
+      },
+      finalize: pointer => {
+        if (!drag.moved) {
+          if (!origin.open) openNoteWindow(target)
+          return
+        }
+        const scale = viewRef.current.scale || 1
+        const x = snapToGrid(origin.x + (pointer.clientX - drag.startX) / scale)
+        const y = snapToGrid(origin.y + (pointer.clientY - drag.startY) / scale)
+        const id = noteLayoutId(target)
+        const before = layoutRef.current?.nodes?.find(node => node.id === id)
+        setNoteDrag({ target, x, y })
+        void persistPositions([{ id, x, y }]).then(saved => {
+          setNoteDrag(null)
+          if (saved) recordUndo('the note move', { layout: { nodes: [before ? { id, x: before.x, y: before.y } : { id, x: origin.x, y: origin.y }] } })
+        })
+      },
+      cancel: () => setNoteDrag(null),
+    })
+  }, [interactionOwner, openNoteWindow, persistPositions, recordUndo])
+
+  const noteActions = useMemo<CanvasNoteActions>(() => ({
+    onGrab: beginNoteDrag,
+    onOpen: openNoteWindow,
+    onClose: target => setNoteWindows(current => current.filter(open => open !== target)),
+    onDraft: setNoteDraft,
+    onSave: saveNote,
+    onCancelEdit: cancelNoteEdit,
+    onEdit: startNoteEdit,
+    onDelete: deleteNote,
+    onReload: () => void reloadSharedNotes(),
+  }), [beginNoteDrag, cancelNoteEdit, deleteNote, openNoteWindow, reloadSharedNotes, saveNote, setNoteDraft, startNoteEdit])
 
   const renderNotePin = (nodeID: string, title: string) => {
     const hasNote = noteByNode.has(nodeID)
@@ -3375,13 +3464,8 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                   disabled={!board} onClick={() => changeBoardView(view)}>{view === 'canvas' ? 'Canvas' : 'Flow'}</button>
               ))}
             </div>
-            <div className="notes-switch" role="radiogroup" aria-label="Notes on the canvas">
-              {NOTES_MODES.map(mode => (
-                <button key={mode} type="button" role="radio" aria-checked={notesMode === mode} className={notesMode === mode ? 'on' : ''}
-                  onClick={() => changeNotesMode(mode)}>{mode === 'hidden' ? 'Hide notes' : mode === 'preview' ? 'Preview' : 'Full notes'}</button>
-              ))}
-            </div>
-            <button type="button" className="newbtn board-notes-button" disabled={!board} onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Mission notes</button>
+            {/* On the canvas the mission notes are a sticky by the Input card; Flow has no canvas. */}
+            {showFlow ? <button type="button" className="newbtn board-notes-button" onClick={() => openNoteWindow(BOARD_NOTE_TARGET)}>Mission notes</button> : null}
           </div>
         )
         // The app's top bar takes these controls; without it (tests, embeds) they sit above the canvas.
@@ -3431,7 +3515,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
               </div>
             ) : null}
           </div>
-        <div className={`viewport${showFlow ? ' flow-mode' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={viewportRef} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
+        <div className={`viewport${showFlow ? ' flow-mode' : ''}${historical ? ' locked' : ''}`} data-testid="formations-canvas" ref={bindViewport} tabIndex={0} aria-label="Mission canvas" onPointerDownCapture={captureConnectedInputDrag} onPointerDown={onViewportPointerDown} onContextMenu={canvasMenu}>
           {showFlow && board ? (
             <Suspense fallback={null}>
               <FlowView board={board} agents={agents} notes={noteByNode} run={flowRun}
@@ -3831,7 +3915,7 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
                 </div>
               )
             })}
-            <NoteLayer mode={notesMode} anchors={noteAnchors} notes={nodeNotes} onOpen={openNoteWindow} />
+            <NoteLayer notes={canvasNotes} readOnly={historical} saving={noteSaving !== ''} conflict={notesConflict} actions={noteActions} />
           </div>
 
 
@@ -3969,13 +4053,13 @@ export default function FormationsCockpit({ active = true, topbarSlot = null }: 
 
       </div>
 
-        {board ? noteWindows.map(target => (
+        {board && showFlow ? noteWindows.map(target => (
           <NoteWindow
             readOnly={historical}
             key={target}
             target={target}
             title={noteTitleOf(target)}
-            anchor={target === BOARD_NOTE_TARGET ? boardNotesAnchor : () => (showFlow ? nodeAnchor(target) : noteWindowAnchor(worldRef.current, target))}
+            anchor={target === BOARD_NOTE_TARGET ? boardNotesAnchor : () => nodeAnchor(target)}
             keepClear={target === BOARD_NOTE_TARGET ? undefined : () => nodeWindowKeepClear(target, board.connections)}
             entries={(target === BOARD_NOTE_TARGET ? notes?.mission : noteByNode.get(target)) || []}
             draft={noteDrafts[target] || ''}
