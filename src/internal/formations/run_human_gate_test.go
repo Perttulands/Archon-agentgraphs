@@ -495,9 +495,12 @@ type seatLossOnceExecutor struct {
 }
 
 func (e *seatLossOnceExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
-	if req.NodeID == e.failNodeID && !e.failed {
-		e.failed = true
-		e.calls = append(e.calls, req)
+	e.mu.Lock()
+	fail := req.NodeID == e.failNodeID && !e.failed
+	e.failed = e.failed || fail
+	e.mu.Unlock()
+	if fail {
+		e.record(req)
 		return FormationExecutionResult{}, &RunExecutionError{Code: "native_turn_failed", Message: "seat died", Boundary: "executor", NodeID: req.NodeID}
 	}
 	return e.fakeRunExecutor.ExecuteFormation(req)

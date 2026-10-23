@@ -42,8 +42,10 @@ func TestInlineOutputPayloadsRouteSecretShapedTextVerbatim(t *testing.T) {
 				pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 				captures: []string{
 					"splitter\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
-					"left done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>",
-					"right done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>",
+				},
+				seatCaptures: map[string][]string{
+					"slot_left":  {"left done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>"},
+					"slot_right": {"right done\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>"},
 				},
 			}
 			executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -57,7 +59,7 @@ func TestInlineOutputPayloadsRouteSecretShapedTextVerbatim(t *testing.T) {
 			if got := firstStartedInputText(t, events, "fmn_left"); got != left {
 				t.Fatalf("routed input = %q, want %q", got, left)
 			}
-			if len(client.sentPrompts) < 2 || !strings.Contains(client.sentPrompts[1], left) {
+			if prompts := client.promptsTo("slot_left"); len(prompts) == 0 || !strings.Contains(prompts[0], left) {
 				t.Fatal("the next seat's brief lost the verbatim payload")
 			}
 		})

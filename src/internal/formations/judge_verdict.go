@@ -225,24 +225,4 @@ func (e *RunEngine) gateAttempt(runID, gateID string) (int, error) {
 	return attempt, nil
 }
 
-func (e *RunEngine) blockInvalidJudge(runID, gateID string, err error) error {
-	attempt, readErr := e.gateAttempt(runID, gateID)
-	if readErr != nil {
-		return readErr
-	}
-	if appendErr := e.store.AppendRunEvent(runID, RunEvent{
-		Type: RunEventJudgeAttemptFailed, GateID: gateID, NodeID: gateID, Attempt: attempt,
-		Data: map[string]any{"code": "invalid_judge_result", "reason": err.Error()},
-	}); appendErr != nil {
-		return appendErr
-	}
-	if appendErr := e.store.AppendRunEvent(runID, RunEvent{
-		Type: RunEventBlocked, GateID: gateID, NodeID: gateID,
-		Data: map[string]any{"reason": "invalid judge result: " + err.Error(), "blockedGateId": gateID, "resumeAllowed": true, "code": "invalid_judge_result"},
-	}); appendErr != nil {
-		return appendErr
-	}
-	return errRunStopped
-}
-
 const judgeContract = "judge verdict contract:\nBefore the completion sentinel, emit exactly one fenced archon-verdict JSON block, separate from archon-outputs, with exactly these three keys:\n```archon-verdict\n{\"verdict\":\"fail\",\"reason\":\"Required check failed\",\"evidence\":[\"check report reference\"]}\n```\nverdict must be pass or fail, reason a string, and evidence an array of strings (use [] when there are no references). Do not omit evidence or add keys. The final judge in the chain decides the gate.\n"

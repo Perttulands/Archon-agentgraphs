@@ -117,7 +117,8 @@ func formationOrder(events []formations.RunEvent, eventType string) []string {
 // allowed.
 func requireBranchesRanBeforeSuccess(t *testing.T, events []formations.RunEvent, allowed ...string) {
 	t.Helper()
-	if got := strings.Join(formationOrder(events, formations.RunEventNodeOutput), ","); got != "fmn_a,fmn_b,fmn_c" {
+	// The branches work at once and end in any order.
+	if got := strings.Join(slices.Sorted(slices.Values(formationOrder(events, formations.RunEventNodeOutput))), ","); got != "fmn_a,fmn_b,fmn_c" {
 		t.Fatalf("formation outputs = %s, want fmn_a,fmn_b,fmn_c: %s", got, ledgerTrail(events))
 	}
 	succeeded := 0
@@ -141,7 +142,7 @@ func requireBranchesRanBeforeSuccess(t *testing.T, events []formations.RunEvent,
 func TestBranchesRunWhileAGateWaitsAndARestartKeepsTheWait(t *testing.T) {
 	c, root, id := startBranchingLab(t)
 	request := awaitState(t, c, id, "waiting_human").WaitingGates[0]
-	if got := strings.Join(formationOrder(eventsOf(t, c, id), formations.RunEventNodeOutput), ","); got != "fmn_a,fmn_b,fmn_c" {
+	if got := strings.Join(slices.Sorted(slices.Values(formationOrder(eventsOf(t, c, id), formations.RunEventNodeOutput))), ","); got != "fmn_a,fmn_b,fmn_c" {
 		t.Fatalf("formations done while waiting = %s, want fmn_a,fmn_b,fmn_c", got)
 	}
 	next := restartBranchingLab(t, c, root)

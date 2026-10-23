@@ -230,7 +230,6 @@ func TestCodeGatePassRoutesExactSelectedToolOutputAndProvenance(t *testing.T) {
 		FromNodeID: "tool_lint",
 		FromPortID: "normalized",
 		ToPortID:   "in",
-		OutputSeq:  4,
 		Ref:        "artifact://tool_lint/output/4",
 		Text:       "normalized lint output — LINT OK",
 		ReportRef:  "reports/tool-lint.md",
@@ -253,24 +252,14 @@ func TestCodeGatePassRoutesExactSelectedToolOutputAndProvenance(t *testing.T) {
 		t.Fatalf("evaluate exact Tool output: %v", err)
 	}
 	engine := NewRunEngine(store, personas, &fakeRunExecutor{})
-	ready := map[string]map[string]RunInputRef{}
-	queued := map[string]bool{}
-	queue := []string{}
-	if err := engine.routeGateEvaluation(
-		started.RunID,
-		board,
-		map[string]GateNode{gate.ID: gate},
-		gate,
-		input,
-		"pass",
-		result,
-		ready,
-		queued,
-		&queue,
-	); err != nil {
+	if err := engine.routeGateEvaluation(started.RunID, board, gate, input, "pass", result); err != nil {
 		t.Fatalf("route Gate pass: %v", err)
 	}
-	got := ready["fmn_ship"]["port_ship_in"]
+	events, err := store.ReadRunEvents(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := replayRun(board, events).ports["fmn_ship"]["port_ship_in"]
 	want := input
 	want.ToPortID = "port_ship_in"
 	want.unread = true // it waits in the port until Ship runs on it
@@ -514,7 +503,6 @@ func TestResumeReusesDurableCodeKindResultAfterCrashWindow(t *testing.T) {
 		FromNodeID: "fmn_work",
 		FromPortID: "port_work_out",
 		ToPortID:   "in",
-		OutputSeq:  1,
 		Ref:        "ledger://work/1",
 		Text:       "LINT OK",
 	}

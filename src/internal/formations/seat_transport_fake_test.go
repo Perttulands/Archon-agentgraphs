@@ -12,7 +12,9 @@ func (f *fakeTmuxHarnessClient) Create(ctx context.Context, socket, name, cwd, r
 	if err := f.CreateSession(ctx, socket, name, cwd, ""); err != nil {
 		return nil, err
 	}
+	f.mu.Lock()
 	f.seatVariants = append(f.seatVariants, v)
+	f.mu.Unlock()
 	return &nativeSeat{name: name, sessionID: name, paneID: name, variant: v}, nil
 }
 func (f *fakeTmuxHarnessClient) Ready(ctx context.Context, socket string, s *nativeSeat, h string) error {
@@ -20,7 +22,10 @@ func (f *fakeTmuxHarnessClient) Ready(ctx context.Context, socket string, s *nat
 	if _, err := f.DescribeActivePane(ctx, socket, s.name); err != nil {
 		return err
 	}
-	if f.pane.Dead {
+	f.mu.Lock()
+	dead := f.pane.Dead
+	f.mu.Unlock()
+	if dead {
 		return runExecutionError("dead_pane", "owned seat exited before readiness", "adapter", ErrDispatchDeadPane)
 	}
 	for {
@@ -34,7 +39,10 @@ func (f *fakeTmuxHarnessClient) Ready(ctx context.Context, socket string, s *nat
 		if tmuxPaneShowsHarnessReady(h, text) {
 			return nil
 		}
-		if len(f.startupCaptures) == 1 && f.startupCaptures[0] == text {
+		f.mu.Lock()
+		stuck := len(f.startupCaptures) == 1 && f.startupCaptures[0] == text
+		f.mu.Unlock()
+		if stuck {
 			<-ctx.Done()
 			return ctx.Err()
 		}

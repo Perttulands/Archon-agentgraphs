@@ -230,6 +230,27 @@ describe('formations run-state helpers', () => {
     expect(runPointPhrase({ kind: 'canceled', nodeId: '', gate: false }, '')).toBe('')
   })
 
+  it('shows a step whose error stopped the run blocked while another still works (archon-1uyi)', () => {
+    const events: RunEvent[] = [
+      { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_a', attempt: 1 },
+      { runId: 'run_1', seq: 2, type: 'node_started', nodeId: 'fmn_b', attempt: 1 },
+      { runId: 'run_1', seq: 3, type: 'error', nodeId: 'fmn_b', data: { code: 'native_turn_failed' } },
+    ]
+    const stopping = projectNodeStates(events)
+    expect(stopping.get('fmn_a')).toBe('running')
+    expect(stopping.get('fmn_b')).toBe('blocked')
+    expect(runCurrentPoints(events, run('running'))).toEqual([{ kind: 'running', nodeId: 'fmn_a', gate: false, attempt: 1 }])
+
+    const blocked = [...events,
+      { runId: 'run_1', seq: 4, type: 'node_output', nodeId: 'fmn_a', data: { status: 'done' } },
+      { runId: 'run_1', seq: 5, type: 'run_blocked', nodeId: 'fmn_b' },
+    ] as RunEvent[]
+    expect(projectNodeStates(blocked).get('fmn_a')).toBe('done')
+    expect(projectNodeStates(blocked).get('fmn_b')).toBe('blocked')
+    const resumed = projectNodeStates([...blocked, { runId: 'run_1', seq: 6, type: 'run_resumed' }])
+    expect(resumed.get('fmn_b')).toBe('running')
+  })
+
   it('names every gate waiting and every step running at once (archon-o7p.11)', () => {
     const events: RunEvent[] = [
       { runId: 'run_1', seq: 1, type: 'node_started', nodeId: 'fmn_a', attempt: 1 },
@@ -251,7 +272,7 @@ describe('formations run-state helpers', () => {
     expect(runCurrentPoint(events, waiting)).toEqual({ kind: 'waiting', nodeId: 'gate_one', gate: true })
     expect(openHumanGateIds(events)).toEqual(['gate_one', 'gate_two'])
 
-    // The operator answered gate_one while C works: the run routes it after C.
+    // The operator answered gate_one while C works: the run routes it at once.
     const answered = [...events, { runId: 'run_1', seq: 10, type: 'human_verdict_recorded', nodeId: 'gate_one', gateId: 'gate_one' } as RunEvent]
     expect(openHumanGateIds(answered)).toEqual(['gate_two'])
     const points = runCurrentPoints(answered, run('waiting_human', { waitingGates: [{ gateId: 'gate_two', requestedSeq: 8 }] }))

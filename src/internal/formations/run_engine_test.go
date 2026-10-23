@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -123,7 +125,7 @@ func TestS4JoinWaitsUntilAllInputsReady(t *testing.T) {
 	if joinStartedAt == -1 || joinStartedAt < waitingAt {
 		t.Fatalf("join start index = %d, waiting index = %d; want start after waiting", joinStartedAt, waitingAt)
 	}
-	if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_b", "fmn_join"}; !reflect.DeepEqual(got, want) {
+	if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_b", "fmn_join"}; !reflect.DeepEqual(sorted(got), want) {
 		t.Fatalf("executor nodes = %v, want %v", got, want)
 	}
 }
@@ -260,7 +262,10 @@ func TestS4SingleOutputWithoutNamedPayloadBlocksInsteadOfBroadcastingText(t *tes
 	}
 }
 
+// fakeRunExecutor answers every step at once. Steps whose inputs are ready
+// work at the same time (archon-1uyi), so mu guards what it records.
 type fakeRunExecutor struct {
+	mu                    sync.Mutex
 	calls                 []FormationExecution
 	outputs               map[string]string
 	outputsByPort         map[string]map[string]FormationOutputPayload
@@ -268,7 +273,7 @@ type fakeRunExecutor struct {
 }
 
 func (f *fakeRunExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
-	f.calls = append(f.calls, req)
+	f.record(req)
 	text := "output from " + req.NodeID
 	if f.outputs != nil && f.outputs[req.NodeID] != "" {
 		text = f.outputs[req.NodeID]
@@ -285,7 +290,21 @@ func (f *fakeRunExecutor) ExecuteFormation(req FormationExecution) (FormationExe
 	}, nil
 }
 
+func (f *fakeRunExecutor) record(req FormationExecution) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, req)
+}
+
+// sorted is ids in order, for the steps of one wave: steps whose inputs are
+// ready work at the same time and reach the executor in any order.
+func sorted(ids []string) []string {
+	return slices.Sorted(slices.Values(ids))
+}
+
 func (f *fakeRunExecutor) nodeIDs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	ids := make([]string, 0, len(f.calls))
 	for _, call := range f.calls {
 		ids = append(ids, call.NodeID)

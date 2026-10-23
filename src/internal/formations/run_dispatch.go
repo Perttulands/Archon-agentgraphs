@@ -107,11 +107,9 @@ func (d *SlotDispatcher) DispatchSlot(runID string, req SlotDispatchRequest) (Sl
 		return lease, nil
 	}
 	if err := d.adapter.SendSlotDispatch(payload); err != nil {
-		message := redactPromptFromLedgerText(err.Error(), req.Prompt)
-		if blockErr := d.appendDispatchErrorAndBlock(runID, dispatchID, req.NodeID, req.SlotID, dispatchErrorCode(err), message, "tmux"); blockErr != nil {
-			return lease, blockErr
-		}
-		return lease, err
+		// The run's worker records the failure and blocks the run once its
+		// other work settles (runStop).
+		return lease, runSlotExecutionError(dispatchErrorCode(err), redactPromptFromLedgerText(err.Error(), req.Prompt), "tmux", err, req.NodeID, req.SlotID, dispatchID)
 	}
 	return lease, nil
 }
@@ -120,20 +118,15 @@ func (d *SlotDispatcher) CompleteFromCapture(runID, dispatchID, captured string)
 	if d == nil || d.store == nil {
 		return fmt.Errorf("%w: dispatch store required", ErrNotFound)
 	}
+	// A failure is returned for the run's worker to record (runStop).
+	dispatch := d.dispatchEvent(runID, dispatchID)
 	sentinel, ok := ParseCompletionSentinel(captured, runID)
 	if !ok {
-		if err := d.appendDispatchErrorAndBlock(runID, dispatchID, "", "", "completion_sentinel_timeout", "completion sentinel timeout", "adapter"); err != nil {
-			return err
-		}
-		return ErrDispatchTimeout
+		return runSlotExecutionError("completion_sentinel_timeout", "completion sentinel timeout", "adapter", ErrDispatchTimeout, dispatch.NodeID, dispatch.SlotID, dispatchID)
 	}
-	dispatch := d.dispatchEvent(runID, dispatchID)
 	if dispatch.Type == "" {
 		message := fmt.Sprintf("unknown dispatch %q", dispatchID)
-		if err := d.appendDispatchErrorAndBlock(runID, dispatchID, "", "", "unknown_dispatch", message, "adapter"); err != nil {
-			return err
-		}
-		return errors.New(message)
+		return runSlotExecutionError("unknown_dispatch", message, "adapter", errors.New(message), "", "", dispatchID)
 	}
 	return d.store.AppendRunEvent(runID, RunEvent{
 		Type:    RunEventSlotResult,
@@ -222,44 +215,6 @@ func parseSentinelFields(raw string) map[string]string {
 		fields[key] = strings.Trim(value, `"`)
 	}
 	return fields
-}
-
-func (d *SlotDispatcher) appendDispatchErrorAndBlock(runID, dispatchID, nodeID, slotID, code, message, boundary string) error {
-	message = redactLedgerText(message)
-	if err := d.store.AppendRunEvent(runID, RunEvent{
-		Type:   RunEventError,
-		NodeID: nodeID,
-		SlotID: slotID,
-		Data: map[string]any{
-			"code":        code,
-			"message":     message,
-			"boundary":    boundary,
-			"nodeId":      nodeID,
-			"slotId":      slotID,
-			"recoverable": true,
-			"dispatchId":  dispatchID,
-		},
-	}); err != nil {
-		return err
-	}
-	return d.store.AppendRunEvent(runID, RunEvent{
-		Type:   RunEventBlocked,
-		NodeID: nodeID,
-		SlotID: slotID,
-		Data: map[string]any{
-			"reason":        message,
-			"blockedNodeId": nodeID,
-			"resumeAllowed": true,
-			"resumePolicy":  "explicit",
-			"openDispatches": []map[string]any{{
-				"dispatchId":  dispatchID,
-				"nodeId":      nodeID,
-				"slotId":      slotID,
-				"dispatchSeq": 0,
-			}},
-			"nextEpoch": 1,
-		},
-	})
 }
 
 func dispatchErrorCode(err error) string {

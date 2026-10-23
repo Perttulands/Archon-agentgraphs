@@ -3,6 +3,7 @@ package coordinator
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -138,7 +139,8 @@ func TestASendBackAfterApprovalAcrossARestartRunsTheWorkAgain(t *testing.T) {
 	verdict(t, next, id, "gate_review", request.RequestedSeq, true, "")
 	awaitState(t, next, id, "succeeded")
 	events := eventsOf(t, next, id)
-	if got := strings.Join(formationOrder(events, formations.RunEventNodeOutput), ","); got != "fmn_a,fmn_work,fmn_judge,fmn_work,fmn_judge,fmn_ship" {
+	// A works beside the work, judge and ship chain, so its output falls anywhere.
+	if got := strings.Join(slices.DeleteFunc(formationOrder(events, formations.RunEventNodeOutput), func(node string) bool { return node == "fmn_a" }), ","); got != "fmn_work,fmn_judge,fmn_work,fmn_judge,fmn_ship" || !slices.Contains(formationOrder(events, formations.RunEventNodeOutput), "fmn_a") {
 		t.Fatalf("formation outputs = %s: %s", got, ledgerTrail(events))
 	}
 	if events[len(events)-1].Type != formations.RunEventSucceeded {

@@ -96,7 +96,7 @@ func TestRejectingAGateWhoseFailEndsRejectedFailsTheRunWithItsReason(t *testing.
 			t.Run(tc.name+map[bool]string{false: "", true: " after a restart"}[restart], func(t *testing.T) {
 				executor := &fakeRunExecutor{}
 				store, personas, engine, status := startBranchingRun(t, tc.board, executor)
-				if got := executor.nodeIDs(); !reflect.DeepEqual(got, tc.before) {
+				if got := executor.nodeIDs(); !reflect.DeepEqual(sorted(got), sorted(tc.before)) {
 					t.Fatalf("nodes before the verdict = %v, want %v", got, tc.before)
 				}
 				frozen, err := store.ReadRunBoard(status.RunID)
@@ -194,17 +194,20 @@ func TestRunPathsReadsEndedPathsFromTheLedger(t *testing.T) {
 	}
 	events := []RunEvent{
 		{Seq: 1, Type: RunEventNodeOutput, NodeID: "mis_showcase", Data: branchOutputData("out")},
-		{Seq: 2, Type: RunEventNodeOutput, NodeID: "fmn_b", Data: branchOutputData("port_fmn_b_out")},
-		{Seq: 3, Type: RunEventNodeOutput, NodeID: "fmn_c", Data: branchOutputData("port_fmn_c_out")},
-		{Seq: 4, Type: RunEventNodeOutput, NodeID: "fmn_a", Data: branchOutputData("port_fmn_a_out")},
-		{Seq: 5, Type: RunEventGateEvaluating, NodeID: "gate_review", GateID: "gate_review"},
-		{Seq: 6, Type: RunEventGateVerdict, NodeID: "gate_review", GateID: "gate_review", Actor: "human:operator",
+		{Seq: 2, Type: RunEventNodeStarted, NodeID: "fmn_a", Attempt: 1},
+		{Seq: 3, Type: RunEventNodeStarted, NodeID: "fmn_b", Attempt: 1},
+		{Seq: 4, Type: RunEventNodeOutput, NodeID: "fmn_b", Attempt: 1, Data: branchOutputData("port_fmn_b_out")},
+		{Seq: 5, Type: RunEventNodeStarted, NodeID: "fmn_c", Attempt: 1},
+		{Seq: 6, Type: RunEventNodeOutput, NodeID: "fmn_c", Attempt: 1, Data: branchOutputData("port_fmn_c_out")},
+		{Seq: 7, Type: RunEventNodeOutput, NodeID: "fmn_a", Attempt: 1, Data: branchOutputData("port_fmn_a_out")},
+		{Seq: 8, Type: RunEventGateEvaluating, NodeID: "gate_review", GateID: "gate_review"},
+		{Seq: 9, Type: RunEventGateVerdict, NodeID: "gate_review", GateID: "gate_review", Actor: "human:operator",
 			Data: map[string]any{"verdict": "fail", "routePort": "fail", "routedEdges": []string{"edge_gate_review_fail"}, "reason": "no"}},
 	}
 	state := runPaths(board, events)
 	want := []endedPath{
-		{EndID: "end_done", Outcome: EndOutcomeDone, Title: "Done", Seq: 3},
-		{EndID: "end_rejected", Outcome: EndOutcomeRejected, Title: "Rejected", GateID: "gate_review", Reason: "no", Actor: "human:operator", Seq: 6},
+		{EndID: "end_done", Outcome: EndOutcomeDone, Title: "Done", Seq: 6},
+		{EndID: "end_rejected", Outcome: EndOutcomeRejected, Title: "Rejected", GateID: "gate_review", Reason: "no", Actor: "human:operator", Seq: 9},
 	}
 	if len(state.owed) != 0 || !reflect.DeepEqual(state.ended, want) {
 		t.Fatalf("paths = %+v, want nothing owed and ended %+v", state, want)
@@ -212,7 +215,7 @@ func TestRunPathsReadsEndedPathsFromTheLedger(t *testing.T) {
 	if rejected := rejectedRunPath(board, events); rejected == nil || rejected.GateID != "gate_review" {
 		t.Fatalf("rejected path = %+v", rejected)
 	}
-	if rejected := rejectedRunPath(board, events[:5]); rejected != nil {
+	if rejected := rejectedRunPath(board, events[:8]); rejected != nil {
 		t.Fatalf("rejected path before the verdict = %+v", rejected)
 	}
 }

@@ -96,6 +96,7 @@ func TestS4DeadPaneAndIdleTimeoutRecordLoudError(t *testing.T) {
 		if lease.DispatchID == "" {
 			t.Fatal("dead pane dispatch did not return the durable lease id")
 		}
+		recordRunFailure(t, store, started.RunID, err)
 		status, err := store.ProjectRun(started.RunID)
 		if err != nil {
 			t.Fatalf("project run: %v", err)
@@ -129,6 +130,7 @@ func TestS4DeadPaneAndIdleTimeoutRecordLoudError(t *testing.T) {
 		if !errors.Is(err, ErrDispatchTimeout) {
 			t.Fatalf("complete from mismatched capture error = %v, want ErrDispatchTimeout", err)
 		}
+		recordRunFailure(t, store, started.RunID, err)
 		status, err := store.ProjectRun(started.RunID)
 		if err != nil {
 			t.Fatalf("project run: %v", err)
@@ -151,6 +153,7 @@ func TestS4CompletionForUnknownDispatchFailsLoud(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unknown dispatch") {
 		t.Fatalf("complete unknown dispatch error = %v, want unknown dispatch failure", err)
 	}
+	recordRunFailure(t, store, started.RunID, err)
 	status, err := store.ProjectRun(started.RunID)
 	if err != nil {
 		t.Fatalf("project run: %v", err)
@@ -165,6 +168,15 @@ func TestS4CompletionForUnknownDispatchFailsLoud(t *testing.T) {
 	errEvent := eventOfType(t, events, RunEventError)
 	if errEvent.Data["code"] != "unknown_dispatch" {
 		t.Fatalf("error data = %#v, want unknown_dispatch", errEvent.Data)
+	}
+}
+
+// recordRunFailure records a failure the dispatcher returned, as the run's
+// worker records what its step's executor returns (runStop).
+func recordRunFailure(t *testing.T, store *Store, runID string, err error) {
+	t.Helper()
+	if err := NewRunEngine(store, nil, nil).appendExecutionFailureAndBlock(runID, "", err); err != nil {
+		t.Fatal(err)
 	}
 }
 

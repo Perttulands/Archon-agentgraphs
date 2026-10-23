@@ -233,12 +233,17 @@ Choose effort by the step's job, with purpose. The role's kind names it:
 ### Fan out and join
 
 An output port feeds any number of inputs. Each formation input takes one feed,
-and a formation starts only when every input port has received its input. To
+and a formation starts only when every input port has received its input.
+Every step whose inputs have arrived starts at once, so the branches of a
+fan-out work at the same time and a verdict routes while they work; where one
+step must see another's work, wire it from that step's output or from a
+gate's pass route. To
 join parallel work, wire every upstream into the joining formation's input with
 `--join`: a free input takes the wire, and an occupied one gains a new input
 port and its connection in one edit. Without `--join` an occupied input is
 refused (`input_occupied`). Three reviewers in parallel, merged by a lead (IDs from each
-formation's create JSON):
+formation's create JSON); the reviewers start together and the lead once all
+three have answered:
 
 ```bash
 archon $S formation wire "$M" "$WORK:$WORK_OUT" "$REV1:$REV1_IN" --json
@@ -331,14 +336,16 @@ loop or a step needs a guard. It covers one target, a step or the Input card
   conversation may hold), or how many step runs the whole mission may make,
   judges included.
 - `--time` (whole seconds as `45s`, `30m`, `1h30m`) counts wall time while the
-  step works, or while any step of the mission works. Waiting on a human gate
+  step works, or while any step of the mission works, steps working at once
+  counting their shared time once. Waiting on a human gate
   or a blocked run counts nothing, so a send-back resumes a step with the time
   it has left. `--warn 5m` pastes a warning into the covered seats once when
   that much time is left.
 - `--tokens` counts what the covered seats spend, approximately: input not
   read from the cache, cache writes included, plus output, subagents
-  included, per dispatch. At the budget the working step stops; a count can
-  pass it by what the seats spent in the last two seconds.
+  included, per dispatch. At the budget the working step stops, and on the
+  Input card every step working at once stops; a count can pass it by what
+  the seats spent in the last two seconds.
 
 ```bash
 archon $S limit create "$M" --target "$WORK" --rounds 3 --json

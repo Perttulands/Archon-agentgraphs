@@ -75,16 +75,18 @@ type scriptedBranchExecutor struct {
 }
 
 func (e *scriptedBranchExecutor) ExecuteFormation(req FormationExecution) (FormationExecutionResult, error) {
+	e.mu.Lock()
 	if e.seen == nil {
 		e.seen = map[string]int{}
 	}
 	n := e.seen[req.NodeID]
 	e.seen[req.NodeID]++
 	script := e.texts[req.NodeID]
+	e.mu.Unlock()
 	if n >= len(script) {
 		return e.fakeRunExecutor.ExecuteFormation(req)
 	}
-	e.calls = append(e.calls, req)
+	e.record(req)
 	return FormationExecutionResult{Status: "done", Text: script[n], Outputs: payloadsForFormationOutputs(req.Formation, script[n], "refs/"+req.NodeID+".md")}, nil
 }
 
@@ -114,10 +116,10 @@ func TestAJudgeSendBackOnAnotherBranchRunsWhileAGateWaits(t *testing.T) {
 		t.Run(map[bool]string{false: "same engine", true: "restarted engine"}[restart], func(t *testing.T) {
 			executor := judgeFailsThenPasses()
 			store, personas, engine, status := startBranchingRun(t, pushbackAfterApproveBoardFixture(), executor)
-			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_work", "fmn_judge", "fmn_work", "fmn_judge", "fmn_ship"}; !reflect.DeepEqual(got, want) {
+			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_judge", "fmn_judge", "fmn_ship", "fmn_work", "fmn_work"}; !reflect.DeepEqual(sorted(got), want) {
 				t.Fatalf("nodes before the verdict = %v, want %v", got, want)
 			}
-			if feedback := executor.calls[3].Inputs[0].Feedback; feedback == nil || feedback.Verdict != "fail" || feedback.Reason != "add the missing test" {
+			if feedback := callsByNode(executor.calls)["fmn_work"][1].Inputs[0].Feedback; feedback == nil || feedback.Verdict != "fail" || feedback.Reason != "add the missing test" {
 				t.Fatalf("second work attempt feedback = %+v", feedback)
 			}
 			if restart {
@@ -229,7 +231,8 @@ func TestUnfinishedRunWorkReadsDeliveriesAndOpenNodesFromTheLedger(t *testing.T)
 		{RunEvent{Type: RunEventStarted, MissionID: "mis_showcase"}, "", []string{}},
 		{RunEvent{Type: RunEventNodeStarted, NodeID: "mis_showcase"}, "", []string{"mis_showcase"}},
 		{RunEvent{Type: RunEventNodeOutput, NodeID: "mis_showcase", Data: branchOutputData("out")}, "", []string{"fmn_a", "fmn_work"}},
-		{RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_a", Attempt: 1}, "", []string{"fmn_a", "fmn_work"}},
+		// A step reads its inputs as it starts: owed no more, it is open.
+		{RunEvent{Type: RunEventNodeStarted, NodeID: "fmn_a", Attempt: 1}, "", []string{"fmn_work", "fmn_a"}},
 		{RunEvent{Type: RunEventNodeOutput, NodeID: "fmn_a", Data: branchOutputData("port_fmn_a_out")}, "", []string{"fmn_work", "gate_review"}},
 		{RunEvent{Type: RunEventGateEvaluating, GateID: "gate_review", NodeID: "gate_review"}, "", []string{"fmn_work", "gate_review"}},
 		{RunEvent{Type: RunEventHumanInputRequested, GateID: "gate_review", NodeID: "gate_review"}, "gate_review", []string{"fmn_work"}},

@@ -157,8 +157,8 @@ function projectRun(events: RunEvent[]): RunProjection {
       case 'node_waiting':
         set(nodeId, 'waiting', event.seq)
         break
-      // The operator answered; the run routes the verdict between steps, or
-      // once it resumes.
+      // The operator answered; the run routes the verdict at once, or once
+      // it resumes.
       case 'human_verdict_recorded':
         if (blocked) answeredWhileBlocked.add(nodeId)
         else set(nodeId, 'running', event.seq)
@@ -179,6 +179,10 @@ function projectRun(events: RunEvent[]): RunProjection {
         set(nodeId, 'done', event.seq)
         if (event.gateId) set(event.gateId, 'running', event.seq)
         break
+      // A step's error stops the run at once, and the run blocks once the
+      // steps still working have finished theirs (archon-1uyi); a resume
+      // runs the step again.
+      case 'error':
       case 'run_blocked':
         if (!beforeBlock.has(nodeId)) beforeBlock.set(nodeId, states.get(nodeId) || '')
         set(nodeId, 'blocked', event.seq)

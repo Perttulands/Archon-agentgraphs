@@ -149,47 +149,60 @@ func pausingBoardFixture() string {
 		branchingBoardConnection("edge_b_done", "fmn_b:port_fmn_b_out", "end_done:in")
 }
 
-// Mission time counts while any step runs, B included while A's gate waits,
-// and pauses once only the gate waits. A's own time does not count the wait,
-// so the send-back resumes A with the time it has left.
+// Mission time counts while any step runs, and A and B run at once: B
+// counts on while A's gate waits, and the mission's time pauses once only the
+// gate waits. A's own time does not count the wait, so the send-back resumes
+// A with the time it has left.
 func TestTimePausesOnlyForWaitingWork(t *testing.T) {
+	clock := &testClock{at: time.Date(2026, 9, 17, 9, 0, 0, 0, time.UTC)}
+	executor := newHeldExecutor()
+	executor.clock = clock
 	var stepCard, missionCard LimitNode
-	store, engine, executor, clock, status := timedRun(t, pausingBoardFixture(), map[string][]time.Duration{
-		"fmn_a": {30 * time.Second, 30 * time.Second}, "fmn_b": {40 * time.Second},
-	}, func(store *Store) {
+	store, engine, runID, done := startHeldRun(t, pausingBoardFixture(), executor, func(store *Store, _ *RunEngine) {
+		store.Now = clock.now
 		stepCard = addTimeLimit(t, store, "fmn_a", 100, 0)
 		missionCard = addTimeLimit(t, store, "mis_showcase", 3600, 0)
 	})
-	board := mustReadRunBoard(t, store, status.RunID)
+	board := mustReadRunBoard(t, store, runID)
 	used := func(limit LimitNode) int {
-		return timeUsed(board, mustEvents(t, store, status.RunID), limit, *clock)
+		return timeUsed(board, mustEvents(t, store, runID), limit, clock.now())
 	}
-	if status.Status != RunStatusRunning || used(missionCard) != 70 || used(stepCard) != 30 {
+	// A works 30 s and B 40 s, at once.
+	first := executor.take(t, 2)
+	clock.add(30 * time.Second)
+	first["fmn_a"].finish()
+	waitForLedger(t, store, runID, "A's gate to ask", hasEvent(RunEventHumanInputRequested, "gate_review"))
+	clock.add(10 * time.Second)
+	first["fmn_b"].finish()
+	status := awaitRun(t, done)
+	if status.Status != RunStatusRunning || used(missionCard) != 40 || used(stepCard) != 30 {
 		t.Fatalf("after A and B: %+v, mission %d s, A %d s", status, used(missionCard), used(stepCard))
 	}
+	if first["fmn_a"].left != 100*time.Second || first["fmn_b"].left != 3600*time.Second {
+		t.Fatalf("A was given %v and B %v, want A's 100 s and the mission's 3600 s", first["fmn_a"].left, first["fmn_b"].left)
+	}
 	// Only the gate waits for ten minutes: nothing counts.
-	*clock = clock.Add(10 * time.Minute)
-	if used(missionCard) != 70 || used(stepCard) != 30 {
+	clock.add(10 * time.Minute)
+	if used(missionCard) != 40 || used(stepCard) != 30 {
 		t.Fatalf("the wait counted: mission %d s, A %d s", used(missionCard), used(stepCard))
 	}
-	request, _ := latestHumanRequest(mustEvents(t, store, status.RunID), "gate_review")
-	if _, err := engine.RecordHumanGateVerdict(status.RunID, HumanGateVerdictRequest{GateID: "gate_review", RequestedSeq: request.Seq, Verdict: "fail", Reason: "again", Actor: "human:operator"}); err != nil {
+	request, _ := latestHumanRequest(mustEvents(t, store, runID), "gate_review")
+	if _, err := engine.RecordHumanGateVerdict(runID, HumanGateVerdictRequest{GateID: "gate_review", RequestedSeq: request.Seq, Verdict: "fail", Reason: "again", Actor: "human:operator"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.ContinueRun(status.RunID); err != nil {
-		t.Fatal(err)
+	continued := inBackground(func() (*RunStatusProjection, error) { return engine.ContinueRun(runID) })
+	again := executor.take(t, 1)["fmn_a"]
+	if again == nil || again.left != 70*time.Second {
+		t.Fatalf("A's second run = %+v, want the 70 s A had left", again)
 	}
-	if got := executor.left["fmn_a"]; !reflect.DeepEqual(got, []time.Duration{100 * time.Second, 70 * time.Second}) {
-		t.Fatalf("A was given %v, want 100 s, then the 70 s it had left", got)
-	}
-	if got := executor.left["fmn_b"]; !reflect.DeepEqual(got, []time.Duration{3570 * time.Second}) {
-		t.Fatalf("B was given %v, want the mission's 3570 s left", got)
-	}
-	if used(missionCard) != 100 || used(stepCard) != 60 {
+	clock.add(30 * time.Second)
+	again.finish()
+	awaitRun(t, continued)
+	if used(missionCard) != 70 || used(stepCard) != 60 {
 		t.Fatalf("after the send-back: mission %d s, A %d s", used(missionCard), used(stepCard))
 	}
 	// The counted times are the ledger's own: A's two runs and B's.
-	events := mustEvents(t, store, status.RunID)
+	events := mustEvents(t, store, runID)
 	var spans []time.Duration
 	for i, event := range events {
 		if event.Type != RunEventNodeStarted || stringFromEventData(event, "nodeKind") != "formation" {
@@ -230,8 +243,8 @@ func TestTimeCountsFromTheLedgerAcrossBlocksAndRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	formation, _ := findFormation(board.Formations, "fmn_research")
-	if err := engine.startFormationExecution(started.RunID, board, formation, RunEvent{Type: RunEventNodeStarted, NodeID: formation.ID, Attempt: 1, Data: map[string]any{"nodeKind": "formation"}}); err != nil {
-		t.Fatal(err)
+	if spent, err := engine.startFormationUnlessSpent(started.RunID, board, formation, RunEvent{Type: RunEventNodeStarted, NodeID: formation.ID, Attempt: 1, Data: map[string]any{"nodeKind": "formation"}}); err != nil || spent != nil {
+		t.Fatal(spent, err)
 	}
 	clock = clock.Add(15 * time.Second)
 	// The seat works 15 s, as its last recorded event shows; then the daemon

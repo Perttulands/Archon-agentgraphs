@@ -166,7 +166,8 @@ func pendingHumanGates(t *testing.T, store *Store, runID string) []string {
 			gates = append(gates, event.GateID)
 		}
 	}
-	return gates
+	// Gates on branches that work at once ask in any order.
+	return sorted(gates)
 }
 
 func gateVerdictRecorded(events []RunEvent, gateID, routePort string) bool {
@@ -202,7 +203,7 @@ func TestOtherBranchesRunWhileATerminalHumanGateWaits(t *testing.T) {
 			if got := pendingHumanGates(t, store, status.RunID); status.Final || !reflect.DeepEqual(got, []string{"gate_review"}) {
 				t.Fatalf("status = %+v, pending %v, want waiting for the gate", status, got)
 			}
-			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_b", "fmn_c"}; !reflect.DeepEqual(got, want) {
+			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_b", "fmn_c"}; !reflect.DeepEqual(sorted(got), want) {
 				t.Fatalf("nodes before the verdict = %v, want %v", got, want)
 			}
 			if status.Status != RunStatusRunning {
@@ -279,7 +280,7 @@ func TestABranchBlockedWhileAGateWaitsResumesAroundTheGate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := executor.nodeIDs(), []string{"fmn_b", "fmn_c"}; !reflect.DeepEqual(got, want) {
+			if got, want := executor.nodeIDs(), []string{"fmn_b", "fmn_c"}; !reflect.DeepEqual(sorted(got), want) {
 				t.Fatalf("nodes after the block = %v, want %v", got, want)
 			}
 			if status.Status != RunStatusSucceeded {
@@ -298,31 +299,28 @@ func TestATerminalJudgePassDoesNotSkipABlockedBranchOnResume(t *testing.T) {
 	if !strings.Contains(fixture, "from = \"mis_showcase:out\"\nto = \"fmn_ship:port_ship_in\"") {
 		t.Fatal("fixture rewrite failed")
 	}
-	executor := &seatLossOnceExecutor{failNodeID: "fmn_ship"}
+	executor := newHeldExecutor()
 	executor.outputs = map[string]string{"fmn_j2": judgeBlock("pass", "fine")}
-	store, _, engine, status := startBranchingRun(t, fixture, executor)
+	store, engine, runID, done := startHeldRun(t, fixture, executor, nil)
+	first := executor.take(t, 2)
+	first["fmn_work"].finish()
+	executor.take(t, 1)["fmn_j1"].finish()
+	executor.take(t, 1)["fmn_j2"].finish()
+	waitForLedger(t, store, runID, "the judge gate's pass", func(events []RunEvent) bool { return gateVerdictRecorded(events, "gate_review", "pass") })
+	first["fmn_ship"].release <- &RunExecutionError{Code: "native_turn_failed", Message: "seat died", Boundary: "executor", NodeID: "fmn_ship"}
+	status := awaitRun(t, done)
 	if status.Status != RunStatusBlocked || !status.ResumeAllowed {
 		t.Fatalf("status = %+v, want a resumable block for ship's lost seat", status)
 	}
-	events, err := store.ReadRunEvents(status.RunID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !gateVerdictRecorded(events, "gate_review", "pass") {
-		t.Fatalf("setup: the judge gate did not pass: %s", eventTypeTrail(events))
-	}
-	executor.calls = nil
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "redispatch", Reason: "seat lost; run ship again"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := executor.nodeIDs(), []string{"fmn_ship"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("nodes after resume = %v, want %v", got, want)
-	}
-	if status.Status != RunStatusSucceeded {
+	resumed := inBackground(func() (*RunStatusProjection, error) {
+		return engine.ResumeRun(runID, RunResumeRequest{Actor: "agent:test", Mode: "redispatch", Reason: "seat lost; run ship again"})
+	})
+	executor.take(t, 1)["fmn_ship"].finish()
+	if status := awaitRun(t, resumed); status.Status != RunStatusSucceeded {
 		t.Fatalf("status = %+v, want succeeded", status)
 	}
-	requireSucceededAfterOutputs(t, store, status.RunID, "fmn_work", "fmn_ship")
+	executor.none(t)
+	requireSucceededAfterOutputs(t, store, runID, "fmn_work", "fmn_ship")
 }
 
 // archon-o7p.11: two terminal human gates on separate branches are both open
@@ -336,7 +334,7 @@ func TestTwoTerminalHumanGatesOnSeparateBranchesAreOpenAtOnce(t *testing.T) {
 			if got := pendingHumanGates(t, store, status.RunID); !reflect.DeepEqual(got, []string{"gate_one", "gate_two"}) {
 				t.Fatalf("waiting gates = %+v, want both", got)
 			}
-			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_b"}; !reflect.DeepEqual(got, want) {
+			if got, want := executor.nodeIDs(), []string{"fmn_a", "fmn_b"}; !reflect.DeepEqual(sorted(got), want) {
 				t.Fatalf("nodes before any verdict = %v, want %v", got, want)
 			}
 			executor.calls = nil

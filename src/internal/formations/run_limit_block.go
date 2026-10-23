@@ -338,38 +338,6 @@ func limitReason(board *BoardDocument, use RunLimitReached) string {
 	return reason
 }
 
-// appendLimitBlock fails the run when the spent card says fail; otherwise the
-// run blocks at the spent limit before nodeID starts. The
-// block names the limit and resumes with a grant, or, when the step's own
-// card is spent and its selecting gate judged an attempt, with a grant or a
-// pick of the best attempt (archon-gihe).
-func (e *RunEngine) appendLimitBlock(runID string, board *BoardDocument, nodeID string, use RunLimitReached) error {
-	if card, ok := findLimit(board, use.LimitID); ok && card.WhenSpent == LimitWhenSpentFail {
-		if err := e.EndKeptSeats(runID); err != nil {
-			return err
-		}
-		return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventFailed, Actor: RunFailureActor, NodeID: nodeID, Data: map[string]any{
-			"code": RunBlockLimitReached, "reason": limitReason(board, use), "limit": use, "final": true,
-		}})
-	}
-	if err := e.appendLimitError(runID, board, nodeID, use); err != nil {
-		return err
-	}
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	policy := ResumePolicyGrant
-	if _, ok := pickFor(board, events, nodeID, use); ok {
-		policy = ResumePolicyGrantOrPick
-	}
-	block := runBlockedEvent(limitReason(board, use), nodeID, "", "", nil)
-	block.Data["code"] = RunBlockLimitReached
-	block.Data["limit"] = use
-	block.Data["resumePolicy"] = policy
-	return e.store.AppendRunEvent(runID, block)
-}
-
 // appendLimitError records that a spent limit stopped nodeID.
 func (e *RunEngine) appendLimitError(runID string, board *BoardDocument, nodeID string, use RunLimitReached) error {
 	reason := limitReason(board, use)
@@ -492,21 +460,32 @@ func runBlockNeedsGrant(events []RunEvent, index int) bool {
 
 // claimLimitWarning records that a seat gets a time card's warning, once: a
 // step's card warns each seat of an attempt once, the mission's card only the
-// seats of the attempt that first claimed it. It reports false when the
-// ledger already holds that warning.
+// seats of the attempts that were working when it first fired, once in the
+// whole run (archon-1uyi). It reports false when the ledger already holds that
+// warning.
 func (s *Store) claimLimitWarning(req FormationExecution, slotID string, warning LimitWarning) bool {
 	event := RunEvent{Type: RunEventLimitWarning, NodeID: req.NodeID, SlotID: slotID, Attempt: req.Attempt, Data: map[string]any{
 		"limitId": warning.LimitID, "nodeId": req.NodeID, "slotId": slotID, "attempt": req.Attempt, "text": warning.Text,
 	}}
 	err := s.appendRunEventIf(req.RunID, event, func(events []RunEvent) error {
+		started, first := 0, 0
 		for _, event := range events {
+			if event.Type == RunEventNodeStarted && event.NodeID == req.NodeID && event.Attempt == req.Attempt {
+				started = event.Seq
+			}
 			if event.Type != RunEventLimitWarning || stringFromEventData(event, "limitId") != warning.LimitID {
 				continue
 			}
-			sameAttempt := event.NodeID == req.NodeID && event.Attempt == req.Attempt
-			if (sameAttempt && event.SlotID == slotID) || (warning.Mission && !sameAttempt) {
+			if first == 0 {
+				first = event.Seq
+			}
+			if event.NodeID == req.NodeID && event.Attempt == req.Attempt && event.SlotID == slotID {
 				return errNothingToRecord
 			}
+		}
+		if warning.Mission && (started == 0 || first > 0 && started > first) {
+			// The attempt was not working when the mission's warning went out.
+			return errNothingToRecord
 		}
 		return nil
 	})

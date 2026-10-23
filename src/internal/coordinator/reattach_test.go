@@ -46,7 +46,7 @@ controller = false
 	for _, event := range []formations.RunEvent{
 		{Type: formations.RunEventNodeStarted, NodeID: "mis_proof", Data: map[string]any{"nodeKind": "mission", "reason": "initial", "inputRefs": []formations.RunInputRef{}}},
 		{Type: formations.RunEventNodeOutput, NodeID: "mis_proof", Data: map[string]any{"status": "done", "outputs": map[string]any{"out": map[string]any{"text": "recover"}}}},
-		{Type: formations.RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1, Data: map[string]any{"nodeKind": "formation", "reason": "initial", "inputRefs": []formations.RunInputRef{{EdgeID: "edge_start", FromNodeID: "mis_proof", FromPortID: "out", ToPortID: "port_in", OutputSeq: 3, Text: "recover"}}}},
+		{Type: formations.RunEventNodeStarted, NodeID: "fmn_work", Attempt: 1, Data: map[string]any{"nodeKind": "formation", "reason": "initial", "inputRefs": []formations.RunInputRef{{EdgeID: "edge_start", FromNodeID: "mis_proof", FromPortID: "out", ToPortID: "port_in", Text: "recover"}}}},
 	} {
 		if err := c.store.AppendRunEvent(id, event); err != nil {
 			t.Fatal(err)

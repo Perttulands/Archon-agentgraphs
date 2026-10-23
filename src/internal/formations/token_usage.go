@@ -260,18 +260,20 @@ func coveringLimits(board *BoardDocument, nodeID string) []LimitNode {
 }
 
 // tokenMeter sums the live counts of one attempt's dispatches and stops the
-// attempt once they reach its budget. It is safe for a peer step's seats to
-// share.
+// attempt once they reach its budget, or once the run's pool, every attempt
+// working at once together, reaches the mission's card. It is safe for a peer
+// step's seats to share.
 type tokenMeter struct {
 	mu      sync.Mutex
 	budget  int
+	pool    *tokenPool
 	counts  map[string]int
 	spent   bool
 	onSpent func()
 }
 
-func newTokenMeter(budget int, onSpent func()) *tokenMeter {
-	return &tokenMeter{budget: budget, counts: map[string]int{}, onSpent: onSpent}
+func newTokenMeter(budget int, pool *tokenPool, onSpent func()) *tokenMeter {
+	return &tokenMeter{budget: budget, pool: pool, counts: map[string]int{}, onSpent: onSpent}
 }
 
 // set records a dispatch's count so far and reports whether the attempt has
@@ -280,17 +282,106 @@ func (m *tokenMeter) set(dispatch string, counted int) bool {
 	if m == nil {
 		return false
 	}
+	poolSpent := m.pool.set(dispatch, counted)
 	m.mu.Lock()
 	m.counts[dispatch] = counted
 	total := 0
 	for _, count := range m.counts {
 		total += count
 	}
-	stop := total >= m.budget && !m.spent
+	stop := (total >= m.budget || poolSpent) && !m.spent
 	m.spent = m.spent || stop
 	m.mu.Unlock()
 	if stop {
 		m.onSpent()
 	}
 	return stop
+}
+
+// tokenPool counts what a run's attempts spend while its worker works
+// (archon-1uyi). Steps run at once, and the mission's tokens card covers them
+// all, so each attempt's budget, read from the ledger when it started, misses
+// what the others spend meanwhile: the pool adds every dispatch's live count
+// to what the ledger held when the worker began, and stops every attempt once
+// the sum reaches the card. A step's own card covers one attempt at a time,
+// which its meter alone enforces.
+type tokenPool struct {
+	mu      sync.Mutex
+	limitID string
+	max     int
+	base    int
+	counts  map[string]int
+}
+
+// set records a dispatch's count so far and reports whether the run's
+// attempts together have spent the mission's card.
+func (p *tokenPool) set(dispatch string, counted int) bool {
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.counts[dispatch] = counted
+	return p.spentLocked()
+}
+
+// spent reports whether the run's attempts together spent the mission's card.
+func (p *tokenPool) spent() bool {
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.spentLocked()
+}
+
+func (p *tokenPool) spentLocked() bool {
+	total := p.base
+	for _, count := range p.counts {
+		total += count
+	}
+	return total >= p.max
+}
+
+// runTokenPools holds the pool of each run whose worker works.
+type runTokenPools struct {
+	mu    sync.Mutex
+	pools map[string]*tokenPool
+}
+
+// open starts the run's pool from its ledger, when its mission's card sets
+// tokens; the returned func closes it.
+func (r *runTokenPools) open(runID string, board *BoardDocument, events []RunEvent) func() {
+	if len(events) == 0 {
+		return func() {}
+	}
+	limit, ok := limitCovering(board, events[0].MissionID)
+	if !ok {
+		return func() {}
+	}
+	use := tokensUse(board, events, limit)
+	if use == nil {
+		return func() {}
+	}
+	pool := &tokenPool{limitID: limit.ID, max: use.Max, base: use.Used, counts: map[string]int{}}
+	r.mu.Lock()
+	if r.pools == nil {
+		r.pools = map[string]*tokenPool{}
+	}
+	r.pools[runID] = pool
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		if r.pools[runID] == pool {
+			delete(r.pools, runID)
+		}
+		r.mu.Unlock()
+	}
+}
+
+// get is the run's open pool, or nil.
+func (r *runTokenPools) get(runID string) *tokenPool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pools[runID]
 }

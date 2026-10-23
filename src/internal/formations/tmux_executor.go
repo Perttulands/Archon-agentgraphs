@@ -299,7 +299,7 @@ func (e *TmuxFormationExecutor) executeFormationContext(parent context.Context, 
 	// The attempt's seats stop once their tokens reach its budget (archon-o7p.9).
 	ctx, stopTokens := context.WithCancelCause(ctx)
 	defer stopTokens(nil)
-	req.tokens = newTokenMeter(req.TokenBudget, func() { stopTokens(ErrTokenBudgetSpent) })
+	req.tokens = newTokenMeter(req.TokenBudget, req.tokenPool, func() { stopTokens(ErrTokenBudgetSpent) })
 	result, err := e.executeFormationKind(ctx, req)
 	if errors.Is(context.Cause(ctx), ErrTokenBudgetSpent) {
 		return FormationExecutionResult{}, ErrTokenBudgetSpent

@@ -311,32 +311,6 @@ func routePick(board *BoardDocument, events []RunEvent, gateID, stepID string, u
 	return true, judgeStarts
 }
 
-// pickOrBlock is what a step does at its spent limit. A card whose whenSpent
-// is best, with an attempt its gate judged since the step's last pick, starts
-// a pick; anything else blocks the run at the limit. cutOff marks an attempt
-// the limit stopped while it worked: the ledger records why it stopped, and it
-// is never a candidate.
-func (e *RunEngine) pickOrBlock(runID string, board *BoardDocument, gates map[string]GateNode, stepID string, use RunLimitReached, cutOff bool, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	card, _ := findLimit(board, use.LimitID)
-	pick, ok := pickFor(board, events, stepID, use)
-	if !ok || card.WhenSpent != LimitWhenSpentBest || !judgedSinceLastPick(events, stepID, pick.candidates) {
-		if err := e.appendLimitBlock(runID, board, stepID, use); err != nil {
-			return err
-		}
-		return errRunStopped
-	}
-	if cutOff {
-		if err := e.appendLimitError(runID, board, stepID, use); err != nil {
-			return err
-		}
-	}
-	return e.startPick(runID, board, gates, stepID, pick, use, PickTriggerWhenSpent, ready, queued, queue)
-}
-
 // pendingResumePick is the spent limit a resume with --pick-best asked to
 // pick at, while that resume is the run's latest and no pick started since.
 func pendingResumePick(events []RunEvent) (RunLimitReached, bool) {
@@ -358,35 +332,9 @@ func pendingResumePick(events []RunEvent) (RunLimitReached, bool) {
 	return RunLimitReached{}, false
 }
 
-// pickOnResume starts the pick a resume with --pick-best asked for, once
-// replay rebuilt the run, whatever the card's whenSpent.
-func (e *RunEngine) pickOnResume(runID string, board *BoardDocument, gates map[string]GateNode, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	use, ok := pendingResumePick(events)
-	if !ok {
-		return nil
-	}
-	pick, ok := pickFor(board, events, use.NodeID, use)
-	if !ok {
-		if err := e.appendLimitBlock(runID, board, use.NodeID, use); err != nil {
-			return err
-		}
-		return errRunStopped
-	}
-	return e.startPick(runID, board, gates, use.NodeID, pick, use, PickTriggerResume, ready, queued, queue)
-}
-
 // startPick records pick_started, which settles the step's pending send-back
-// as its output would, and decides the pick.
-func (e *RunEngine) startPick(runID string, board *BoardDocument, gates map[string]GateNode, stepID string, pick stepPick, use RunLimitReached, trigger string, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	markPortsRead(ready, stepID)
-	if queued[stepID] {
-		queued[stepID] = false
-		*queue = slices.DeleteFunc(*queue, func(nodeID string) bool { return nodeID == stepID })
-	}
+// as its output would; the run's worker decides the pick.
+func (e *RunEngine) startPick(runID string, board *BoardDocument, stepID string, pick stepPick, use RunLimitReached, trigger string) error {
 	data := map[string]any{
 		"nodeId":     stepID,
 		"gateId":     pick.gate.ID,
@@ -397,15 +345,7 @@ func (e *RunEngine) startPick(runID string, board *BoardDocument, gates map[stri
 	if hasGateKind(pick.gate.Kinds, "formation") {
 		data["judgeChain"] = formationIDs(judgeChainForGate(board, pick.gate.ID))
 	}
-	seq, err := e.store.appendRunEventSeq(runID, RunEvent{Type: RunEventPickStarted, NodeID: stepID, GateID: pick.gate.ID, Data: data})
-	if err != nil {
-		return err
-	}
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	return e.runPick(runID, board, gates, events[seq-1], ready, queued, queue)
+	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventPickStarted, NodeID: stepID, GateID: pick.gate.ID, Data: data})
 }
 
 // pickChoice is a decided pick.
@@ -437,88 +377,6 @@ func pickChoiceFromAny(value any) *pickChoice {
 	}
 }
 
-// runPick decides the pick a pick_started began. The only candidate is taken
-// without a picker. Otherwise the gate's judge chain picks, and a human gate
-// asks the operator, with the judge's pick as a recommendation when the gate
-// has a judge. Replay finishes an unfinished pick through it too.
-func (e *RunEngine) runPick(runID string, board *BoardDocument, gates map[string]GateNode, started RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
-	gate, ok := gates[started.GateID]
-	if !ok {
-		return fmt.Errorf("%w: gate %q", ErrNotFound, started.GateID)
-	}
-	events, err := e.store.ReadRunEvents(runID)
-	if err != nil {
-		return err
-	}
-	candidates, err := loadPickCandidates(events, pickCandidatesFromEvent(started))
-	if err != nil {
-		return err
-	}
-	if len(candidates) == 0 {
-		return fmt.Errorf("%w: pick %d has no candidates", ErrRunLedgerInvalid, started.Seq)
-	}
-	if len(candidates) == 1 {
-		only := candidates[0]
-		return e.resolvePick(runID, board, gates, gate, started, pickChoice{
-			Attempt: only.Attempt, Reason: fmt.Sprintf("the only attempt %s judged", nodeName(board, gate.ID)), DecidedBy: PickDecidedByArchon,
-		}, 0, nil, ready, queued, queue)
-	}
-	input := pickInput(runID, board, gate, started, candidates)
-	attempts := make([]int, 0, len(candidates))
-	for _, candidate := range candidates {
-		attempts = append(attempts, candidate.Attempt)
-	}
-	var recommendation *pickChoice
-	if hasGateKind(gate.Kinds, "formation") {
-		chain := judgeChainForGate(board, gate.ID)
-		if len(chain) == 0 {
-			return fmt.Errorf("%w: gate %q has no judge chain", ErrConflict, gate.ID)
-		}
-		text, err := e.runJudgeChain(board, GateEvaluation{
-			RunID: runID, GateID: gate.ID, Title: gate.Title, Kinds: []string{"formation"}, Criterion: gate.Criterion, Input: input,
-		}, chain, &judgePickMode{anchorSeq: started.Seq, attempts: attempts})
-		if err != nil {
-			return err
-		}
-		choice, err := parseJudgePick(text, attempts)
-		if err != nil {
-			return e.blockInvalidPick(runID, gate.ID, err)
-		}
-		choice.DecidedBy = chain[len(chain)-1].ID
-		if !hasGateKind(gate.Kinds, "human") {
-			return e.resolvePick(runID, board, gates, gate, started, choice, 0, nil, ready, queued, queue)
-		}
-		recommendation = &choice
-	}
-	if !hasGateKind(gate.Kinds, "human") {
-		return fmt.Errorf("%w: gate %q has no judge or human to pick", ErrRunLedgerInvalid, gate.ID)
-	}
-	choices := make([]string, 0, len(attempts))
-	for _, attempt := range attempts {
-		choices = append(choices, strconv.Itoa(attempt))
-	}
-	pick := map[string]any{"nodeId": started.NodeID, "pickSeq": started.Seq, "candidates": attempts}
-	if recommendation != nil {
-		pick["recommendation"] = recommendation.data()
-	}
-	// Only this path waits for the pick; the run goes on with every other
-	// branch, as with a verdict (archon-o7p.11).
-	return e.store.AppendRunEvent(runID, RunEvent{
-		Type:   RunEventHumanInputRequested,
-		GateID: gate.ID,
-		NodeID: gate.ID,
-		Data: map[string]any{
-			"gateId":      gate.ID,
-			"nodeId":      gate.ID,
-			"prompt":      gate.Criterion,
-			"choices":     choices,
-			"requestedBy": gate.ID,
-			"inputRef":    input,
-			"pick":        pick,
-		},
-	})
-}
-
 // pickInput is what a picker reads: every candidate side by side, with the
 // verdict the gate gave it and the output it judged, as text or as the path
 // of the accepted file or folder.
@@ -542,9 +400,10 @@ func pickInput(runID string, board *BoardDocument, gate GateNode, started RunEve
 }
 
 // resolvePick ends a pick: a gate_verdict pass that carries the picked
-// attempt's gate input down the pass route, as the gate's pass would have.
-// requestedSeq names the operator's request it answers, if any.
-func (e *RunEngine) resolvePick(runID string, board *BoardDocument, gates map[string]GateNode, gate GateNode, started RunEvent, choice pickChoice, requestedSeq int, recommendation *pickChoice, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+// attempt's gate input down the pass route, as the gate's pass would have;
+// replay delivers it. requestedSeq names the operator's request it answers,
+// if any.
+func (e *RunEngine) resolvePick(runID string, board *BoardDocument, gate GateNode, started RunEvent, choice pickChoice, requestedSeq int, recommendation *pickChoice) error {
 	events, err := e.store.ReadRunEvents(runID)
 	if err != nil {
 		return err
@@ -594,19 +453,11 @@ func (e *RunEngine) resolvePick(runID string, board *BoardDocument, gates map[st
 	if requestedSeq > 0 {
 		data["requestedSeq"] = requestedSeq
 	}
-	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventGateVerdict, Attempt: attempt, GateID: gate.ID, NodeID: gate.ID, Data: data}); err != nil {
-		return err
-	}
-	for _, route := range routes {
-		if err := e.deliverConnection(runID, board, gates, route, picked.Input, ready, queued, queue); err != nil {
-			return err
-		}
-	}
-	return nil
+	return e.store.AppendRunEvent(runID, RunEvent{Type: RunEventGateVerdict, Attempt: attempt, GateID: gate.ID, NodeID: gate.ID, Data: data})
 }
 
 // routeHumanPick routes the operator's recorded pick of a pending pick.
-func (e *RunEngine) routeHumanPick(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, request, recorded RunEvent, ready map[string]map[string]RunInputRef, queued map[string]bool, queue *[]string) error {
+func (e *RunEngine) routeHumanPick(runID string, board *BoardDocument, gates map[string]GateNode, events []RunEvent, request, recorded RunEvent) error {
 	gate, ok := gates[request.GateID]
 	if !ok {
 		return fmt.Errorf("%w: gate %q", ErrNotFound, request.GateID)
@@ -620,7 +471,7 @@ func (e *RunEngine) routeHumanPick(runID string, board *BoardDocument, gates map
 		Reason:    stringFromEventData(recorded, "reason"),
 		DecidedBy: stringFromEventData(recorded, "decidedBy"),
 	}
-	return e.resolvePick(runID, board, gates, gate, events[pickSeq-1], choice, request.Seq, pickChoiceFromAny(pickData(request)["recommendation"]), ready, queued, queue)
+	return e.resolvePick(runID, board, gate, events[pickSeq-1], choice, request.Seq, pickChoiceFromAny(pickData(request)["recommendation"]))
 }
 
 // pickSettled reports whether the pick that pick_started at seq began has
@@ -632,28 +483,6 @@ func pickSettled(events []RunEvent, seq int) bool {
 		}
 	}
 	return false
-}
-
-// blockInvalidPick stops the run at a judge's malformed pick, as a malformed
-// verdict stops it; a plain resume asks the final judge again.
-func (e *RunEngine) blockInvalidPick(runID, gateID string, err error) error {
-	attempt, readErr := e.gateAttempt(runID, gateID)
-	if readErr != nil {
-		return readErr
-	}
-	if appendErr := e.store.AppendRunEvent(runID, RunEvent{
-		Type: RunEventJudgeAttemptFailed, GateID: gateID, NodeID: gateID, Attempt: attempt,
-		Data: map[string]any{"code": RunBlockInvalidJudgePick, "reason": err.Error()},
-	}); appendErr != nil {
-		return appendErr
-	}
-	if appendErr := e.store.AppendRunEvent(runID, RunEvent{
-		Type: RunEventBlocked, GateID: gateID, NodeID: gateID,
-		Data: map[string]any{"reason": "invalid judge pick: " + err.Error(), "blockedGateId": gateID, "resumeAllowed": true, "code": RunBlockInvalidJudgePick},
-	}); appendErr != nil {
-		return appendErr
-	}
-	return errRunStopped
 }
 
 // PendingPick is what a gate's pending pick asks the operator: the step and
@@ -770,6 +599,7 @@ func (e *RunEngine) RecordHumanGatePick(runID string, req HumanGatePickRequest) 
 	}); err != nil {
 		return nil, err
 	}
+	e.wakeRun(runID)
 	return e.store.ProjectRun(runID)
 }
 

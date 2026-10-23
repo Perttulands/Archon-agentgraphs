@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 )
@@ -345,6 +346,7 @@ func TestRedactPromptAndSecretTokensFromDispatchAdapterFailureLedger(t *testing.
 	if err == nil {
 		t.Fatal("dispatch adapter failure returned nil error")
 	}
+	recordRunFailure(t, store, started.RunID, err)
 
 	events := readRunEvents(t, findOnlyRunLedger(t, store, "session-search"))
 	assertLedgerDataForTypesRedacted(t, events, []string{RunEventError, RunEventBlocked},
@@ -711,8 +713,10 @@ func testTmuxOutputRefRouting(t *testing.T, location string) {
 		pane:     tmuxPaneState{CurrentPath: cfg.Cwd},
 		captures: []string{
 			"splitter wrote long payload artifact\n```archon-outputs\n" + string(rawPayloads) + "\n```\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=split.md>>>",
-			"left consumer saw artifact payload\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>",
-			"right consumer saw RIGHT-FROM-TMUX\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>",
+		},
+		seatCaptures: map[string][]string{
+			"slot_left":  {"left consumer saw artifact payload\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=left.md>>>"},
+			"slot_right": {"right consumer saw RIGHT-FROM-TMUX\n<<<ARCHON-DONE run-id=run_missing status=ok artifact=right.md>>>"},
 		},
 	}
 	executor := newTmuxFormationExecutorWithClient(store, personas, cfg, client)
@@ -744,8 +748,8 @@ func testTmuxOutputRefRouting(t *testing.T, location string) {
 	if got := firstStartedInputText(t, events, "fmn_left"); got != longLeft {
 		t.Fatalf("left routed input length=%d, want artifact length=%d", len(got), len(longLeft))
 	}
-	if len(client.sentPrompts) < 2 || !strings.Contains(client.sentPrompts[1], longLeft) {
-		t.Fatalf("left consumer prompt did not receive hydrated artifact body; prompts=%d", len(client.sentPrompts))
+	if left := client.promptsTo("slot_left"); len(left) == 0 || !strings.Contains(left[0], longLeft) {
+		t.Fatalf("left consumer prompt did not receive hydrated artifact body; prompts=%d", len(left))
 	}
 }
 
@@ -1459,7 +1463,13 @@ func (p *fakeWorkerPane) next() string {
 	return text
 }
 
+// fakeTmuxHarnessClient scripts the seats of a run. Steps whose inputs are
+// ready work at the same time (archon-1uyi), so the fake keeps each seat's turn
+// apart: a capture answers the prompt last sent to its own seat, and
+// seatCaptures scripts one seat's turns by slot. Turns of seats working at once
+// take the shared captures in whatever order they ask.
 type fakeTmuxHarnessClient struct {
+	mu                   sync.Mutex
 	rawOutputs           bool
 	harness              string
 	sessions             []string
@@ -1482,26 +1492,31 @@ type fakeTmuxHarnessClient struct {
 	lastDispatchID       string
 	sentPrompts          []string
 	sendTargets          []string
-	paneText             string
-	awaitingCapture      bool
-	startupCaptures      []string
-	readinessPending     map[string]bool
-	preSendCaptureCalls  int
-	lastPreSendCapture   string
-	sendCalls            int
-	captureCalls         int
-	listCalls            int
-	describeCalls        int
-	created              []string
-	seatVariants         []HarnessVariant
-	killed               []string
-	ops                  []fakeTmuxOp
-	afterCapture         func(call int)
-	afterSend            func(prompt string)
+	// awaiting holds the prompt each seat was last sent and has not answered.
+	awaiting map[string]string
+	// paneTexts holds what each seat's pane shows.
+	paneTexts           map[string]string
+	startupCaptures     []string
+	readinessPending    map[string]bool
+	preSendCaptureCalls int
+	lastPreSendCapture  string
+	sendCalls           int
+	captureCalls        int
+	listCalls           int
+	describeCalls       int
+	created             []string
+	seatVariants        []HarnessVariant
+	killed              []string
+	ops                 []fakeTmuxOp
+	afterCapture        func(call int)
+	afterSend           func(prompt string)
 	// workerPanes is keyed by a fragment of the tmux target name. Owned session
 	// names embed the slot id, so a test scripts a worker's pane by slot without
 	// knowing the session nonce the executor generates.
 	workerPanes map[string]*fakeWorkerPane
+	// seatCaptures scripts the turns of the seats whose target holds the key, a
+	// slot id, ahead of the shared captures.
+	seatCaptures map[string][]string
 }
 
 func (f *fakeTmuxHarnessClient) workerPane(target string) *fakeWorkerPane {
@@ -1537,6 +1552,8 @@ func (f *fakeTmuxHarnessClient) liveSessions() []string {
 }
 
 func (f *fakeTmuxHarnessClient) HasServer(_ context.Context, _ string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	// Probe op carries no session target so safety assertions that scan ops for
 	// foreign-target touches skip it.
 	f.ops = append(f.ops, fakeTmuxOp{op: "has-server"})
@@ -1547,6 +1564,8 @@ func (f *fakeTmuxHarnessClient) HasServer(_ context.Context, _ string) (bool, er
 }
 
 func (f *fakeTmuxHarnessClient) StartKeeper(_ context.Context, socket, keeper string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.ops = append(f.ops, fakeTmuxOp{op: "start-keeper", target: keeper})
 	if f.startKeeperErr != nil {
 		return f.startKeeperErr
@@ -1563,6 +1582,8 @@ func (f *fakeTmuxHarnessClient) StartKeeper(_ context.Context, socket, keeper st
 }
 
 func (f *fakeTmuxHarnessClient) ListSessions(context.Context, string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.listCalls++
 	f.ops = append(f.ops, fakeTmuxOp{op: "list-sessions"})
 	if f.listErr != nil {
@@ -1572,6 +1593,8 @@ func (f *fakeTmuxHarnessClient) ListSessions(context.Context, string) ([]string,
 }
 
 func (f *fakeTmuxHarnessClient) CreateSession(_ context.Context, _, name, _, _ string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.ops = append(f.ops, fakeTmuxOp{op: "new-session", target: name})
 	if f.createErr != nil {
 		return f.createErr
@@ -1581,12 +1604,16 @@ func (f *fakeTmuxHarnessClient) CreateSession(_ context.Context, _, name, _, _ s
 }
 
 func (f *fakeTmuxHarnessClient) KillSession(_ context.Context, _, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.ops = append(f.ops, fakeTmuxOp{op: "kill-session", target: name})
 	f.killed = append(f.killed, name)
 	return nil
 }
 
 func (f *fakeTmuxHarnessClient) DescribeActivePane(_ context.Context, _, target string) (tmuxPaneState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.describeCalls++
 	f.ops = append(f.ops, fakeTmuxOp{op: "describe", target: target})
 	if f.describeErr != nil {
@@ -1605,6 +1632,8 @@ func (f *fakeTmuxHarnessClient) DescribeActivePane(_ context.Context, _, target 
 }
 
 func (f *fakeTmuxHarnessClient) SendPrompt(_ context.Context, _, target, dispatchID, prompt string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.sendCalls++
 	f.ops = append(f.ops, fakeTmuxOp{op: "send", target: target})
 	f.lastDispatchID = dispatchID
@@ -1612,7 +1641,10 @@ func (f *fakeTmuxHarnessClient) SendPrompt(_ context.Context, _, target, dispatc
 	f.lastTarget = target
 	f.sentPrompts = append(f.sentPrompts, prompt)
 	f.sendTargets = append(f.sendTargets, target)
-	f.awaitingCapture = true
+	if f.awaiting == nil {
+		f.awaiting = map[string]string{}
+	}
+	f.awaiting[target] = prompt
 	if f.afterSend != nil {
 		f.afterSend(prompt)
 	}
@@ -1632,14 +1664,17 @@ func (f *fakeTmuxHarnessClient) ownsTarget(target string) bool {
 }
 
 func (f *fakeTmuxHarnessClient) CapturePane(_ context.Context, _, target string, _ int) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.captureCalls++
 	f.ops = append(f.ops, fakeTmuxOp{op: "capture", target: target})
 	if f.afterCapture != nil {
 		f.afterCapture(f.captureCalls)
 	}
 	workerPane := f.workerPane(target)
-	if !f.awaitingCapture && f.readinessPending != nil && f.readinessPending[target] {
-		captured := f.paneText
+	prompt, awaiting := f.awaiting[target]
+	if !awaiting && f.readinessPending != nil && f.readinessPending[target] {
+		captured := f.paneTexts[target]
 		if f.startupCaptures == nil {
 			if f.harness == "claude-code" {
 				captured = "Claude Code\n❯"
@@ -1676,35 +1711,67 @@ func (f *fakeTmuxHarnessClient) CapturePane(_ context.Context, _, target string,
 		}
 		return text, nil
 	}
-	if !f.awaitingCapture {
-		return f.paneText, nil
+	if !awaiting {
+		return f.paneTexts[target], nil
 	}
 	if f.captureErrEchoPrompt {
-		return "", fmt.Errorf("tmux capture failed after prompt %s token=sk-tmu...t123", f.lastPrompt)
+		return "", fmt.Errorf("tmux capture failed after prompt %s token=sk-tmu...t123", prompt)
 	}
 	if f.captureErr != nil {
 		return "", f.captureErr
 	}
 	var captured string
-	if len(f.captures) > 0 {
-		captured = strings.ReplaceAll(f.captures[0], "run_missing", runIDFromPrompt(f.lastPrompt))
-		f.captures = f.captures[1:]
+	if scripted := f.nextCapture(target); scripted != nil {
+		captured = strings.ReplaceAll(*scripted, "run_missing", runIDFromPrompt(prompt))
 	} else {
 		artifact := f.artifact
 		if artifact == "" {
 			artifact = "reports/tmux.md"
 		}
-		captured = fmt.Sprintf("agent output\n<<<ARCHON-DONE run-id=%s status=ok artifact=%s>>>\n", runIDFromPrompt(f.lastPrompt), artifact)
+		captured = fmt.Sprintf("agent output\n<<<ARCHON-DONE run-id=%s status=ok artifact=%s>>>\n", runIDFromPrompt(prompt), artifact)
 	}
 	if !f.rawOutputs {
-		captured = withPromptOutputContract(captured, f.lastPrompt)
+		captured = withPromptOutputContract(captured, prompt)
 	}
-	f.awaitingCapture = false
-	if f.paneText != "" {
-		f.paneText += "\n"
+	delete(f.awaiting, target)
+	if f.paneTexts == nil {
+		f.paneTexts = map[string]string{}
 	}
-	f.paneText += captured
-	return f.paneText, nil
+	if f.paneTexts[target] != "" {
+		f.paneTexts[target] += "\n"
+	}
+	f.paneTexts[target] += captured
+	return f.paneTexts[target], nil
+}
+
+// promptsTo lists the prompts sent to the seats whose target holds key, a slot
+// id, in the order they were sent.
+func (f *fakeTmuxHarnessClient) promptsTo(key string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var prompts []string
+	for i, target := range f.sendTargets {
+		if strings.Contains(target, key) {
+			prompts = append(prompts, f.sentPrompts[i])
+		}
+	}
+	return prompts
+}
+
+// nextCapture takes the seat's next scripted turn, else the next shared one.
+func (f *fakeTmuxHarnessClient) nextCapture(target string) *string {
+	for key, queue := range f.seatCaptures {
+		if strings.Contains(target, key) && len(queue) > 0 {
+			f.seatCaptures[key] = queue[1:]
+			return &queue[0]
+		}
+	}
+	if len(f.captures) == 0 {
+		return nil
+	}
+	captured := f.captures[0]
+	f.captures = f.captures[1:]
+	return &captured
 }
 
 func runIDFromPrompt(prompt string) string {

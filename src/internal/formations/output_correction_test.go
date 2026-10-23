@@ -70,9 +70,11 @@ func TestOutputContractCorrection(t *testing.T) {
 				if twice {
 					second = bad
 				}
-				client := &fakeTmuxHarnessClient{rawOutputs: true, pane: tmuxPaneState{CurrentPath: cfg.Cwd}, captures: []string{bad + sentinel, second + sentinel,
-					"```archon-outputs\n{\"port_left_out\":{\"text\":\"done\"}}\n```" + sentinel,
-					"```archon-outputs\n{\"port_right_out\":{\"text\":\"done\"}}\n```" + sentinel}}
+				client := &fakeTmuxHarnessClient{rawOutputs: true, pane: tmuxPaneState{CurrentPath: cfg.Cwd}, captures: []string{bad + sentinel, second + sentinel},
+					seatCaptures: map[string][]string{
+						"slot_left":  {"```archon-outputs\n{\"port_left_out\":{\"text\":\"done\"}}\n```" + sentinel},
+						"slot_right": {"```archon-outputs\n{\"port_right_out\":{\"text\":\"done\"}}\n```" + sentinel},
+					}}
 				engine := NewRunEngine(store, personas, newTmuxFormationExecutorWithClient(store, personas, cfg, client))
 				status, err := engine.RunMission("session-search", RunStartRequest{Cwd: cfg.Cwd, MissionID: "mis_showcase", ExpectedBoardETag: board.ETag, ExpectedBoardRev: board.Rev})
 				if err != nil {

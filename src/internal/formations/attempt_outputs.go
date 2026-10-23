@@ -129,30 +129,6 @@ func pendingOutputFromEvent(event RunEvent) *pendingOutput {
 	return pending
 }
 
-// appendPendingOutputBlock blocks a run whose attempt finished without its
-// outputs kept. Resume keeps them (keepPendingOutput); resume in redispatch
-// mode runs the step again instead.
-func (e *RunEngine) appendPendingOutputBlock(runID string, pending pendingOutputError) error {
-	carried := map[string]any{"nodeId": pending.NodeID, "attempt": pending.Attempt, "output": pending.Output}
-	if errors.Is(pending.Err, ErrCoordinatorShutdown) {
-		block := runBlockedEvent("coordinator shutdown while keeping "+pending.NodeID+"'s outputs; resume keeps them without running the step again", pending.NodeID, "", "", nil)
-		block.Data["code"] = RunBlockCoordinatorShutdown
-		block.Data["pendingOutput"] = carried
-		return e.store.AppendRunEvent(runID, block)
-	}
-	message := redactLedgerText(pending.Err.Error())
-	reason := message + "; resume keeps the outputs without running the step again"
-	if err := e.store.AppendRunEvent(runID, RunEvent{Type: RunEventError, NodeID: pending.NodeID, Data: map[string]any{
-		"code": RunBlockOutputNotKept, "message": message, "reason": reason, "boundary": "engine", "nodeId": pending.NodeID, "recoverable": true,
-	}}); err != nil {
-		return err
-	}
-	block := runBlockedEvent(reason, pending.NodeID, "", "", nil)
-	block.Data["code"] = RunBlockOutputNotKept
-	block.Data["pendingOutput"] = carried
-	return e.store.AppendRunEvent(runID, block)
-}
-
 // RunBlockOutputNotKept is the code of the block an attempt leaves when its
 // seats finished and its file or folder outputs could not be copied.
 const RunBlockOutputNotKept = "output_not_kept"
@@ -173,11 +149,8 @@ func (e *RunEngine) keepPendingOutput(runID string, board *BoardDocument, pendin
 	if result.Status == "" {
 		result.Status = "done"
 	}
-	if err := e.ensureFormationOutputPayloads(runID, formation, result); err != nil {
-		if errors.Is(err, errRunStopped) {
-			return true, nil
-		}
-		return true, err
+	if err := checkFormationOutputPayloads(formation, result); err != nil {
+		return true, e.appendExecutionFailureAndBlock(runID, formation.ID, err)
 	}
 	data := formationOutputEventData(result)
 	if reason != "" {

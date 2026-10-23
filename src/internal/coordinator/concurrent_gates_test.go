@@ -256,8 +256,7 @@ func seqOf(t *testing.T, events []formations.RunEvent, eventType, nodeID string)
 }
 
 // While B works, the gate on A's path waits; the operator's verdict is
-// accepted at once, without waiting for B, and the run routes it once B has
-// recorded its output.
+// accepted and routed at once, without waiting for B (archon-1uyi).
 func TestAVerdictIsAcceptedWhileAnotherBranchWorks(t *testing.T) {
 	executor := newHoldingExecutor("fmn_b")
 	c := openGateLab(t, oneGateBesideABranch(), executor)
@@ -278,7 +277,7 @@ func TestAVerdictIsAcceptedWhileAnotherBranchWorks(t *testing.T) {
 	awaitState(t, c, id, "succeeded")
 	events := eventsOf(t, c, id)
 	recorded, bDone, routed := seqOf(t, events, formations.RunEventHumanVerdictRecorded, "gate_review"), seqOf(t, events, formations.RunEventNodeOutput, "fmn_b"), seqOf(t, events, formations.RunEventGateVerdict, "gate_review")
-	if !(recorded < bDone && bDone < routed) {
+	if !(recorded < routed && routed < bDone) {
 		t.Fatalf("verdict recorded %d, B done %d, routed %d: %s", recorded, bDone, routed, ledgerTrail(events))
 	}
 	for _, event := range events {
@@ -310,7 +309,8 @@ func TestTwoGatesWaitAtOnceAndAreAnsweredInEitherOrder(t *testing.T) {
 			}
 			executor.release("fmn_c")
 			awaitState(t, c, id, "succeeded")
-			if got := formationOrder(eventsOf(t, c, id), formations.RunEventNodeOutput); !slices.Equal(got, []string{"fmn_a", "fmn_b", "fmn_c"}) {
+			// A and B work at once, and C until it is released.
+			if got := formationOrder(eventsOf(t, c, id), formations.RunEventNodeOutput); !slices.Equal(slices.Sorted(slices.Values(got[:2])), []string{"fmn_a", "fmn_b"}) || got[2] != "fmn_c" {
 				t.Fatalf("outputs = %v", got)
 			}
 		})

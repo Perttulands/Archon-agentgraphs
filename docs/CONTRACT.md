@@ -602,8 +602,9 @@ later attempts read the ledger, not transcripts; only a run whose step a
 tokens knob covers records them. While a step works, its seats' transcripts
 are counted every two seconds, and when the attempt reaches what its cards
 have left the step's seats stop, so a count can pass the budget by what the
-seats spent in between. A lab step whose brief holds `archon-lab-tokens: N`
-spends N tokens.
+seats spent in between. Steps working at once share what the mission's card
+has left: once their counts together reach it, every one of them stops. A lab
+step whose brief holds `archon-lab-tokens: N` spends N tokens.
 
 A step covered by its own card and the mission's card stops at whichever is
 spent first. Before a step starts, the engine checks its card and then the
@@ -780,7 +781,7 @@ Then the gate decides:
   that is not a candidate answers 400 ("not a candidate attempt: attempt 4;
   pick one of 1, 2 or 3"), a verdict on a pending pick or a pick on a pending
   verdict 409, and a stale request 409 as for verdicts. Like a verdict, the pick
-  is recorded at once and routed between steps.
+  is recorded and routed at once, while other steps work.
 
 The pick ends in a `gate_verdict` pass whose `pick` names the step
 (`nodeId`), the picked `attempt`, `pickSeq`, `candidates`, `decidedBy` (the
@@ -1239,6 +1240,57 @@ A pushback also holds when the failing gate was fed by another gate's pass:
 resume never re-delivers an input a gate has already evaluated, so the pushback
 target runs first.
 
+### Steps that work at once
+
+A run starts every step whose inputs have arrived at once, beside whatever
+else works (archon-1uyi): the branches of a fan-out, steps on other paths,
+and the judge chains of gates evaluating their inputs all work at the same
+time. A join, a step with several input ports, starts only once every one of
+its ports holds a delivery. Nothing waits for unrelated work: a step's output
+moves on, a gate takes its next input and an operator's verdict or pick is
+routed the moment the run records it, while other steps work. Where one step
+must follow another, wire it so: the later step's input from the earlier
+step's output, or from a gate's pass route when it must see only judged work.
+
+The run's ledger is the order. Steps finish in whatever order their seats do,
+and the run records each event as it happens. The run's worker reads the
+ledger before every decision through the same rules a restart reads it by:
+
+- A step reads its ports when it starts: its `node_started` records the inputs
+  it took. A delivery that reaches a step while it works waits unread, and the
+  step runs again on it once its output is recorded.
+- A step's output delivers at its `node_output`, along all its connections
+  together: into each wired step's port, each wired gate's queue and each End
+  node.
+- A gate evaluates one input at a time, oldest first: `gate_evaluating` takes
+  the oldest input it holds, and the evaluation ends at its `gate_verdict`,
+  whose routes deliver at once, or at its request to the operator. A chain's
+  judges run in order; different gates evaluate at the same time.
+- An attempt cut short before its output, by a restart, a failure or a limit,
+  runs again on the inputs it started with, before the step reads anything
+  newer.
+
+So wherever a restart falls, the run goes on from exactly what its ledger
+holds: each step cut short runs again on the same inputs, nothing delivered
+is lost or delivered twice, and no gate evaluates an input twice. The run
+reaches the same end as it would have without the restart whenever its work
+finishes, and its operator answers, in the same order. The order in which
+steps working at once finish is not fixed, and it can change what follows: two
+deliveries that reach an idle step's port make one run on the newest work,
+with every feedback and response travelling with it, while the same deliveries
+reaching it one at a time make two runs.
+
+When something stops the run (a step's error, a spent Limit card, a judge's
+invalid verdict, a lost seat), the run records the error at once and starts
+no more work: no step, no judge and no code check. Its other steps work on,
+and it records what they finish, routes the verdicts their results decide,
+and asks the operator at the human gates their work reaches. Once nothing
+works it blocks, or fails, as the stop says; the first stop's block is the
+one left, except that a stop that ends the run outranks one that blocks it,
+and a shutdown outranks both. A resume starts every step still owed at once.
+An abort ends every working seat and records nothing more but the cancel and
+the seats' cleanup.
+
 ### End nodes and how a run finishes
 
 Every route leads somewhere (archon-o7p.10). Each formation output and each
@@ -1300,21 +1352,14 @@ becomes the feedback reason. Resume rebuilds the response from the verdict recor
 that exact request, so it survives restart.
 
 A human gate blocks only the work it gates (archon-o7p.11). While its request
-waits, the run keeps dispatching every step not behind it, one step at a time,
-and several requests can wait at once, each answered on its own and in any
-order. The daemon records a verdict at once, while other seats work, and the
-run routes it between steps: once the step running when it arrived has
-recorded its output and that output has moved on. A step's output moves on
-along its connections one at a time, and a code or judge gate it reaches is
-evaluated right there, its verdict routed before the output's later
-connections. Replay after a restart makes every delivery in that same order
-and writes nothing to the ledger, except that it finishes a gate evaluation
-the restart cut short, at the point the run would have; a verdict recorded
-while a step worked waits for that step's output even when a restart cut the
-step short and it runs again, so a run reaches the same end, each step on the
-same inputs and the same steps in the same order, wherever a restart falls. A send-back to a step still
-working its first attempt runs that step again once the attempt ends. When two
-deliveries reach one port before its step runs, nothing is lost: the newest
+waits, every step not behind it works on, and several requests can wait at
+once, each answered on its own and in any order. The daemon records a verdict
+at once, while other seats work, and the run routes it at once (see [Steps
+that work at once](#steps-that-work-at-once)). Replay after a restart writes
+nothing to the ledger; the run's worker then finishes a gate evaluation the
+restart cut short. A send-back to a step still working runs that step again
+once its attempt ends. When two deliveries reach one port before its step
+runs, nothing is lost: the newest
 work is the input, a send-back that meets unread work keeps that work as the
 input, and every gate feedback and human response the step has not run on
 travels with it, newest first (`feedback.earlier`, `response.earlier`); the
@@ -1787,7 +1832,7 @@ channel](#human-gates-on-the-session-channel)). Preserve those identities for
 host-owner inspection. A seat shutdown left working remains associated with
 the run: aborting the run, or resuming so the step runs again, ends it.
 SIGTERM fences new commands and downstream dispatch
-immediately. Active turns have five
+immediately. Active turns, every working step's, have five
 seconds to finish, then the daemon cancels observation and detaches from its
 seats without ending them. HTTP draining and execution share a ten-second total
 shutdown budget. Open dispatch identities remain in a resumable block for
@@ -1829,7 +1874,11 @@ between steps; resume to continue"), and resuming continues it while its gates
 keep waiting.
 
 `run resume --mode redispatch` abandons an open dispatch without completed
-evidence and runs the node again as a new attempt.
+evidence and runs the node again as a new attempt. A plain resume reattaches
+only a block's single open dispatch; a block that names several, as a
+shutdown while steps work at once leaves, records `dispatch_reattach_failed`
+and stays blocked until resumed with `--mode redispatch`, which abandons each
+and runs every one of those steps again.
 The abandoned dispatch is recorded as a `slot_result` with status `abandoned`;
 the node's next attempt is one more round for a Limit card that covers it. A failed reattach never
 finishes the run: it records `dispatch_reattach_failed` with the reason and

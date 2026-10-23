@@ -134,7 +134,7 @@ func TestARejectionUpstreamOfAJoinFailsOnFirstExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := executor.nodeIDs(); !reflect.DeepEqual(got, []string{"fmn_a", "fmn_b"}) {
+	if got := executor.nodeIDs(); !reflect.DeepEqual(sorted(got), []string{"fmn_a", "fmn_b"}) {
 		t.Fatalf("nodes = %v, want A and B, and never the starved join", got)
 	}
 	if status.Status != RunStatusFailed {

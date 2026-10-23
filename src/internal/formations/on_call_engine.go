@@ -193,6 +193,7 @@ func (e *RunEngine) RecordKeptSeatCleanup(runID string, seat KeptSeat, outcome, 
 // before its new attempt creates seats with the same names; seats whose asks
 // were all answered end too, and seats found gone are recorded.
 func (e *RunEngine) reconsiderKeptSeats(runID, dispatching string) error {
+	defer e.keptSeats.lock(runID)()
 	plan, err := e.PlanRunOnCall(context.Background(), runID)
 	if err != nil || plan.Keeper == nil {
 		return err

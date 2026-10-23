@@ -277,47 +277,19 @@ func TestAPassEndingItsPathWaitsForAPendingPushback(t *testing.T) {
 	}
 	sentBack := []RunEvent{
 		{Seq: 1, Type: RunEventStarted},
-		{Seq: 2, Type: RunEventNodeOutput, NodeID: "fmn_draft"},
-		verdict(3, "gate_review", "pass", "edge_review_pass_signoff"),
-		evaluating(4, "gate_signoff"),
-		verdict(5, "gate_signoff", "fail", "edge_signoff_fail_draft"),
-		evaluating(6, "gate_signoff"),
-		verdict(7, "gate_signoff", "pass", "edge_signoff_pass_done"),
+		{Seq: 2, Type: RunEventNodeStarted, NodeID: "fmn_draft", Attempt: 1},
+		{Seq: 3, Type: RunEventNodeOutput, NodeID: "fmn_draft", Attempt: 1},
+		verdict(4, "gate_review", "pass", "edge_review_pass_signoff"),
+		evaluating(5, "gate_signoff"),
+		verdict(6, "gate_signoff", "fail", "edge_signoff_fail_draft"),
+		evaluating(7, "gate_signoff"),
+		verdict(8, "gate_signoff", "pass", "edge_signoff_pass_done"),
 	}
 	if unfinished := unfinishedRunWork(board, sentBack, ""); !reflect.DeepEqual(unfinished, []string{"fmn_draft"}) {
 		t.Fatalf("unfinished = %v, want the sent-back draft", unfinished)
 	}
-	revised := append(append([]RunEvent{}, sentBack[:5]...), RunEvent{Seq: 6, Type: RunEventNodeOutput, NodeID: "fmn_draft"}, verdict(7, "gate_review", "pass", "edge_review_pass_signoff"), evaluating(8, "gate_signoff"), verdict(9, "gate_signoff", "pass", "edge_signoff_pass_done"))
+	revised := append(append([]RunEvent{}, sentBack[:6]...), RunEvent{Seq: 7, Type: RunEventNodeStarted, NodeID: "fmn_draft", Attempt: 2}, RunEvent{Seq: 8, Type: RunEventNodeOutput, NodeID: "fmn_draft", Attempt: 2}, verdict(9, "gate_review", "pass", "edge_review_pass_signoff"), evaluating(10, "gate_signoff"), verdict(11, "gate_signoff", "pass", "edge_signoff_pass_done"))
 	if unfinished := unfinishedRunWork(board, revised, ""); len(unfinished) != 0 || rejectedRunPath(board, revised) != nil {
 		t.Fatalf("after the revised work passed: unfinished %v, rejected %+v", unfinished, rejectedRunPath(board, revised))
-	}
-}
-
-func TestGateDeliveryIsConsumedOnlyByALaterEvaluationOfTheSameInput(t *testing.T) {
-	store, _ := s4RunFixture(t)
-	writeFixture(t, store.BoardPath("session-search"), gateChainBoardFixture(`["human"]`))
-	board, err := store.ReadBoard("session-search")
-	if err != nil {
-		t.Fatal(err)
-	}
-	draftOutput := RunEvent{Type: RunEventNodeOutput, NodeID: "fmn_draft", Data: map[string]any{"outputs": map[string]any{"fmn_draft_out": map[string]any{"text": "draft"}}}}
-	evaluate := func(gateID string) RunEvent {
-		return RunEvent{Type: RunEventGateEvaluating, GateID: gateID, NodeID: gateID, Data: map[string]any{"inputRef": map[string]any{"edgeId": "edge_draft_review", "text": "draft"}}}
-	}
-	events := []RunEvent{draftOutput, evaluate("gate_review"), evaluate("gate_signoff"), draftOutput, evaluate("gate_review")}
-	keys := gateEvaluationKeys(board, events)
-	first, second := gateInputReplayKey("edge_draft_review", 1), gateInputReplayKey("edge_draft_review", 2)
-	for _, check := range []struct {
-		index int
-		input string
-		want  bool
-	}{
-		{1, first, true},   // the review's first pass was taken by sign-off
-		{2, first, false},  // nothing after sign-off's own evaluation
-		{4, second, false}, // the revised draft's pass has not reached sign-off yet
-	} {
-		if got := keys.consumedAfter(check.index, "gate_signoff", check.input); got != check.want {
-			t.Errorf("consumedAfter(%d, %s) = %v, want %v", check.index, check.input, got, check.want)
-		}
 	}
 }

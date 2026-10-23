@@ -268,7 +268,7 @@ func (e *LabFormationExecutor) spendTokens(req FormationExecution) error {
 	}}); err != nil {
 		return err
 	}
-	if tokens >= req.TokenBudget {
+	if newTokenMeter(req.TokenBudget, req.tokenPool, func() {}).set(fmt.Sprintf("%s/%d/%s", req.NodeID, req.Attempt, slotID), tokens) {
 		return ErrTokenBudgetSpent
 	}
 	return nil

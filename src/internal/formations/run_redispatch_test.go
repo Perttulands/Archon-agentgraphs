@@ -39,7 +39,7 @@ func TestResumeRedispatchAbandonsOpenDispatchAndReattachFailureBlocks(t *testing
 			for _, event := range []RunEvent{
 				{Type: RunEventNodeStarted, NodeID: "mis_showcase", Data: map[string]any{"nodeKind": "mission", "reason": "initial", "inputRefs": []RunInputRef{}}},
 				{Type: RunEventNodeOutput, NodeID: "mis_showcase", Data: map[string]any{"status": "done", "outputs": map[string]any{"out": map[string]any{"text": "Ship a showcase"}}}},
-				{Type: RunEventNodeStarted, NodeID: "fmn_research", Attempt: 1, Data: map[string]any{"nodeKind": "formation", "reason": "initial", "inputRefs": []RunInputRef{{EdgeID: "edge_mission_research", FromNodeID: "mis_showcase", FromPortID: "out", ToPortID: "port_research_in", OutputSeq: 3, Text: "Ship a showcase"}}}},
+				{Type: RunEventNodeStarted, NodeID: "fmn_research", Attempt: 1, Data: map[string]any{"nodeKind": "formation", "reason": "initial", "inputRefs": []RunInputRef{{EdgeID: "edge_mission_research", FromNodeID: "mis_showcase", FromPortID: "out", ToPortID: "port_research_in", Text: "Ship a showcase"}}}},
 			} {
 				if err := store.AppendRunEvent(started.RunID, event); err != nil {
 					t.Fatal(err)

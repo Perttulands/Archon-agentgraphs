@@ -40,94 +40,15 @@ type runPathState struct {
 	fed   map[string]map[string]bool
 }
 
-// runPaths reads which formations and gates have received a delivery in the
-// ledger and not acted on it since (a formation with no output after it, or a
-// gate with no evaluation after it), and which deliveries reached an End
-// node. Deliveries are a node's outputs on its wired ports (judge formations
-// excluded; their outputs are gate evidence) and a gate verdict's routes. A
-// formation that received only some of its inputs is owed too; it cannot run,
-// and the engine blocks it as starved rather than finishing.
+// runPaths reads which formations and gates are owed a delivery they have
+// not acted on (a formation with an unread port, a gate with a queued input),
+// and which deliveries reached an End node, through the one replay of the
+// ledger (replayRun). A formation that received only some of its inputs is
+// owed too; it cannot run, and the engine blocks it as starved rather than
+// finishing.
 func runPaths(board *BoardDocument, events []RunEvent) runPathState {
-	state := runPathState{fed: map[string]map[string]bool{}}
-	if board == nil {
-		return state
-	}
-	judges := map[string]bool{}
-	isGate := map[string]bool{}
-	for _, gate := range board.Gates {
-		isGate[gate.ID] = true
-		for _, judge := range judgeChainForGate(board, gate.ID) {
-			judges[judge.ID] = true
-		}
-	}
-	isFormation := map[string]bool{}
-	for _, formation := range board.Formations {
-		isFormation[formation.ID] = true
-	}
-	deliver := func(endpoint string, from RunEvent, gateID string) {
-		target, port := endpointParts(endpoint)
-		if isFormation[target] {
-			if state.fed[target] == nil {
-				state.fed[target] = map[string]bool{}
-			}
-			state.fed[target][port] = true
-		}
-		if end, ok := findEnd(board, target); ok {
-			path := endedPath{EndID: end.ID, Outcome: end.Outcome, Title: end.Title, GateID: gateID, Actor: from.Actor, Seq: from.Seq}
-			if gateID != "" {
-				path.Reason = stringFromEventData(from, "reason")
-			}
-			state.ended = append(state.ended, path)
-			return
-		}
-		if (isFormation[target] || isGate[target]) && !judges[target] && !slices.Contains(state.owed, target) {
-			state.owed = append(state.owed, target)
-		}
-	}
-	// A human gate's verdict is the operator's: the path it ends names them.
-	humanActor := map[string]string{}
-	for _, event := range events {
-		gateID := event.GateID
-		if gateID == "" {
-			gateID = event.NodeID
-		}
-		switch event.Type {
-		case RunEventHumanVerdictRecorded:
-			humanActor[gateID] = event.Actor
-		case RunEventNodeOutput:
-			state.owed = slices.DeleteFunc(state.owed, func(id string) bool { return id == event.NodeID })
-			if judges[event.NodeID] {
-				continue
-			}
-			for _, connection := range outgoingConnections(board.Connections, event.NodeID) {
-				_, fromPort := endpointParts(connection.From)
-				if _, ok := outputPayloadForPortFromEvent(event, fromPort); !ok {
-					continue
-				}
-				deliver(connection.To, event, "")
-			}
-		case RunEventGateEvaluating:
-			state.owed = slices.DeleteFunc(state.owed, func(id string) bool { return id == gateID })
-		case RunEventPickStarted:
-			// The pick settles the step's send-back, as its output would
-			// (archon-gihe).
-			state.owed = slices.DeleteFunc(state.owed, func(id string) bool { return id == event.NodeID })
-		case RunEventGateVerdict:
-			routePort := stringFromEventData(event, "routePort")
-			if routePort != "pass" && routePort != "fail" {
-				continue
-			}
-			from := event
-			if actor := humanActor[gateID]; actor != "" {
-				from.Actor = actor
-				delete(humanActor, gateID)
-			}
-			for _, route := range gateVerdictRoutes(board, event, gateID, routePort) {
-				deliver(route.To, from, gateID)
-			}
-		}
-	}
-	return state
+	replay := replayRun(board, events)
+	return runPathState{owed: replay.owed, ended: replay.ended, fed: replay.fed}
 }
 
 // owedRunWork lists the formations and gates owed a delivery (see runPaths).
@@ -225,11 +146,4 @@ func runFinishState(board *BoardDocument, events []RunEvent, except string) runF
 		}
 	}
 	return finish
-}
-
-// runWorkOwedTo reports whether a formation still owes the run a delivery it
-// received, so resume runs it; one that already acted on its last delivery
-// is not run again.
-func runWorkOwedTo(board *BoardDocument, events []RunEvent, nodeID string) bool {
-	return slices.Contains(owedRunWork(board, events), nodeID)
 }

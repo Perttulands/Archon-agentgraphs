@@ -153,6 +153,8 @@ func TestCareerWebAcceptance(t *testing.T) {
 		Attempt:     1,
 	}); err == nil {
 		t.Fatal("dead pane dispatch returned nil error, want loud fake-adapter error")
+	} else {
+		recordRunFailure(t, store, deadStarted.RunID, err)
 	}
 	deadEvents := readRunEvents(t, filepath.Join(store.Workspace, deadStarted.LedgerPath))
 	if eventOfType(t, deadEvents, RunEventError).Data["code"] != "dead_pane" {

@@ -12,7 +12,7 @@ block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 
 | Code | Meaning | Next move |
 | --- | --- | --- |
-| `coordinator_interrupted` | The daemon restarted with the run in flight: open dispatches it names, or between steps. | Resume; with open dispatches and no completed evidence, `--mode redispatch`. |
+| `coordinator_interrupted` | The daemon restarted with the run in flight: open dispatches it names, or between steps. | Resume; with open dispatches and no completed evidence, or several open dispatches from steps working at once, `--mode redispatch`. |
 | `run_work_unfinished` | Work remains that the run still owes. | Resume. |
 | `output_not_kept` | A step finished, but Archon could not copy its file or folder output; the block keeps the step's result. A shutdown during the copy blocks with `coordinator_shutdown` the same way. | Fix what the reason names (space, permissions), then resume: the copy runs again without running the step again. `--mode redispatch` runs the step again instead. |
 | `reachable_node_starved` | A formation can never receive a missing input. | Not resumable. Fix the wiring and start a new run. |

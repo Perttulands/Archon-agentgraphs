@@ -220,9 +220,11 @@ func TestS5EngineResumeOpenDispatchRecordsReattachErrorWithoutResend(t *testing.
 	if err != nil {
 		t.Fatalf("dispatch slot: %v", err)
 	}
-	if err := dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "<<<ARCHON-DONE run-id=wrong status=ok artifact=fake>>>"); !errors.Is(err, ErrDispatchTimeout) {
+	err = dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "<<<ARCHON-DONE run-id=wrong status=ok artifact=fake>>>")
+	if !errors.Is(err, ErrDispatchTimeout) {
 		t.Fatalf("complete with mismatched sentinel error = %v, want ErrDispatchTimeout", err)
 	}
+	recordRunFailure(t, store, started.RunID, err)
 	if len(adapter.sent) != 1 {
 		t.Fatalf("initial adapter sends = %d, want one original send", len(adapter.sent))
 	}
@@ -265,9 +267,11 @@ func TestS5EngineResumeOpenDispatchReattachesCompletedCapture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch slot: %v", err)
 	}
-	if err := dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "still working"); !errors.Is(err, ErrDispatchTimeout) {
+	err = dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "still working")
+	if !errors.Is(err, ErrDispatchTimeout) {
 		t.Fatalf("complete without sentinel error = %v, want ErrDispatchTimeout", err)
 	}
+	recordRunFailure(t, store, started.RunID, err)
 
 	executor := &fakeReattachExecutor{result: FormationExecutionResult{
 		Status:    "done",
@@ -334,9 +338,11 @@ func TestS5EngineResumeOpenDispatchRoutesReattachedOutputThroughGate(t *testing.
 	if err != nil {
 		t.Fatalf("dispatch slot: %v", err)
 	}
-	if err := dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "still working"); !errors.Is(err, ErrDispatchTimeout) {
+	err = dispatcher.CompleteFromCapture(started.RunID, lease.DispatchID, "still working")
+	if !errors.Is(err, ErrDispatchTimeout) {
 		t.Fatalf("complete without sentinel error = %v, want ErrDispatchTimeout", err)
 	}
+	recordRunFailure(t, store, started.RunID, err)
 	executor := &fakeReattachExecutor{
 		result: FormationExecutionResult{
 			Status: "done",

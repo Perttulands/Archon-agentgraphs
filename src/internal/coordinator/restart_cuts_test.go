@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,24 +29,29 @@ import (
 
 // scriptedJudgeLab runs every step on the lab executor, except that a judge's
 // verdict follows its script by the judged gate's attempt, so a restart
-// replays the same verdicts.
+// replays the same verdicts. Steps and judges work at once, and each finishes
+// in its turn (labTurns).
 type scriptedJudgeLab struct {
 	lab    formations.FormationExecutor
+	store  *formations.Store
 	judges map[string][]string
 	// picks names, by its place among the candidates, the attempt each judge
 	// picks when its gate picks a step's best attempt (archon-gihe).
 	picks map[string]int
 	// clock, when set, is the run's only clock: each step takes work[node]
-	// on it, stopping at its deadline as a real seat is stopped.
+	// on it from its turn, stopping at its deadline as a real seat is stopped.
 	clock *workClock
 	work  map[string]time.Duration
-	// onStart, when set, runs as each step starts, as an operator acting
-	// while the step's seat works.
-	onStart func(req formations.FormationExecution)
+	// answerWhile names, by step, the gates whose waiting request the step
+	// answers in its turn, as an operator deciding while the step's seat
+	// works; answer records the verdict.
+	answerWhile map[string][]string
+	answer      func(req formations.FormationExecution, request formations.RunEvent)
+	turns       labTurns
 }
 
-// workClock moves only while a step works, so a run's counted time is the
-// same wherever a restart falls.
+// workClock moves only as a step finishes, by the step's work, so a run's
+// counted time is the same wherever a restart falls.
 type workClock struct {
 	mu sync.Mutex
 	at time.Time
@@ -63,9 +69,118 @@ func (c *workClock) set(at time.Time) {
 	c.at = at
 }
 
+// labTurns lets the lab's steps and judges, which work at once, finish one at
+// a time (archon-1uyi): each only while the run's worker waits on its jobs,
+// having decided all it can, with no verdict waiting to be routed, and in the
+// order their work began: a step's at its first start since its last output,
+// a judge's at its gate's evaluation or pick. A run and its restarts then meet
+// the same results in the same order, so they must reach the same end.
+type labTurns struct {
+	mu sync.Mutex
+	// jobs holds, by run, the steps and gates whose jobs work while the
+	// run's worker waits on them, and nil while it is awake.
+	jobs map[string][]string
+}
+
+// RunWorkerWaiting is the engine's word that the run's worker waits on these
+// jobs, or, with none, that it woke.
+func (e *scriptedJudgeLab) RunWorkerWaiting(runID string, jobs []string) {
+	e.turns.mu.Lock()
+	defer e.turns.mu.Unlock()
+	if e.turns.jobs == nil {
+		e.turns.jobs = map[string][]string{}
+	}
+	e.turns.jobs[runID] = jobs
+}
+
+func (e *scriptedJudgeLab) waitingOn(runID string) []string {
+	e.turns.mu.Lock()
+	defer e.turns.mu.Unlock()
+	return e.turns.jobs[runID]
+}
+
+// awaitTurn returns once it is req's turn to finish, having answered the
+// gates its step answers while it works.
+func (e *scriptedJudgeLab) awaitTurn(req formations.FormationExecution) error {
+	mine := req.NodeID
+	if req.JudgeGateID != "" {
+		mine = req.JudgeGateID
+	}
+	answered := map[string]bool{}
+	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			events, _ := e.store.ReadRunEvents(req.RunID)
+			return fmt.Errorf("lab: %s never got its turn, the worker waiting on %v:\n%s", req.NodeID, e.waitingOn(req.RunID), fullTrail(events))
+		}
+		jobs := e.waitingOn(req.RunID)
+		if !slices.Contains(jobs, mine) {
+			continue
+		}
+		events, err := e.store.ReadRunEvents(req.RunID)
+		if err != nil {
+			return err
+		}
+		began, unrouted := labWorkBegan(events)
+		if unrouted > 0 || slices.ContainsFunc(jobs, func(job string) bool { return job != mine && began[job] < began[mine] }) {
+			continue
+		}
+		asked := false
+		for _, gateID := range e.answerWhile[req.NodeID] {
+			for _, request := range formations.OpenHumanRequests(events) {
+				if request.GateID == gateID && !answered[gateID] && e.answer != nil {
+					answered[gateID] = true
+					e.answer(req, request)
+					asked = true
+				}
+			}
+		}
+		if !asked {
+			return nil
+		}
+	}
+}
+
+// labWorkBegan reads from the ledger the seq each step's and gate's work
+// began at, and counts the operator's verdicts not yet routed.
+func labWorkBegan(events []formations.RunEvent) (map[string]int, int) {
+	began, unrouted := map[string]int{}, map[int]bool{}
+	for _, event := range events {
+		switch event.Type {
+		case formations.RunEventNodeStarted:
+			// A judge's start is its gate's work, and a rerun goes on with
+			// the work its attempt began.
+			if _, open := began[event.NodeID]; !open {
+				began[event.NodeID] = event.Seq
+			}
+		case formations.RunEventNodeOutput:
+			delete(began, event.NodeID)
+		case formations.RunEventGateEvaluating:
+			began[event.GateID] = event.Seq
+		case formations.RunEventPickStarted:
+			delete(began, event.NodeID)
+			began[event.GateID] = event.Seq
+		case formations.RunEventGateVerdict:
+			delete(unrouted, requestedSeqOf(event))
+		case formations.RunEventHumanVerdictRecorded:
+			unrouted[requestedSeqOf(event)] = true
+		}
+	}
+	return began, len(unrouted)
+}
+
+func requestedSeqOf(event formations.RunEvent) int {
+	switch seq := event.Data["requestedSeq"].(type) {
+	case float64:
+		return int(seq)
+	case int:
+		return seq
+	}
+	return 0
+}
+
 func (e *scriptedJudgeLab) ExecuteFormation(req formations.FormationExecution) (formations.FormationExecutionResult, error) {
-	if e.onStart != nil {
-		e.onStart(req)
+	if err := e.awaitTurn(req); err != nil {
+		return formations.FormationExecutionResult{}, err
 	}
 	if e.clock != nil {
 		end := e.clock.now().Add(e.work[req.NodeID])
@@ -288,22 +403,13 @@ func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) 
 		clock = &workClock{at: start}
 	}
 	var c *Coordinator
-	onStart := func(req formations.FormationExecution) {
-		if c == nil {
+	answer := func(req formations.FormationExecution, request formations.RunEvent) {
+		events, err := c.store.ReadRunEvents(req.RunID)
+		if err != nil {
 			return
 		}
-		for _, gateID := range tc.answerWhile[req.NodeID] {
-			events, err := c.store.ReadRunEvents(req.RunID)
-			if err != nil {
-				return
-			}
-			for _, request := range formations.OpenHumanRequests(events) {
-				if request.GateID == gateID {
-					verdict := scriptedVerdict(tc, events, gateID, request.Seq)
-					post(t, c, "/api/runs/"+req.RunID+"/gates/"+gateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(request.Seq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
-				}
-			}
-		}
+		verdict := scriptedVerdict(tc, events, request.GateID, request.Seq)
+		post(t, c, "/api/runs/"+req.RunID+"/gates/"+request.GateID+"/verdict", `{"requestedSeq":`+strconv.Itoa(request.Seq)+`,"verdict":"`+verdict+`","reason":"scripted `+verdict+`"}`)
 	}
 	c, err := Open(root, personas, func(store *formations.Store) formations.FormationExecutor {
 		if clock != nil {
@@ -312,7 +418,7 @@ func openRestartLab(t *testing.T, root string, tc restartCase, start time.Time) 
 		if tc.session {
 			return &keeperExecutor{store: store}
 		}
-		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), judges: tc.judges, picks: tc.picks, clock: clock, work: tc.work, onStart: onStart}
+		return &scriptedJudgeLab{lab: formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex"}, Cwd: root}), store: store, judges: tc.judges, picks: tc.picks, clock: clock, work: tc.work, answerWhile: tc.answerWhile, answer: answer}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -476,7 +582,7 @@ humanChannel = "session"`, 1),
 			want:     runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 2, "fmn_b": 1}},
 		},
 		{
-			// The operator sends A back while B works; A runs again after B.
+			// The operator sends A back while B works; A runs again at once.
 			name: "a gate sending its step back while its branch works",
 			board: gateBoard(formation("fmn_a") + formation("fmn_b") + gate("gate_review") + endNodes +
 				wire("edge_m_a", "mis_proof:out", "fmn_a:port_in") +
@@ -491,14 +597,15 @@ humanChannel = "session"`, 1),
 		},
 		{
 			// The review's probe: Review rejects A into F's port while P, which
-			// also feeds that port, works. F runs once on P's work with the
-			// rejection, live and after any restart.
+			// also feeds that port, works. F starts on the rejection at once
+			// and runs again on P's work once P is done (archon-1uyi), live
+			// and after any restart.
 			name:        "a rejection into a port the working step also feeds",
 			board:       rejectionIntoAFedPortBoard(),
 			verdicts:    map[string][]string{"gate_review": {"fail"}},
 			answerWhile: map[string][]string{"fmn_p": {"gate_review"}},
 			wantInputs:  map[string][]string{"fmn_f": {"[from fmn_p to port_in", "feedback gate_review fail"}},
-			want:        runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 1, "fmn_p": 1, "fmn_f": 1}},
+			want:        runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_a": 1, "fmn_p": 1, "fmn_f": 2}},
 		},
 		{
 			// Both gates are answered while C works: One passes, Two rejects.
@@ -551,10 +658,10 @@ criterion = "Judge the work"
 			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 2, "fmn_first": 2, "fmn_last": 2}},
 		},
 		{
-			// S1's output reaches the judge, then S2. The judge sends the work
-			// back at once, so S1 runs again before S2 runs, once, on the
-			// revised work; a restart during the judge keeps that order.
-			name: "a judge's send-back running before a step the same output feeds",
+			// S1's output reaches the judge and S2 together, so S2 works on it
+			// while the judge does (archon-1uyi). The judge sends the work
+			// back, S1 runs again, and S2 runs again on the revised work.
+			name: "a judge's send-back beside a step the same output feeds",
 			board: gateBoard(formation("fmn_s0") + formation("fmn_s1") + formation("fmn_s2") + formation("fmn_judge") + `
 [[gate]]
 id = "gate_judge"
@@ -572,7 +679,7 @@ criterion = "Judge the work"
 				wire("edge_s1_s2", "fmn_s1:port_out", "fmn_s2:port_in") +
 				endWire("edge_s2_done", "fmn_s2:port_out", "end_done")),
 			judges: map[string][]string{"fmn_judge": {"fail", "pass"}},
-			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_s0": 1, "fmn_s1": 2, "fmn_judge": 2, "fmn_s2": 1}},
+			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_s0": 1, "fmn_s1": 2, "fmn_judge": 2, "fmn_s2": 2}},
 		},
 		{
 			// The judge's send-back feeds one port of Join before S2 feeds the
@@ -609,8 +716,9 @@ criterion = "Judge the work"
 			want:   runOutcome{Status: "succeeded", EndIDs: []string{"end_done"}, Outputs: map[string]int{"fmn_work": 3, "fmn_judge": 3}, Grants: 1},
 		},
 		{
-			// The mission may work 95 s: A and B use 70 while the gate waits,
-			// the send-back's A runs out after 25 s, and the grant's A finishes.
+			// The mission may work 95 s: A and B use 70 while the gate waits
+			// (the work clock moves as each finishes, by its work), the
+			// send-back's A runs out after 25 s, and the grant's A finishes.
 			name: "the mission's time card pausing at a gate and stopping a send-back",
 			board: gateBoard(gateBoardFormation("fmn_a") + gateBoardFormation("fmn_b") + gateBoardHumanGate("gate_review") + endNodes + `
 [[limit]]
