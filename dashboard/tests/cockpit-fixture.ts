@@ -312,6 +312,7 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
   let seatsFetches = 0
   let themeFetches = 0
   const writes: string[] = []
+  const layoutPatches: Array<{ arrange?: boolean; nodes?: Array<{ id: string; x: number; y: number }> }> = []
   if (options.run || options.waitingHuman || options.blockedAtLimit) await page.addInitScript(() => localStorage.setItem('archon.activeRun.browser', 'run_browser'))
   // A pick ends in the gate's pass with the picked attempt, as an ordinary pass routes.
   const pickEvents = [{ seq: blockEvents.length + 2, type: 'pick_started', nodeId: 'gate', gateId: 'gate' },
@@ -373,7 +374,13 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
         { id: 'nte_reply', author: 'agent:archon', createdAt: '2026-09-12T00:05:00Z', text: 'Controller directs the assigned worker.' },
       ] }], updatedAt: '2026-09-12T00:05:00Z', etag: 'notes-1' } })
     if (path.endsWith('/layout')) {
-      if (method === 'PATCH') nodes = positions.map(p => ({ ...p }))
+      if (method === 'PATCH') {
+        // As the store does: Arrange resets positions, a node patch upserts each node it names.
+        const body = route.request().postDataJSON() || {}
+        layoutPatches.push(body)
+        if (body.arrange || !body.nodes) nodes = positions.map(p => ({ ...p }))
+        else for (const node of body.nodes) nodes = [...nodes.filter(existing => existing.id !== node.id), node]
+      }
       return respond({ layout: { missionId: board.id, missionRev: 1, etag: 'layout-1', nodes, edges: [] } })
     }
     if (path === '/api/missions/browser') {
@@ -687,5 +694,5 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
     if (path.endsWith('/seats')) { seatsFetches++; return respond({ runId: 'run_browser', available: true, seats }) }
     return route.fulfill({ status: 404, json: { success: false, error: { message: `Fixture has no ${path}` } } })
   })
-  return { writes, patches, characterWrites, events: eventSnapshot, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
+  return { writes, patches, layoutPatches, characterWrites, events: eventSnapshot, board: boardState, seatsFetches: () => seatsFetches, themeFetches: () => themeFetches }
 }

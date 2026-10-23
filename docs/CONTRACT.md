@@ -215,10 +215,14 @@ surface, so everything it does names `human:ui` (archon-by4a): its mission
 edits' `updatedBy`, its notes, and its run starts, verdicts, resumes and stops
 (a verdict is recorded as decided by `human:operator`, whoever sent it); run
 evidence reads that actor as "human:ui". It
-shows notes on the canvas in their own layer above the cards, as a preview of
-each thread's latest entry, the full thread, or hidden, with the operator's and
-agents' entries styled apart. A card's note pin or sticky, or Mission notes, opens
-a thread in a floating window to reply, and to edit or delete your own entries.
+shows every note thread as a sticky on the canvas, in its own layer above the
+cards, with the operator's and agents' entries styled apart. Stickies live in
+canvas space, as on a whiteboard: they pan and zoom with the cards. A sticky
+sits under its card, or for the mission's thread under the Input card, until it
+is dragged; the layout then keeps it where it was dropped, as node
+`note:<target>`. A card's note pin or a sticky opens the thread in place on the
+canvas to reply, and to edit or delete your own entries. Flow, which has no
+canvas, opens threads in windows.
 Notes files are schema 2: `missionId`, `rev`, and one `[[entry]]` per entry
 with its `target` (`mission` for the mission's own thread, or a node ID).
 

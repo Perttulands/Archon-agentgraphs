@@ -1,4 +1,4 @@
-export type FormationsInteractionKind = 'pan' | 'node' | 'wire' | 'gate' | 'lane' | 'staff'
+export type FormationsInteractionKind = 'pan' | 'node' | 'note' | 'wire' | 'gate' | 'lane' | 'staff'
 
 export type InteractionPointer = {
   pointerId: number

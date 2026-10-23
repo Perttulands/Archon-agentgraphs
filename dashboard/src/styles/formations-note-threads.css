@@ -44,8 +44,20 @@
 .fmx .note-sticky-open{margin-left:auto;border:1px solid currentColor;border-radius:3px;background:transparent;color:inherit;padding:0 6px;font:700 11px/1.5 var(--font-mono);text-transform:uppercase;cursor:pointer;opacity:.85;}
 .fmx .note-sticky-open:hover,.fmx .note-sticky-open:focus-visible{opacity:1;}
 .fmx .note-sticky-text{white-space:pre-wrap;}
-.fmx .note-layer.preview .note-sticky-text{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
-.fmx .note-layer.full .note-sticky{max-height:320px;overflow:auto;cursor:auto;user-select:text;}
+.fmx .note-sticky:not(.open) .note-sticky-text{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
+/* A sticky opened in place: still paper on the canvas, now with the thread and a pen. */
+.fmx .note-sticky.open{z-index:2;cursor:grab;display:flex;flex-direction:column;gap:8px;padding:8px 10px 10px;box-shadow:3px 6px 18px rgba(0,0,0,.4);}
+.fmx .note-sticky.open:active{cursor:grabbing;}
+.fmx .note-sticky.empty .note-sticky-text{opacity:.7;font-style:italic;}
+.fmx .note-sticky-close{margin-left:auto;border:0;background:transparent;color:inherit;font:700 15px/1 var(--font-mono);padding:0 2px;cursor:pointer;opacity:.7;}
+.fmx .note-sticky-close:hover,.fmx .note-sticky-close:focus-visible{opacity:1;}
+.fmx .note-sticky .note-scroll{max-height:260px;overflow:auto;cursor:auto;user-select:text;}
+.fmx .note-sticky .note-scroll .note-thread{max-height:none;overflow:visible;}
+.fmx .note-sticky .note-entry{background:rgba(255,255,255,.4);border-color:rgba(60,45,10,.25);color:inherit;}
+.fmx .note-sticky .note-entry .note-time,.fmx .note-sticky .note-entry-actions button{color:inherit;opacity:.75;}
+.fmx .note-sticky textarea.note-reply{width:100%;min-height:72px;resize:vertical;box-sizing:border-box;border:1px solid rgba(60,45,10,.35);background:rgba(255,255,255,.55);color:#1e1806;padding:8px;font:12px/1.5 var(--font-mono);outline:none;cursor:text;}
+.fmx .note-sticky textarea.note-reply:focus{border-color:#8a6a10;box-shadow:0 0 0 1px rgba(138,106,16,.25);}
+.fmx .note-sticky .note-reply-actions button{background:rgba(255,255,255,.6);border-color:rgba(60,45,10,.4);color:#2e240b;}
 .fmx .note-sticky-thread{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
 .fmx .note-sticky-entry{padding:5px 7px;border-left:3px solid;background:rgba(255,255,255,.35);}
 .fmx .note-sticky-entry.note-entry-human{border-left-color:#8a6a10;}

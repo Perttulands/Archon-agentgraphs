@@ -1073,7 +1073,7 @@ describe('FormationsCockpit reference parity', () => {
     const boardThread = within(boardWindow).getByRole('list', { name: 'Mission note thread' })
     fireEvent.click(within(boardThread).getByRole('button', { name: /^Delete your note/ }))
     await waitFor(() => expect(within(boardWindow).queryByRole('list', { name: 'Mission note thread' })).toBeNull())
-    expect(boardWindow).toHaveTextContent('No notes yet')
+    expect(within(boardWindow).getByRole('textbox', { name: 'Note for the mission' })).toHaveAttribute('placeholder', 'What this mission is for…')
 
     fireEvent.click(within(noteWindow).getByRole('button', { name: 'Close notes for Frame' }))
     expect(screen.queryByRole('dialog', { name: 'notes for Frame' })).toBeNull()
@@ -1098,13 +1098,17 @@ describe('FormationsCockpit reference parity', () => {
     fireEvent.click(add)
 
     await waitFor(() => expect(judge).toHaveClass('has-note'))
+    // The note was written in place on the canvas; closed, it stays there as a sticky.
+    expect(noteWindow.closest('[data-testid="note-layer"]')).not.toBeNull()
+    fireEvent.click(within(noteWindow).getByRole('button', { name: 'Close notes for Judge' }))
     expect(screen.getByRole('note', { name: 'Notes for Judge' })).toHaveTextContent('In this step a judge checks the release evidence.')
     expect(screen.getByRole('note', { name: 'Notes for Judge' })).toHaveClass('note-sticky-human')
   })
 
-  it('switches canvas notes between hidden, preview and full, and remembers the choice', async () => {
+  it('keeps every note on the canvas: a sticky opens in place and the mission notepad sits by the Input card', async () => {
     patches = installFetchMock({
       boardNotes: {
+        mission: [noteEntry('nte_board', 'human:ui', 'Turn ideas into first drafts.')],
         elements: [{
           nodeId: 'fmn_frame',
           entries: [
@@ -1114,26 +1118,21 @@ describe('FormationsCockpit reference parity', () => {
         }],
       },
     })
-    const { unmount } = await renderCockpit()
-    const switcher = screen.getByRole('radiogroup', { name: 'Notes on the canvas' })
-    expect(within(switcher).getByRole('radio', { name: 'Preview' })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('note', { name: 'Notes for Frame' })).not.toHaveTextContent('composes a research report')
-
-    fireEvent.click(within(switcher).getByRole('radio', { name: 'Full notes' }))
-    const full = screen.getByRole('note', { name: 'Notes for Frame' })
-    expect(full).toHaveTextContent('In this step a single agent composes a research report.')
-    expect(full).toHaveTextContent('Staffed Mason as the lead.')
-    expect(within(full).getAllByRole('listitem')).toHaveLength(2)
-    expect(localStorage.getItem('archon.notesMode')).toBe('full')
-
-    fireEvent.click(within(switcher).getByRole('radio', { name: 'Hide notes' }))
-    expect(screen.queryByRole('note', { name: 'Notes for Frame' })).toBeNull()
-    expect(within(screen.getByTestId('formation-node-fmn_frame')).getByRole('button', { name: 'Open notes for Frame' })).toBeInTheDocument()
-
-    unmount()
     await renderCockpit()
-    expect(screen.getByRole('radio', { name: 'Hide notes' })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.queryByRole('note', { name: 'Notes for Frame' })).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: 'Notes on the canvas' })).toBeNull()
+    const layer = screen.getByTestId('note-layer')
+    expect(layer.closest('[data-testid="formations-world"]')).not.toBeNull()
+    const mission = within(layer).getByRole('note', { name: 'Mission notes' })
+    expect(mission).toHaveTextContent('Turn ideas into first drafts.')
+
+    const frame = within(layer).getByRole('note', { name: 'Notes for Frame' })
+    fireEvent.click(within(frame).getByRole('button', { name: 'Open the note thread for Frame' }))
+    const open = within(layer).getByRole('dialog', { name: 'notes for Frame' })
+    expect(within(open).getAllByRole('listitem')).toHaveLength(2)
+    expect(open.style.left).toBe(frame.style.left)
+    expect(open.style.top).toBe(frame.style.top)
+    fireEvent.keyDown(within(open).getByRole('textbox', { name: 'Note for Frame' }), { key: 'Escape' })
+    expect(within(layer).getByRole('note', { name: 'Notes for Frame' })).toBeInTheDocument()
   })
 
   it('preserves a local note draft and offers an explicit reload after a repeated conflict', async () => {

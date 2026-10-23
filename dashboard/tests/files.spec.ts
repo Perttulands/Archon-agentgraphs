@@ -59,8 +59,8 @@ test('a gate\'s rubric and its judge\'s brief file open from the gate on Scoutin
   const fixture = await scoutingFixture(page, { mission: board, warnings: fileWarnings(board) })
   await page.route('**/api/files/preview?**', servePreview)
   await page.goto('/?mission=scouting')
-  // The notes, and the draft marker the sketch's warning puts on the Input card.
-  await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length + 1)
+  // The notes, the mission notepad, and the draft marker the sketch's warning puts on the Input card.
+  await expect(page.getByRole('note')).toHaveCount(scouting.notes.elements.length + 2)
   // The opening view keeps cards readable; Fit brings the whole graph in reach.
   await page.getByTitle('Fit', { exact: true }).click()
 

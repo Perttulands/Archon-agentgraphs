@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test'
+import { cockpitFixture } from './cockpit-fixture'
 import { scouting, scoutingFixture } from './scouting-fixture'
 import { transitionsSettled } from './settled'
-
-const CARDS = '.formation[data-node], .gatecard[data-node], .missioncard[data-node], .toolcard[data-node]'
 
 type Entry = { id: string; author: string; text: string }
 const titleOf = (nodeId: string): string => [
@@ -18,7 +17,8 @@ test.beforeEach(async ({ page }) => {
 test('no card covers any note preview on Scouting', async ({ page }) => {
   const fixture = await scoutingFixture(page)
   await page.goto('/?mission=scouting')
-  await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
+  // One sticky per noted card, and the mission notepad.
+  await expect(page.getByRole('note')).toHaveCount(elementNotes.length + 1)
   await page.getByTitle('Fit', { exact: true }).click()
   await transitionsSettled(page)
 
@@ -38,60 +38,63 @@ test('no card covers any note preview on Scouting', async ({ page }) => {
   expect(fixture.writes).toEqual([])
 })
 
-test('full note text on Scouting reads on the canvas and in note windows, with no notepad', async ({ page }) => {
+test('every note thread reads in full where it sits on the canvas, the mission notepad too', async ({ page }) => {
   await scoutingFixture(page)
   await page.goto('/?mission=scouting')
-  await expect(page.getByRole('complementary', { name: 'Shared board notepad' })).toHaveCount(0)
-  await page.getByRole('radio', { name: 'Full notes' }).click()
-
-  for (const { nodeId, entries } of elementNotes) {
-    const sticky = page.getByRole('note', { name: `Notes for ${titleOf(nodeId)}` })
-    for (const entry of entries) await expect(sticky).toContainText(entry.text)
-  }
+  await expect(page.getByRole('radiogroup', { name: 'Notes on the canvas' })).toHaveCount(0)
+  const layer = page.getByTestId('note-layer')
 
   const [first] = elementNotes
   await page.getByRole('button', { name: `Open the note thread for ${titleOf(first.nodeId)}` }).click()
-  const noteWindow = page.getByRole('dialog', { name: `notes for ${titleOf(first.nodeId)}` })
-  for (const entry of first.entries) await expect(noteWindow.getByTestId(`note-entry-${entry.id}`)).toContainText(entry.text)
-  const entryText = noteWindow.locator('.note-entry-text').first()
-  expect(await entryText.evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true)
+  const opened = layer.getByRole('dialog', { name: `notes for ${titleOf(first.nodeId)}` })
+  for (const entry of first.entries) await expect(opened.getByTestId(`note-entry-${entry.id}`)).toContainText(entry.text)
 
-  await page.getByRole('button', { name: 'Mission notes' }).click()
-  const boardWindow = page.getByRole('dialog', { name: 'mission notes' })
-  for (const entry of scouting.notes.mission as Entry[]) await expect(boardWindow).toContainText(entry.text)
-  await expect(noteWindow).toBeVisible()
+  await page.getByRole('button', { name: 'Mission notes', exact: true }).click()
+  const mission = layer.getByRole('dialog', { name: 'mission notes' })
+  for (const entry of scouting.notes.mission as Entry[]) await expect(mission).toContainText(entry.text)
+  await expect(opened).toBeVisible()
 })
 
-test('a note window opens beside its node, leaving the card and its note in view', async ({ page }) => {
+test('an open note stays on the canvas: panning and zooming carry it with its card', async ({ page }) => {
   await scoutingFixture(page)
   await page.goto('/?mission=scouting')
-  await expect(page.getByRole('note')).toHaveCount(elementNotes.length)
-  await page.getByTitle('Fit', { exact: true }).click()
-  await transitionsSettled(page)
-
-  // The first step has room on its right; the last sits at the board's right edge.
-  for (const { nodeId } of [elementNotes[0], elementNotes[elementNotes.length - 1]]) {
-    const title = titleOf(nodeId)
-    const card = await page.locator(`[data-node="${nodeId}"]`).first().boundingBox()
-    const sticky = await page.getByRole('note', { name: `Notes for ${title}` }).boundingBox()
-    await page.getByRole('button', { name: `Open notes for ${title}` }).click()
-    const noteWindow = page.getByRole('dialog', { name: `notes for ${title}` })
-    await expect(noteWindow).toBeVisible()
-    const win = (await noteWindow.boundingBox())!
-    const idea = {
-      left: Math.min(card!.x, sticky!.x), top: Math.min(card!.y, sticky!.y),
-      right: Math.max(card!.x + card!.width, sticky!.x + sticky!.width), bottom: Math.max(card!.y + card!.height, sticky!.y + sticky!.height),
-    }
-    const gap = Math.max(win.x - idea.right, idea.left - (win.x + win.width), win.y - idea.bottom, idea.top - (win.y + win.height))
-    expect(gap, `${title} window covers its card or note`).toBeGreaterThanOrEqual(0)
-    // It opens in the free space nearest its node, so it may sit a little way off rather than over a neighbour.
-    expect(gap, `${title} window opens away from its node`).toBeLessThanOrEqual(240)
-    for (const other of await page.locator(CARDS).all()) {
-      const box = await other.boundingBox()
-      if (!box) continue
-      const covers = win.x < box.x + box.width && box.x < win.x + win.width && win.y < box.y + box.height && box.y < win.y + win.height
-      expect(covers, `${title} window covers a card`).toBe(false)
-    }
-    await noteWindow.getByRole('button', { name: `Close notes for ${title}` }).click()
+  const [first] = elementNotes
+  const title = titleOf(first.nodeId)
+  await page.getByRole('button', { name: `Open notes for ${title}` }).click()
+  const opened = page.getByTestId('note-layer').getByRole('dialog', { name: `notes for ${title}` })
+  await expect(opened).toBeVisible()
+  const card = page.locator(`[data-node="${first.nodeId}"]`).first()
+  const offset = async () => {
+    const [c, n] = [(await card.boundingBox())!, (await opened.boundingBox())!]
+    return { dx: Math.round(n.x - c.x), dy: Math.round(n.y - c.y) }
   }
+  const before = await offset()
+  const canvas = (await page.getByTestId('formations-canvas').boundingBox())!
+  await page.mouse.move(canvas.x + 20, canvas.y + canvas.height - 40)
+  await page.mouse.down()
+  await page.mouse.move(canvas.x + 220, canvas.y + canvas.height - 140, { steps: 8 })
+  await page.mouse.up()
+  expect(await offset(), 'after a pan').toEqual(before)
+  await page.mouse.wheel(0, 200)
+  await transitionsSettled(page)
+  const zoomed = await offset()
+  const scale = await page.locator('.world').evaluate(world => new DOMMatrix(getComputedStyle(world).transform).a)
+  expect(Math.abs(zoomed.dx - before.dx * scale), 'after a zoom').toBeLessThanOrEqual(2)
+  expect(Math.abs(zoomed.dy - before.dy * scale), 'after a zoom').toBeLessThanOrEqual(2)
+})
+
+test('a dragged sticky stays where it was dropped and is saved with the layout', async ({ page }) => {
+  const fixture = await cockpitFixture(page)
+  await page.goto('/?mission=browser')
+  const sticky = page.getByRole('note', { name: 'Mission notes' })
+  await expect(sticky).toBeVisible()
+  const box = (await sticky.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 12)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 160, box.y + box.height - 12 + 96, { steps: 8 })
+  await page.mouse.up()
+  await expect.poll(() => fixture.layoutPatches.some(patch => patch.nodes?.some(node => node.id === 'note:mission'))).toBe(true)
+  const moved = (await sticky.boundingBox())!
+  expect(Math.abs(moved.x - box.x - 160)).toBeLessThanOrEqual(24)
+  expect(Math.abs(moved.y - box.y - 96)).toBeLessThanOrEqual(24)
 })
