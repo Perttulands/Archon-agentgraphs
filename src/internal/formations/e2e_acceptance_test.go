@@ -180,7 +180,7 @@ func (e *careerDispatchExecutor) ExecuteFormation(req FormationExecution) (Forma
 	text := "output from " + req.NodeID
 	if req.NodeID == "fmn_frontend" {
 		artifact = "index.html"
-		text = "Built index.html for Perttu's agentic-engineering job search story."
+		text = "Built index.html for the agentic-engineering story."
 		if err := os.WriteFile(filepath.Join(e.store.Workspace, artifact), []byte("<!doctype html><title>Agentic Engineering</title>"), 0o644); err != nil {
 			return FormationExecutionResult{}, err
 		}

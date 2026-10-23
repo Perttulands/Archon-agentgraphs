@@ -17,9 +17,9 @@ import (
 // input, cache writes included, plus output, subagents included, per dispatch
 // from its pointer; at the budget the step stops and the run blocks.
 
-// The counts match sums computed by hand from recorded sessions, trimmed to
-// their message records with paths redacted: Claude Code 2.1.287 with one
-// subagent, and a codex-cli 0.159.3 session whose dispatch is its second turn.
+// The counts match sums computed by hand from the synthetic sessions in
+// testdata/transcripts/tokens, shaped like Claude Code 2.1.287 with one
+// subagent and a codex-cli 0.159.3 session whose dispatch is its second turn.
 func TestTokensCountRecordedTranscripts(t *testing.T) {
 	dir := filepath.Join("testdata", "transcripts", "tokens")
 	claude, err := dispatchTokens("claude-code", filepath.Join(dir, "claude-subagent-session.jsonl"), seatPointer("/work/sa/brief.md"))
@@ -95,7 +95,7 @@ func TestALabStepStopsAtItsTokensAndAGrantGivesThemAgain(t *testing.T) {
 	if _, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach"}); !errors.Is(err, ErrRunGrantRequired) {
 		t.Fatalf("resume without a grant: %v", err)
 	}
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "reattach", Grant: true})
+	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:operator", Mode: "reattach", Grant: true})
 	if err != nil || status.Status != RunStatusBlocked {
 		t.Fatalf("after the grant = %+v, %v", status, err)
 	}

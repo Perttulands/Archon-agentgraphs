@@ -79,7 +79,7 @@ func TestRunAttemptsFilesAreOptInAndJSONKeepsEvidence(t *testing.T) {
 func TestFinalRunStatusExplainsTerminalOutcome(t *testing.T) {
 	for _, tc := range []struct{ status, event, code, reason, actor string }{
 		{"failed", formations.RunEventFailed, "limit_reached", "Work used 5 of 5 rounds", "archond"},
-		{"canceled", formations.RunEventCanceled, "", "The operator stopped this run", "operator:perttu"},
+		{"canceled", formations.RunEventCanceled, "", "The operator stopped this run", "operator:alex"},
 		{"succeeded", "", "", "", ""}, {"picked", "", "", "", ""},
 	} {
 		t.Run(tc.status, func(t *testing.T) {

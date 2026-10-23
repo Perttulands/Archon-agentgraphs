@@ -315,7 +315,7 @@ to = "end_done:in"
 	}
 	// Three peers: the granted round holds a proposal and three acks.
 	seats.attempt, seats.openings, seats.openingBarrier, seats.mode = 2, 0, make(chan struct{}), "propose"
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "redispatch", Reason: "let them agree", Grant: true})
+	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:operator", Mode: "redispatch", Reason: "let them agree", Grant: true})
 	if err != nil || status.Status != RunStatusSucceeded {
 		t.Fatalf("after the grant = %+v, %v: %s", status, err, eventTypeTrail(mustEvents(t, store, status.RunID)))
 	}

@@ -287,7 +287,7 @@ const CAST = {
   mako:  { name: 'Mako', role: 'Reviewer', harness: 'claude', model: 'sonnet', effort: 'medium', hue: 48, face: 2, d: 'Reads the diff against the Bead and the house rules.' },
   pim:   { name: 'Pim', role: 'Debugger', harness: 'pi', model: 'default', effort: 'medium', hue: 95, face: 0, d: 'Reproduces first, then narrows.' },
 };
-const BRIEF_HEAD = 'AgentQuest, /srv/games/agentquest. Read AGENTS.md there and the aqg-cookbook skill. Subject: {subject}. Owning bead: {bead}. Target: {target}. The run folder is /srv/games/agentquest-work/evidence/{bead}-to-target/, with round-0/, round-1/ … for captures. ';
+const BRIEF_HEAD = 'AgentQuest, /work/game. Read AGENTS.md there and the aqg-cookbook skill. Subject: {subject}. Owning bead: {bead}. Target: {target}. The run folder is /work/game-evidence/{bead}-to-target/, with round-0/, round-1/ … for captures. ';
 const NODES = [
   { id: 'input', kind: 'input', col: 0, row: 0, title: 'Subject and target',
     brief: 'Make one AgentQuest subject (a hand, a body, a zone screen, an animation) more like a target image WisQi picked: find the gaps, then build in short rounds, each checked by a fresh blind reviewer against a checklist, then put it on the review page for WisQi’s look.' },
@@ -317,11 +317,11 @@ const TERM = {
 };
 // Per-run state of each step.
 const RUNS = {
-  r1: { state: 'blocked', mission: 'btt', rev: 28, bead: 'aqg-0gy.72.2', when: '12 Oct 22:46', dur: '1h 48m', by: 'claude-lead', cwd: '/srv/games/agentquest',
+  r1: { state: 'blocked', mission: 'btt', rev: 28, bead: 'aqg-0gy.72.2', when: '12 Oct 22:46', dur: '1h 48m', by: 'claude-lead', cwd: '/work/game',
     title: 'Warrior’s hands: fist on the longsword', why: 'Review against the target stopped: the judge’s verdict has no <b>evidence</b> field.', failing: 'gate', round: 1,
     steps: { input: 'done', gap: 'done', attempt: 'done', judge: 'done', gate: 'blocked', show: 'idle', end: 'idle', limit: 'idle' },
     outs: { gap: ['gaps-0.md'], attempt: ['round-1.md', 'report'], judge: ['review-1.md', 'verdict'] } },
-  r2: { state: 'running', mission: 'btt', rev: 34, bead: 'aqg-0gy.72.4', when: '12 Oct 23:35', dur: '58m', by: 'claude-lead', cwd: '/srv/games/agentquest',
+  r2: { state: 'running', mission: 'btt', rev: 34, bead: 'aqg-0gy.72.4', when: '12 Oct 23:35', dur: '58m', by: 'claude-lead', cwd: '/work/game',
     title: 'Warrior’s two hands, second take', why: '<b>Attempt</b> is building round 2 of 5. Round 1 failed review and went back.', failing: 'attempt', round: 2,
     steps: { input: 'done', gap: 'done', attempt: 'running', judge: 'idle', gate: 'idle', show: 'idle', end: 'idle', limit: 'idle' },
     outs: { gap: ['gaps-0.md'], attempt: ['round-1.md'] } },

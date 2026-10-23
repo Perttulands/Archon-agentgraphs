@@ -196,7 +196,7 @@ function byRule(catalog: Pick<StaffingCatalog, 'policy'>, subject: string, words
 }
 
 /**
- * The policy's suggestion for a role, from its kind (Perttu's policy,
+ * The policy's suggestion for a role, from its kind (the owner's policy,
  * 2026-10-01), else for the step it sits in. A role's name and summary are
  * read only when its kind is one the policy does not name. Never max. The
  * reason cites the policy line: "planning falls under architecture and review".

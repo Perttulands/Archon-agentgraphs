@@ -21,8 +21,8 @@ type EffortPolicyEntry struct {
 	Kinds  []string `json:"kinds,omitempty"`
 }
 
-// effortPolicy is Perttu's effort policy (2026-10-01), with the role kinds
-// he placed on it (archon-o7p.12.1): operators triage and integrate, which is
+// effortPolicy is the owner's effort policy (2026-10-01), with the role kinds
+// placed on it (archon-o7p.12.1): operators triage and integrate, which is
 // making; design counts as architecture. It guides the choice; the slot still
 // states its own effort, and any effort its harness accepts is valid. max is
 // never suggested: it is chosen by hand for consequential reviews.

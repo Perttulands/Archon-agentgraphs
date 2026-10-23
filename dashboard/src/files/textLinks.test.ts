@@ -13,7 +13,7 @@ it('links a dotted ID whole when a label follows it', () => {
 
 it.each([
   'wrist-to-cuff', 'low-poly', 'hard-edged', 'game-framed', 'read-only', 'air-dry', 'state-of-the-art',
-  'well-known low-poly-mesh', 'utf-8', 'gpt-4o', 'run_01M4RTEKFWHZ8F6MY11M2H6MN8', 'worktree-agent-ae2658c8', '/srv/archon-n7u/file',
+  'well-known low-poly-mesh', 'utf-8', 'gpt-4o', 'run_01M4RTEKFWHZ8F6MY11M2H6MN8', 'worktree-agent-ae2658c8', '/work/archon-n7u/file',
 ])('links nothing in %s', text => {
   expect(ids(text)).toEqual([])
 })

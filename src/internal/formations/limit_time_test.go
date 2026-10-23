@@ -119,7 +119,7 @@ func TestAStepTimeCardStopsTheStepAndAGrantGivesItsTimeAgain(t *testing.T) {
 	if _, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "agent:test", Mode: "reattach"}); !errors.Is(err, ErrRunGrantRequired) {
 		t.Fatalf("plain resume = %v, want the grant required", err)
 	}
-	status, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "reattach", Reason: "Research needs another minute", Grant: true})
+	status, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:operator", Mode: "reattach", Reason: "Research needs another minute", Grant: true})
 	if err != nil || status.Status != RunStatusSucceeded {
 		t.Fatalf("granted = %+v, %v", status, err)
 	}
@@ -129,7 +129,7 @@ func TestAStepTimeCardStopsTheStepAndAGrantGivesItsTimeAgain(t *testing.T) {
 	for _, event := range mustEvents(t, store, status.RunID) {
 		if event.Type == RunEventResumed {
 			grant, _ := event.Data["grant"].(map[string]any)
-			if grant["kind"] != LimitKindTime || intFromRunEventData(grant["amount"]) != 60 || event.Actor != "human:perttu" {
+			if grant["kind"] != LimitKindTime || intFromRunEventData(grant["amount"]) != 60 || event.Actor != "human:operator" {
 				t.Fatalf("grant = %+v", event)
 			}
 		}

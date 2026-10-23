@@ -12,7 +12,7 @@ func TestAttemptStopsFromRecordedLedgers(t *testing.T) {
 		name, cause string
 		canceled    bool
 	}{
-		{"operator-cancel", "Paused by Perttu", true},
+		{"operator-cancel", "Paused by the operator", true},
 		{"output-cap", "exceeds configured output cap", false},
 		{"seat-mismatch", "seat model/effort mismatch", false},
 	} {
