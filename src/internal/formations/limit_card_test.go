@@ -112,7 +112,7 @@ func TestAStepLimitStopsAtItsRoundsAndAGrantGivesOneMore(t *testing.T) {
 	// A fresh engine replays the ledger, as after a restart.
 	engine = NewRunEngine(store, nil, &fakeRunExecutor{})
 	engine.SetGateEvaluator(&fakeGateEvaluator{verdicts: []string{"fail", "pass"}})
-	status, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "reattach", Reason: "one more try", Grant: true})
+	status, err := engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:operator", Mode: "reattach", Reason: "one more try", Grant: true})
 	if err != nil || status.Status != RunStatusBlocked {
 		t.Fatalf("after the grant = %+v, %v", status, err)
 	}
@@ -121,14 +121,14 @@ func TestAStepLimitStopsAtItsRoundsAndAGrantGivesOneMore(t *testing.T) {
 		t.Fatalf("work attempts after one grant = %v, want exactly one more", got)
 	}
 	resumed := lastEventOfType(t, events, RunEventResumed)
-	if resumed.Actor != "human:perttu" || !reflect.DeepEqual(resumed.Data["grant"], map[string]any{"limitId": limit.ID, "kind": "rounds", "amount": float64(1)}) {
+	if resumed.Actor != "human:operator" || !reflect.DeepEqual(resumed.Data["grant"], map[string]any{"limitId": limit.ID, "kind": "rounds", "amount": float64(1)}) {
 		t.Fatalf("grant = actor %q %+v", resumed.Actor, resumed.Data["grant"])
 	}
 	if reason := events[len(events)-1].Data["reason"]; reason != "Work used 4 of 4 rounds, 1 of them granted" {
 		t.Fatalf("second block reason = %v", reason)
 	}
 	// The second grant takes it past the passing verdict.
-	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "reattach", Grant: true})
+	status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:operator", Mode: "reattach", Grant: true})
 	if err != nil || status.Status != RunStatusSucceeded {
 		t.Fatalf("after the second grant = %+v, %v", status, err)
 	}
@@ -387,7 +387,7 @@ func TestABlockedSingleStepRunResumes(t *testing.T) {
 				if status.Status != RunStatusBlocked || status.ResumePolicy != ResumePolicyGrant {
 					t.Fatalf("resume at a spent limit = %+v, want a block that takes a grant", status)
 				}
-				if status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:perttu", Mode: "reattach", Grant: true}); err != nil {
+				if status, err = engine.ResumeRun(status.RunID, RunResumeRequest{Actor: "human:operator", Mode: "reattach", Grant: true}); err != nil {
 					t.Fatal(err)
 				}
 			}

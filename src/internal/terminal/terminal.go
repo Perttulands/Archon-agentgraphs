@@ -1,6 +1,6 @@
 // Package terminal attaches to one durably identified Formations seat. Its PTY
 // relay, frames, flow control and refusals are ported from CHROTE's native
-// terminal transport (/srv/chrote/src/internal/proxy/terminal.go, re-ported at
+// terminal transport (src/internal/proxy/terminal.go in CHROTE, re-ported at
 // CHROTE 355ace49 under archon-o7p.13.1): the operator types into the seat and
 // sizes their own view, and the seat's window keeps its size.
 //

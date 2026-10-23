@@ -1211,7 +1211,7 @@ func tmuxTestConfig(t *testing.T) TmuxExecutorConfig {
 }
 
 // nonTempWorkspace builds a production-style config whose dedicated socket and
-// workspace cwd/roots live OUTSIDE /tmp, mirroring the /srv + /run production
+// workspace cwd/roots live OUTSIDE /tmp, mirroring a production
 // layout. The base directory is created under the package directory (which is
 // never /tmp) and removed on cleanup.
 func nonTempWorkspace(t *testing.T) TmuxExecutorConfig {

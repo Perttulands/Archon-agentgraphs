@@ -13,7 +13,7 @@ describe('run outcome words', () => {
     expect(runActorLabel('archond')).toBe('Archon')
     // Inherited from the run's start, so it names the recorder, not who asked.
     expect(runActorLabel('operator:standalone')).toBe('the coordinator')
-    expect(runActorLabel('human:perttu')).toBe('human:perttu')
+    expect(runActorLabel('human:operator')).toBe('human:operator')
     expect(runActorLabel()).toBe('')
   })
 

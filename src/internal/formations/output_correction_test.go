@@ -13,7 +13,7 @@ import (
 func TestAQOutputRefReproductions(t *testing.T) {
 	for _, tc := range []struct{ name, body, code string }{
 		{"overview.jpg-large", strings.Repeat("x", 1200000), "oversized_output_ref"},
-		{"wisqi-progression.jpg-binary", "\xff\xd8\x00\xff", "invalid_output_ref"},
+		{"progression.jpg-binary", "\xff\xd8\x00\xff", "invalid_output_ref"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store, personas := s4RunFixture(t)

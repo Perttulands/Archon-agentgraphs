@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// Every Archon has the generic roles Perttu confirmed (archon-o7p.12.1), each
+// Every Archon has the generic roles confirmed in archon-o7p.12.1, each
 // role text only, with no mission-specific role among them.
 func TestBuiltinRolesAreTheGenericRoles(t *testing.T) {
 	store := NewPersonaStore(t.TempDir())

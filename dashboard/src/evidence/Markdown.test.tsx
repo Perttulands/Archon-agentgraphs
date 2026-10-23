@@ -20,7 +20,7 @@ describe('resolveMarkdownPath', () => {
 describe('isFileLink', () => {
   it.each([
     ['../PRD.md', true],
-    ['/srv/chrote/PRD.md', true],
+    ['/work/project/PRD.md', true],
     ['https://example.com', false],
     ['mailto:someone@example.com', false],
     ['#section', false],

@@ -6,7 +6,7 @@ Read with the main [Archon skill](../SKILL.md).
 
 Use Go, Node/npm, Bash, curl and jq. Take the server URL, listen address and
 source, binary, UI, state, socket and transcript paths from the host runbook or
-environment; host forwarding reaches the cockpit over the tailnet. Set
+environment, including any forwarding that reaches the cockpit. Set
 `ARCHON_SOURCE`, `ARCHON_BIN`, `ARCHON_STATE`, `ARCHON_LISTEN` and `ARCHON_SERVER`
 accordingly. Keep runtime state outside the source checkout. For configuration
 rules, read [Daemon configuration](../../../docs/CONTRACT.md#daemon-configuration)
