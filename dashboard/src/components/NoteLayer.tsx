@@ -168,7 +168,6 @@ function ClosedSticky({ note, actions }: { note: CanvasNote; actions: CanvasNote
     >
       <div className="note-sticky-head">
         {mission ? <span className="note-sticky-title">Mission notes</span> : latest ? <AuthorChip author={latest.author} /> : null}
-        {mission && latest ? <AuthorChip author={latest.author} /> : null}
         {note.entries.length > 1 ? <span className="note-count">+{note.entries.length - 1} earlier</span> : null}
         <button
           type="button"
