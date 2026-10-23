@@ -12,12 +12,13 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/filewatch"
 )
 
-// The transcripts in testdata/seats were captured from real seats on
-// 2026-09-17: Claude Code 2.1.274 and codex-cli 0.154.0 in tmux 3.6a, at low
-// effort, with synthetic briefs and operator messages, and paths redacted to
-// /work. Claude marks typed input origin.kind=human and promptSource=typed, and
-// records a message queued while the agent works as a queue-operation plus a
-// queued_command attachment with origin.kind=human; skill text is isMeta and
+// The transcripts in testdata/seats are synthetic (see testdata/README.md):
+// each keeps the records and fields the readers use, in the order real seats
+// wrote them (Claude Code 2.1.274 and codex-cli 0.154.0, 2026-09-17), with
+// made-up IDs and text. Claude marks typed input origin.kind=human and
+// promptSource=typed, and records a message queued while the agent works as a
+// queue-operation plus a queued_command attachment with origin.kind=human;
+// skill text is isMeta and
 // task notifications carry their own origin. Codex marks typed input with the
 // content kind user.text and injects context under other kinds, such as
 // environments.environment_context. An interrupt is Claude's "[Request
@@ -200,7 +201,7 @@ func TestAReplacedConversationFailsTheDispatchLoudly(t *testing.T) {
 				if err := os.MkdirAll(sessions, 0700); err != nil {
 					t.Fatal(err)
 				}
-				unchanged := strings.Replace(string(raw), "bf6ec72c-eba8-4907-8d40-4166b881868b", turn.SessionID, 1)
+				unchanged := strings.Replace(string(raw), "claude-fixture-session-after-clear", turn.SessionID, 1)
 				if err := os.WriteFile(filepath.Join(sessions, "4242.json"), []byte(unchanged), 0600); err != nil {
 					t.Fatal(err)
 				}

@@ -137,7 +137,7 @@ func fixtureWaits(t *testing.T, harness, name, brief string) []string {
 	return waits
 }
 
-// The real transcripts say why an incomplete dispatch is parked: a reply to
+// The transcripts say why an incomplete dispatch is parked: a reply to
 // the operator that ended without the sentinel, or Claude background work.
 func TestTranscriptTurnsSayWhyTheyWait(t *testing.T) {
 	for _, harness := range fixtureHarnesses {
