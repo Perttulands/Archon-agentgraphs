@@ -13,8 +13,7 @@ export function noteWindowId(target: string): string {
   return `note:${target}`
 }
 
-export default function NoteWindow({ readOnly = false, target, title, anchor, keepClear, entries, draft, editingEntryId, saving, error, conflict, onDraft, onSave, onCancelEdit, onEdit, onDelete, onReload, onClose }: {
-  readOnly?: boolean
+export default function NoteWindow({ target, title, anchor, keepClear, entries, draft, editingEntryId, saving, error, conflict, onDraft, onSave, onCancelEdit, onEdit, onDelete, onReload, onClose }: {
   target: string
   title: string
   /** What the window opens beside: the node's card and sticky. */
@@ -63,7 +62,7 @@ export default function NoteWindow({ readOnly = false, target, title, anchor, ke
             label={board ? 'Mission note thread' : `Note thread for ${title}`}
             entries={entries}
             editingEntryId={editingEntryId}
-            busy={saving || readOnly}
+            busy={saving}
             onEdit={onEdit}
             onDelete={onDelete}
           />
@@ -73,13 +72,12 @@ export default function NoteWindow({ readOnly = false, target, title, anchor, ke
           className="note-reply"
           aria-label={`Note for ${subject}`}
           value={draft}
-          readOnly={readOnly}
           placeholder={editing ? 'Edit your note…' : entries.length ? 'Reply…' : 'Vision, constraints, or what this step should do…'}
           onChange={event => onDraft(event.target.value)}
         />
         <div className="note-reply-actions">
           {editing ? <button type="button" className="cancel" disabled={saving} onClick={onCancelEdit}>Cancel edit</button> : null}
-          <button type="button" disabled={readOnly || !draft.trim() || saving} onClick={onSave}>
+          <button type="button" disabled={!draft.trim() || saving} onClick={onSave}>
             {saving ? 'Saving…' : editing ? 'Save edit' : entries.length ? 'Reply' : 'Add note'}
           </button>
         </div>

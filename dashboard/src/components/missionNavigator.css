@@ -31,6 +31,7 @@
 .fmx .nav-row.current{background:var(--paper2);box-shadow:inset 2px 0 0 var(--terra);}
 .fmx .nav-row-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .fmx .nav-row-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;}
+.fmx .nav-run-time{color:var(--dim);font-size:11px;}
 .fmx .nav-edit .nav-row-name,.fmx .nav-more{color:var(--ink2);font-size:12px;}
 .fmx .nav-row-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dim);}
 .fmx .nav-state{flex:0 0 auto;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);}

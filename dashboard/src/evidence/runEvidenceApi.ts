@@ -1,4 +1,4 @@
-import type { BoardDocument, FormationPort, PortKind } from '../components/formationsTypes'
+import type { FormationPort, PortKind } from '../components/formationsTypes'
 import { fetchApi, type RunLimitUse } from '../components/formationsApi'
 
 // Read models for the run evidence routes (ADR-0017). They mirror the Go
@@ -302,19 +302,6 @@ export interface RunAttemptsEvidence {
 export async function fetchRunAttempts(runId: string, nodeId?: string): Promise<RunAttemptsEvidence> {
   const { data } = await fetchApi<{ attempts?: Partial<RunAttemptsEvidence> }>(`${runPath(runId)}/evidence/attempts${nodeId ? `?node=${encodeURIComponent(nodeId)}` : ''}`)
   return { runId: data.attempts?.runId || runId, steps: data.attempts?.steps || [] }
-}
-
-/** The mission a run froze at admission, as TOML (archon-o7p.2). */
-export interface RunMissionEvidence {
-  graph: BoardDocument
-  missionRev: number
-  text: EvidenceText
-}
-
-export async function fetchRunMission(runId: string): Promise<RunMissionEvidence> {
-  const { data } = await fetchApi<{ mission?: RunMissionEvidence }>(`${runPath(runId)}/evidence/mission`)
-  if (!data.mission) throw new Error('the daemon returned no mission')
-  return data.mission
 }
 
 /** The start of any file by absolute path, as the file routes read it. */

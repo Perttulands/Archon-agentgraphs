@@ -76,7 +76,7 @@ export interface CanvasNoteActions {
 // Presses on these act on the sticky's controls, not on the sticky.
 const CONTROLS = 'button,a,input,textarea,select,.note-scroll'
 
-function OpenSticky({ note, readOnly, saving, conflict, actions }: { note: CanvasNote; readOnly: boolean; saving: boolean; conflict: boolean; actions: CanvasNoteActions }) {
+function OpenSticky({ note, saving, conflict, actions }: { note: CanvasNote; saving: boolean; conflict: boolean; actions: CanvasNoteActions }) {
   const mission = note.target === BOARD_NOTE_TARGET
   const subject = mission ? 'the mission' : note.title
   const label = mission ? 'mission notes' : `notes for ${note.title}`
@@ -115,7 +115,7 @@ function OpenSticky({ note, readOnly, saving, conflict, actions }: { note: Canva
             label={mission ? 'Mission note thread' : `Note thread for ${note.title}`}
             entries={note.entries}
             editingEntryId={note.editingEntryId}
-            busy={saving || readOnly}
+            busy={saving}
             onEdit={entry => actions.onEdit(note.target, entry)}
             onDelete={entry => actions.onDelete(note.target, entry)}
           />
@@ -126,11 +126,10 @@ function OpenSticky({ note, readOnly, saving, conflict, actions }: { note: Canva
         className="note-reply"
         aria-label={`Note for ${subject}`}
         value={note.draft}
-        readOnly={readOnly}
         placeholder={editing ? 'Edit your note…' : note.entries.length ? 'Reply…' : mission ? 'What this mission is for…' : 'What this step should do…'}
         onChange={event => actions.onDraft(note.target, event.target.value)}
         onKeyDown={event => {
-          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && note.draft.trim() && !saving && !readOnly) {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && note.draft.trim() && !saving) {
             event.preventDefault()
             actions.onSave(note.target)
           }
@@ -138,7 +137,7 @@ function OpenSticky({ note, readOnly, saving, conflict, actions }: { note: Canva
       />
       <div className="note-reply-actions">
         {editing ? <button type="button" className="cancel" disabled={saving} onClick={() => actions.onCancelEdit(note.target)}>Cancel edit</button> : null}
-        <button type="button" disabled={readOnly || !note.draft.trim() || saving} onClick={() => actions.onSave(note.target)}>
+        <button type="button" disabled={!note.draft.trim() || saving} onClick={() => actions.onSave(note.target)}>
           {saving ? 'Saving…' : editing ? 'Save edit' : note.entries.length ? 'Reply' : 'Add note'}
         </button>
       </div>
@@ -181,9 +180,8 @@ function ClosedSticky({ note, actions }: { note: CanvasNote; actions: CanvasNote
   )
 }
 
-export function NoteLayer({ notes, readOnly, saving, conflict, actions }: {
+export function NoteLayer({ notes, saving, conflict, actions }: {
   notes: readonly CanvasNote[]
-  readOnly: boolean
   saving: boolean
   conflict: boolean
   actions: CanvasNoteActions
@@ -191,7 +189,7 @@ export function NoteLayer({ notes, readOnly, saving, conflict, actions }: {
   return (
     <div className="note-layer" data-testid="note-layer">
       {notes.map(note => note.open
-        ? <OpenSticky key={note.target} note={note} readOnly={readOnly} saving={saving} conflict={conflict} actions={actions} />
+        ? <OpenSticky key={note.target} note={note} saving={saving} conflict={conflict} actions={actions} />
         : <ClosedSticky key={note.target} note={note} actions={actions} />)}
     </div>
   )

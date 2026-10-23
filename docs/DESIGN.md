@@ -80,8 +80,13 @@ in parentheses appear only in JSON and TOML.
 Each rule holds on every surface.
 
 - **Click** opens a card's node window beside the card, in the free space
-  nearest it (CONTRACT, windows), and selects the card. A click on a wire
-  selects the wire.
+  nearest it (CONTRACT, windows), and selects the card. One card window is
+  open at a time: another card's click replaces it, and the files and attempts
+  opened from it close with it. A route followed from a window opens beside
+  it. A click on a wire selects the wire.
+- **A click on bare canvas** closes every floating window and folds every
+  open note sticky to its short form; a sticky keeps its unsaved draft. A
+  drag that pans is not a click, and a click inside a window keeps them all.
 - **Delete** (or Backspace) with the canvas focused removes the selection
   through the undoable delete. It never acts while a text field has focus.
 - **Undo and redo** are visible words in the toolbar with their chords,
@@ -111,11 +116,16 @@ The operator steers a mission through its managing agent
 - Where an entry or edit is marked as the agent's, the mark is a word or weight
   before it is a colour; a new colour is an addition to the colour rule.
 - Nothing the operator is reading moves when something is added; motion only
-  confirms. Reserve the run bar's row before a run is selected, including while
-  its data loads. Keep that row's height fixed as the run changes. Reserve the
+  confirms. The row under the top bar holds the building blocks (Formation,
+  Gate, End, Limit, each its icon and its word) while the mission is
+  authored, and the run bar while a run is open, including while its data
+  loads. Keep that row's height fixed as the run changes. Reserve the
   produced-file row on Canvas and in Flow while evidence loads; extra Flow
   chips scroll horizontally within that row.
 - Gate verdicts read **PASS** and **FAIL** on Canvas, in Flow and in attempts.
-  Canvas or Flow is one browser preference across missions and runs. The canvas creation
-  palette appears only on Canvas.
+  Canvas or Flow is one browser preference across missions and runs. The
+  building blocks appear only on Canvas.
+- A run is named by its number in its mission, in start order: Run 3. The
+  run list and the run bar say it; revisions never show in the cockpit, and a
+  run always shows on the mission as it is now.
 - Drafts save with blanks; only validation and admission reject gaps.

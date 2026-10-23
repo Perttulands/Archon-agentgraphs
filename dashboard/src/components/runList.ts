@@ -39,6 +39,11 @@ export function runSpan(run: RunStatusProjection, now = new Date()): string {
   return spanLabel(end - start)
 }
 
+/** A run by its number in its mission, which the server counts in start order: Run 3. */
+export function runName(run: Pick<RunStatusProjection, 'number'>): string {
+  return run.number ? `Run ${run.number}` : 'Run'
+}
+
 /** The start of what the run was given, on one line. */
 export function runInputExcerpt(run: RunStatusProjection, max = 90): string {
   if (run.inputExcerpt !== undefined) return run.inputExcerpt

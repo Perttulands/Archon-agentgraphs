@@ -1,43 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { rosterAnswer } from './roster-terms'
 import { authoredBoard, nodeWindowsFixture } from './node-windows-fixture'
-
-test('roster search matches names, IDs, kinds and tags and clears without writes', async ({ page }) => {
-  const fixture = await nodeWindowsFixture(page)
-  const agents = [
-    { id: 'scout-id', displayName: 'Evidence Finder', tags: ['research'], kind: 'specialist', assignable: true },
-    { id: 'critic-id', displayName: 'Brief Critic', tags: ['review'], kind: 'judge', assignable: true },
-  ]
-  await page.route('**/api/agents', route => route.fulfill({ json: { success: true, data: rosterAnswer(agents) } }))
-  await page.goto('/?mission=scouting')
-  await page.getByTestId('roles-toggle').click()
-  const roster = page.getByTestId('agent-roster')
-  await expect(roster.locator('.ragent')).toHaveCount(2)
-  const filter = roster.getByRole('searchbox', { name: 'Filter agents' })
-  // Roles carry no harness, so a harness name finds none.
-  for (const query of [' Evidence ', 'SCOUT-ID', 'research', 'specialist']) {
-    await filter.fill(query)
-    await expect(roster.locator('.ragent')).toHaveCount(1)
-    await expect(roster.getByTestId('roster-agent-scout-id')).toBeVisible()
-    await expect(roster.getByRole('status')).toHaveText('1 of 2 roles')
-  }
-  await page.screenshot({ path: test.info().outputPath('roster.png') })
-  await filter.fill('openai')
-  await expect(roster.locator('.ragent')).toHaveCount(0)
-  await filter.fill('no-such-persona')
-  await expect(roster.getByText('No roles match this filter.')).toBeVisible()
-  await expect(roster.locator('.ragent')).toHaveCount(0)
-  await roster.getByRole('button', { name: 'Clear agent filter' }).click()
-  await expect(filter).toHaveValue('')
-  await expect(roster.locator('.ragent')).toHaveCount(2)
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(filter).toBeVisible()
-  await filter.fill('research')
-  await expect(roster.getByTestId('roster-agent-scout-id')).toBeVisible()
-  await expect(roster.getByTestId('roster-agent-scout-id')).toBeInViewport({ ratio: 1 })
-  await page.screenshot({ path: test.info().outputPath('roster-narrow.png') })
-  expect(fixture.writes).toEqual([])
-})
 
 test('brief shortcuts and a confirmed save receipt accompany the note purpose helper', async ({ page }) => {
   const fixture = await nodeWindowsFixture(page)

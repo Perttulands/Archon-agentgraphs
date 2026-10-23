@@ -20,7 +20,8 @@ test('a character stamps a slot from its step window, and editing it afterwards 
   ])
   await expect(step.getByLabel(/Change the effort of Worker 1: high/)).toBeVisible()
 
-  await page.getByTestId('roles-toggle').click()
+  // Characters are kept in the Agents view; the canvas has no roster (archon-kiwt.4).
+  await page.getByRole('button', { name: 'Agents', exact: true }).click()
   const row = page.getByTestId('character-careful-builder')
   await expect(row).toContainText('Careful builder')
   await expect(row).toContainText('Codex builder · default model · high')
@@ -32,22 +33,9 @@ test('a character stamps a slot from its step window, and editing it afterwards 
   await expect(row).toContainText('· low')
   expect(fixture.characterWrites).toEqual([{ method: 'PUT', id: 'careful-builder', body: { ...careful, effort: 'low' } }])
   expect(assignments(fixture.patches)).toHaveLength(1)
-  await expect(step.getByLabel(/Change the effort of Worker 1: high/)).toBeVisible()
-})
-
-test('dragging a character from the roster onto a slot staffs it', async ({ page }) => {
-  const fixture = await cockpitFixture(page, { emptyWorker: true, characters: [careful] })
-  await page.goto('/')
-  await page.getByTestId('roles-toggle').click()
-  const from = (await page.getByTestId('character-careful-builder').boundingBox())!
-  const to = (await page.getByTestId('slot-execution-worker').boundingBox())!
-  await page.mouse.move(from.x + 20, from.y + 12)
-  await page.mouse.down()
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
-  await page.mouse.up()
-  await expect.poll(() => assignments(fixture.patches)).toEqual([
-    { formationId: 'execution', slotId: 'worker', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'high' },
-  ])
+  await page.getByRole('button', { name: 'Missions', exact: true }).click()
+  await page.locator('[data-node="execution"] .tt').click()
+  await expect(page.getByRole('dialog', { name: /Execution/ }).getByLabel(/Change the effort of Worker 1: high/)).toBeVisible()
 })
 
 test('a staffed slot saves its staffing as a new character from its row', async ({ page }) => {

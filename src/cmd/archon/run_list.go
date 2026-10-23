@@ -10,14 +10,16 @@ import (
 	"github.com/Perttulands/Archon-agentgraphs/internal/formations"
 )
 
-// run list prints one line per run, newest first: run ID, mission, status,
-// Bead, started and updated, tab-separated (archon-lmg2). --json prints the
+// run list prints one line per run, newest first: run ID, mission, the run's
+// number in its mission (#3), status, Bead, started, updated and driver,
+// tab-separated (archon-lmg2, archon-kiwt.3). --json prints the
 // list payload (compact summaries when reading through the daemon).
 
 // runListLine is one run as run list prints it.
 type runListLine struct {
 	RunID     string `json:"runId"`
 	Mission   string `json:"missionSlug"`
+	Number    int    `json:"number"`
 	Status    string `json:"status"`
 	StartedBy string `json:"startedBy"`
 	BeadID    string `json:"beadId"`
@@ -28,7 +30,7 @@ type runListLine struct {
 func runListLines(runs []formations.RunStatusProjection) []runListLine {
 	lines := make([]runListLine, 0, len(runs))
 	for _, run := range runs {
-		lines = append(lines, runListLine{RunID: run.RunID, Mission: run.BoardSlug, Status: run.Status, StartedBy: run.StartedBy, BeadID: run.BeadID, StartedAt: run.StartedAt, UpdatedAt: run.UpdatedAt})
+		lines = append(lines, runListLine{RunID: run.RunID, Mission: run.BoardSlug, Number: run.Number, Status: run.Status, StartedBy: run.StartedBy, BeadID: run.BeadID, StartedAt: run.StartedAt, UpdatedAt: run.UpdatedAt})
 	}
 	return lines
 }
@@ -37,8 +39,16 @@ func runListLines(runs []formations.RunStatusProjection) []runListLine {
 func writeRunList(w io.Writer, runs []runListLine) {
 	sort.SliceStable(runs, func(i, j int) bool { return listTime(runs[i].StartedAt).After(listTime(runs[j].StartedAt)) })
 	for _, run := range runs {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", run.RunID, run.Mission, run.Status, orDash(run.BeadID), listTimeWords(run.StartedAt), listTimeWords(run.UpdatedAt), orDash(run.StartedBy))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", run.RunID, run.Mission, runNumberWords(run.Number), run.Status, orDash(run.BeadID), listTimeWords(run.StartedAt), listTimeWords(run.UpdatedAt), orDash(run.StartedBy))
 	}
+}
+
+// runNumberWords is a run's number in its mission, #3, or - when unknown.
+func runNumberWords(number int) string {
+	if number < 1 {
+		return "-"
+	}
+	return fmt.Sprintf("#%d", number)
 }
 
 // writeRemoteRunList prints the daemon's run list response as run list lines.

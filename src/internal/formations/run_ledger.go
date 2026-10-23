@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -137,18 +138,21 @@ type RunStatusProjection struct {
 	// the mission's order (archon-5tg1); a file or folder value is the path
 	// of the accepted snapshot. On a picked run, an output that came through
 	// a pick carries it (ADR-0022).
-	Outputs       []RunOutput `json:"outputs,omitempty"`
-	RunID         string      `json:"runId"`
-	Status        string      `json:"status"`
-	Final         bool        `json:"final"`
-	BoardSlug     string      `json:"missionSlug"`
-	BoardID       string      `json:"missionId"`
-	BoardRev      int         `json:"missionRev"`
-	MissionID     string      `json:"inputCardId"`
-	BeadID        string      `json:"beadId"`
-	Epoch         int         `json:"epoch"`
-	EventCount    int         `json:"eventCount"`
-	ResumeAllowed bool        `json:"resumeAllowed"`
+	Outputs   []RunOutput `json:"outputs,omitempty"`
+	RunID     string      `json:"runId"`
+	Status    string      `json:"status"`
+	Final     bool        `json:"final"`
+	BoardSlug string      `json:"missionSlug"`
+	BoardID   string      `json:"missionId"`
+	BoardRev  int         `json:"missionRev"`
+	// Number is the run's place among its mission's runs in start order,
+	// from 1. Only run lists fill it in (see NumberRuns).
+	Number        int    `json:"number,omitempty"`
+	MissionID     string `json:"inputCardId"`
+	BeadID        string `json:"beadId"`
+	Epoch         int    `json:"epoch"`
+	EventCount    int    `json:"eventCount"`
+	ResumeAllowed bool   `json:"resumeAllowed"`
 	// ResumePolicy is how a blocked run resumes: grant at a spent limit,
 	// which resumes only with run resume --grant (archon-o7p.8), or
 	// grant_or_pick where the step's gate judged attempts, which also resumes
@@ -857,10 +861,15 @@ func (s *Store) ListRunLedgerViews(filter RunListFilter) ([]RunLedgerView, []Unr
 			unreadable = append(unreadable, Unreadable{Name: runID, Reason: err.Error()})
 			continue
 		}
-		if filter.MissionID != "" && status.BoardID != filter.MissionID {
-			continue
-		}
 		views = append(views, RunLedgerView{Status: status, Events: events})
+	}
+	statuses := make([]*RunStatusProjection, len(views))
+	for i := range views {
+		statuses[i] = views[i].Status
+	}
+	NumberRuns(statuses)
+	if filter.MissionID != "" {
+		views = slices.DeleteFunc(views, func(view RunLedgerView) bool { return view.Status.BoardID != filter.MissionID })
 	}
 	return views, unreadable, nil
 }

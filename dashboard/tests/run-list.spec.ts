@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { cockpitFixture, reviewMarkdown } from './cockpit-fixture'
-import { arrangedLayoutNodes } from '../src/components/formationsArrange'
 
 /* Runs are listed under their mission and open onto what they produced
  * (archon-o7p.2). The routes answer as archond does: the run list holds the
  * mission's own runs with their driver, times and input excerpts, an artifact preview
- * names its absolute path, and the mission as a run ran it is evidence. */
+ * names its absolute path. Each run carries its number in its mission, and
+ * shows on the mission as it is now (archon-kiwt.3). */
 
 const artifactRoot = '/srv/scratch/archon-state/.archon/artifacts/run_browser'
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
@@ -15,9 +15,9 @@ const projection = (runId: string, status: string, final: boolean, extra: Record
   epoch: 0, resumeAllowed: false, humanChannel: 'notify', inputExcerpt: '', sessions: [], ...extra,
 })
 const runs = [
-  projection('run_browser', 'succeeded', true, { startedAt: ago(90), updatedAt: ago(86), startedBy: 'agent:driver',
+  projection('run_browser', 'succeeded', true, { number: 2, startedAt: ago(90), updatedAt: ago(86), startedBy: 'agent:driver',
     inputExcerpt: 'Verify the retry budget and log the second failure' }),
-  projection('run_01OLDER', 'failed', true, { startedAt: ago(300), updatedAt: ago(299), startedBy: 'human:ui', missionRev: 1,
+  projection('run_01OLDER', 'failed', true, { number: 1, startedAt: ago(300), updatedAt: ago(299), startedBy: 'human:ui', missionRev: 1,
     inputExcerpt: 'First attempt at the review' }),
 ]
 
@@ -36,15 +36,17 @@ for (const entry of ['list', 'link'] as const) {
       if (url.pathname === '/api/runs/run_browser') return respond({ ...missionRuns[0], events: fixture.events() })
       if (url.pathname === '/api/runs/run_browser/evidence/artifacts/review.md') return respond({ artifact: { name: 'review.md', size: reviewMarkdown.length,
         modifiedAt: '2026-09-16T00:00:00Z', kind: 'markdown', path: `${artifactRoot}/review.md`, text: { text: reviewMarkdown, bytes: reviewMarkdown.length } } })
-      if (url.pathname === '/api/runs/run_browser/evidence/mission') return respond({ mission: { missionRev: 2, graph: { ...fixture.board(), rev: 2, formations: fixture.board().formations.map(node => ({...node, title: 'Frozen '+node.title})) }, text: { text: 'schema = 1\nslug = "browser"\nrev = 2\n', bytes: 36 } } })
       return route.fallback()
     })
     await page.goto(entry === 'list' ? '/?mission=browser' : '/?mission=browser&run=run_browser')
 
     if (entry === 'list') {
-      // No run is open: the navigator lists the mission's finished runs, each named without its ID.
+      // No run is open: the navigator lists the mission's finished runs by number, never by ID.
       const rows = page.getByTestId('nav-group-browser').locator('[data-testid^="nav-run-"]')
       await expect(rows).toHaveCount(2)
+      await expect(rows.nth(0).locator('.nav-run-number')).toHaveText('Run 2')
+      await expect(rows.nth(1).locator('.nav-run-number')).toHaveText('Run 1')
+      await expect(page.getByTestId('block-row')).toBeVisible()
       await expect(rows.nth(0)).toContainText('succeeded')
       await expect(rows.nth(0)).toContainText('Verify the retry budget and log the second failure')
       await expect(rows.nth(0)).not.toContainText('run_browser')
@@ -58,36 +60,11 @@ for (const entry of ['list', 'link'] as const) {
     await expect(banner.locator('.run-when')).toContainText('took 4m · agent:driver')
     await expect(page).toHaveURL(/\?mission=browser&run=run_browser$/)
 
-    // The board has moved on: both views use the frozen graph and disable edits.
-    await expect(page.getByTestId('canvas-dock')).toContainText('Showing revision 2 · read only')
-    await expect(page.getByTestId('new-formation')).toHaveCount(0)
-    await expect(page.getByTitle('Start mission', { exact: true }).first()).toBeDisabled()
-    await expect(page.getByTitle('Run formation', { exact: true }).first()).toBeDisabled()
-    await expect(page.locator('.formation').first()).toContainText('Frozen')
-    // Frozen geometry comes from its own graph, never the current saved layout.
-    const first = page.locator('.formation').first()
-    const saved = await page.evaluate(async id => (await (await fetch('/api/missions/browser/layout')).json()).data.layout.nodes.find((node: { id: string }) => node.id === id), await first.getAttribute('data-node'))
-    const arranged = arrangedLayoutNodes(fixture.board()).find(node => node.id === saved.id)!
-    await expect(first).toHaveCSS('left', `${arranged.x}px`)
-    await expect(first).toHaveCSS('top', `${arranged.y}px`)
-    // A frozen card does not move, and a click on it still opens its window, read only.
-    await first.locator('.tt').click()
-    const frozenStep = page.getByRole('dialog', { name: /^Formation · / })
-    await expect(frozenStep).toBeVisible()
-    await expect(frozenStep.getByRole('button', { name: /^Change the role of / }).first()).toBeDisabled()
-    await frozenStep.getByRole('button', { name: /^Close Formation · / }).click()
-    await expect(frozenStep).toHaveCount(0)
-    // Notes opened through the toolbar also respect the historical boundary.
-    await page.getByRole('button', { name: 'Mission notes', exact: true }).click()
-    const notes = page.getByRole('dialog', { name: 'mission notes', exact: true })
-    await expect(notes.getByRole('textbox')).toHaveAttribute('readonly', '')
-    await expect(notes.locator('.note-reply-actions button').last()).toBeDisabled()
-    for (const control of await notes.locator('.note-entry-actions button').all()) await expect(control).toBeDisabled()
-    await notes.getByRole('button', { name: /Close/ }).click()
-    await page.getByRole('radio', { name: 'Flow', exact: true }).click()
-    await expect(page.getByTestId('flow-view')).toContainText('Frozen')
-    await expect(page.getByTestId('flow-view').getByRole('button', { name: 'Start mission', exact: true })).toBeDisabled()
-    await page.screenshot({ path: test.info().outputPath('frozen-flow.png') })
+    await expect(banner.getByTestId('run-name')).toHaveText('Run 2')
+    // The run shows on the mission as it is now: no revision, and the run bar has taken the block row's place.
+    await expect(page.getByTestId('block-row')).toHaveCount(0)
+    await expect(page.locator('body')).not.toContainText(/revision|read only/i)
+    await page.screenshot({ path: test.info().outputPath('run-bar.png') })
 
     // An output opens its attempt; its file offers Copy path for the snapshot.
     await banner.getByRole('button', { name: 'review.md' }).click()
@@ -100,28 +77,22 @@ for (const entry of ['list', 'link'] as const) {
     await expect(review.getByRole('button', { name: 'Copied' })).toBeVisible()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${artifactRoot}/review.md`)
     expect(fixture.writes).toEqual([])
-    // Flow has no canvas palette; its mission remains editable from the navigator.
+    // Edit mission closes the run, and the row holds the building blocks again.
     await page.getByRole('button', { name: /^Edit mission/ }).click()
-    await expect(page.getByTestId('flow-view')).not.toContainText('Frozen')
-    await expect(page.getByTestId('canvas-dock')).toHaveCount(0)
-    await page.getByRole('radio', { name: 'Canvas', exact: true }).click()
-    await expect(page.getByTestId('new-formation')).toBeEnabled()
-    await expect(first).toHaveCSS('left', `${saved.x}px`)
-    await expect(first).toHaveCSS('top', `${saved.y}px`)
+    await expect(banner).toHaveCount(0)
+    await expect(page.getByTestId('block-row')).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath('block-row.png') })
     expect(fixture.writes).toEqual([])
   })
 }
 
 test('an old run link is rejected when its slug now belongs to a recreated mission', async ({ page }) => {
   const fixture = await cockpitFixture(page, { succeeded: true })
-  const frozen = structuredClone(fixture.board())
-  frozen.rev = 2
   fixture.board().id = 'brd_recreated'
   fixture.board().rev = 3
   await page.route('**/api/runs**', route => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/runs/run_browser') return route.fulfill({ json: { success: true, data: { ...runs[0], missionRev: 2, events: fixture.events() } } })
-    if (path === '/api/runs/run_browser/evidence/mission') return route.fulfill({ json: { success: true, data: { mission: { missionRev: 2, graph: frozen, text: { text: '', bytes: 0 } } } } })
     return route.fallback()
   })
   await page.goto('/?mission=browser&run=run_browser')
@@ -163,7 +134,6 @@ test('runs of a TOML mission keep their start, status and Bead visible when the 
     const respond = (data: unknown) => route.fulfill({ json: { success: true, data } })
     if (path === '/api/runs') return respond([recent, older])
     if (path === '/api/runs/run_01LATEST') return respond({ ...recent, events: fixture.events().map(event => ({ ...event, runId: recent.runId })) })
-    if (path === '/api/runs/run_01LATEST/evidence/mission') return respond({ mission: { missionRev: 1, graph: fixture.board(), text: { text: '', bytes: 0 } } })
     return route.fallback()
   })
   await page.goto('/?mission=browser')

@@ -1,5 +1,4 @@
-import { AuthoringReadOnly } from './EditableField'
-import { useContext, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import type { MissionInput } from '../components/formationsTypes'
 
 const NAME = /^[a-z][a-z0-9_]{0,63}$/
@@ -26,7 +25,6 @@ export function MissionInputsField({ inputs, onSave }: {
   /** Resolves true once the change is saved. */
   onSave: (inputs: MissionInput[]) => Promise<boolean>
 }) {
-  const readOnly = useContext(AuthoringReadOnly)
   const [draft, setDraft] = useState<MissionInput[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -59,7 +57,7 @@ export function MissionInputsField({ inputs, onSave }: {
     <div className={`nfield${draft ? ' editing' : ''}`}>
       <div className="nfield-head">
         <span className="nfield-label">Inputs</span>
-        {draft || readOnly ? null : <button type="button" className="nfield-edit" aria-label="Edit inputs" onClick={() => { setSaved(false); setDraft(declared.map(input => ({ ...input }))) }}>Edit</button>}
+        {draft ? null : <button type="button" className="nfield-edit" aria-label="Edit inputs" onClick={() => { setSaved(false); setDraft(declared.map(input => ({ ...input }))) }}>Edit</button>}
       </div>
       {saved ? <p className="nfield-note" role="status">Inputs saved.</p> : null}
       {draft ? (

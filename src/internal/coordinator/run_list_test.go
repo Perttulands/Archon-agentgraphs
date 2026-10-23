@@ -35,6 +35,29 @@ func TestRunListFiltersByMission(t *testing.T) {
 	}
 }
 
+// Each run carries its number in its mission, in start order, and keeps it
+// whatever the list is filtered by, so the CLI and the cockpit agree (archon-kiwt.3).
+func TestRunListNumbersAMissionsRunsInStartOrder(t *testing.T) {
+	c, executor, _ := fixture(t)
+	first := startRun(t, c)
+	<-executor.entered
+	executor.proceed <- struct{}{}
+	awaitState(t, c, first, "waiting_human")
+	second := startRun(t, c)
+	want := map[string]int{first: 1, second: 2}
+	for _, path := range []string{"/api/runs", "/api/runs?mission=proof", "/api/runs?needs=you"} {
+		runs := listRuns(t, c, path)
+		if len(runs) == 0 {
+			t.Fatalf("%s listed no runs", path)
+		}
+		for _, run := range runs {
+			if run.Number != want[run.RunID] {
+				t.Fatalf("%s: run %s is number %d, want %d", path, run.RunID, run.Number, want[run.RunID])
+			}
+		}
+	}
+}
+
 // A mission lists only its own runs: a mission created again under a deleted
 // one's slug starts with none, and the deleted mission's runs stay readable
 // by ID and in the full list (archon-n7u.15).

@@ -39,7 +39,6 @@ export interface UndoRunner {
   /** Resolves once no edit is still being saved, so undo sees its entry and its board revision. */
   idle(): Promise<void>
   /** A frozen run may be entered while waiting for writes; leave both histories intact. */
-  canEdit?(): boolean
   /** Identity of the editable view; changing away and back invalidates an operation. */
   scope?(): unknown
   apply(step: UndoStep, board: string): Promise<void | UndoStep[]>
@@ -103,7 +102,7 @@ export class UndoHistory {
     const requestedGeneration = this.generation
     const run = this.queue.then(async (): Promise<UndoOutcome> => {
       await runner.idle()
-      if (requestedBoard !== runner.board() || requestedScope !== runner.scope?.() || requestedGeneration !== this.generation || runner.canEdit?.() === false) return { status: 'empty' }
+      if (requestedBoard !== runner.board() || requestedScope !== runner.scope?.() || requestedGeneration !== this.generation) return { status: 'empty' }
       const source = redo ? this.redos : this.entries
       const destination = redo ? this.entries : this.redos
       const inverse: UndoStep[] = []
@@ -116,7 +115,7 @@ export class UndoHistory {
       let reloaded = false
       while (index < entry.steps.length) {
         try {
-          if (generation !== this.generation || entry.board !== runner.board() || scope !== runner.scope?.() || runner.canEdit?.() === false) {
+          if (generation !== this.generation || entry.board !== runner.board() || scope !== runner.scope?.()) {
             throw new Error('The mission view changed before the remaining edits could be applied.')
           }
           const reverse = await runner.apply(entry.steps[index], entry.board)

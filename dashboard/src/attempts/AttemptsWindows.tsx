@@ -1,5 +1,5 @@
-import type { FilePlace } from '../files/FileWindows'
-import { Suspense, createContext, lazy, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { closes, type FilePlace, type WindowClosing } from '../files/FileWindows'
+import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { WindowStack } from '../windows/WindowManager'
 import { attemptsWindowId, type AttemptsPick } from './attemptsModel'
 import { attemptsAnchor } from './attemptsPlacement'
@@ -46,7 +46,7 @@ const AttemptsContext = createContext<AttemptsState | null>(null)
 
 export const useAttemptsWindows = () => useContext(AttemptsContext)
 
-export function AttemptsWindowsProvider({ run, stack, children }: { run: AttemptsRun | null; stack: WindowStack; children: ReactNode }) {
+export function AttemptsWindowsProvider({ run, stack, closing = null, children }: { run: AttemptsRun | null; stack: WindowStack; closing?: WindowClosing | null; children: ReactNode }) {
   const runId = run?.runId || ''
   const places = useRef(new Map<string, FilePlace>())
   // The windows belong to the run they were opened on.
@@ -60,6 +60,10 @@ export function AttemptsWindowsProvider({ run, stack, children }: { run: Attempt
     stackRef.current.focus(attemptsWindowId(nodeId))
   }, [runId, run])
   const close = useCallback((nodeId: string) => setOpened(current => ({ ...current, nodes: current.nodes.filter(node => node !== nodeId) })), [])
+  // A step's attempts belong to it, and to the step whose window opened them.
+  useEffect(() => {
+    if (closing) setOpened(current => ({ ...current, nodes: current.nodes.filter(node => !closes(closing, node) && !closes(closing, places.current.get(node)?.owner)) }))
+  }, [closing])
   const nodes = opened.runId === runId ? opened.nodes : []
   const value = useMemo(() => ({ run, opened: nodes, places: places.current, open, close }), [close, nodes, open, run])
   return <AttemptsContext.Provider value={value}>{children}</AttemptsContext.Provider>

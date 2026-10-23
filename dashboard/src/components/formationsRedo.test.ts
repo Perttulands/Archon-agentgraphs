@@ -17,22 +17,6 @@ describe('redo',()=>{
    boardStep({ setFormationType: { id: 'worker', type: 'solo', slots: solo.formations[0].slots, keepSlotId: 'kept' } }),
   ])
  })
- it('leaves queued Undo and Redo intact when their view becomes read only before writes settle', async () => {
-  const history = new UndoHistory(); history.setBoard('mission')
-  let editable = true
-  let value = 1
-  let release: () => void = () => undefined
-  const idle = new Promise<void>(resolve => { release = resolve })
-  const apply = async (step: UndoStep) => { const before = value; value = Number('board' in step ? step.board.value : 0); return [boardStep({ value: before })] }
-  const runner: UndoRunner = { board: () => 'mission', idle: () => idle, canEdit: () => editable, apply, isConflict: () => false, reload: async () => undefined }
-  history.record({ board: 'mission', label: 'edit', steps: [boardStep({ value: 0 })] })
-  const pending = history.undo(runner)
-  editable = false; release()
-  expect(await pending).toEqual({ status: 'empty' }); expect(value).toBe(1); expect(history.size).toBe(1)
-  editable = true; await history.undo(runner)
-  editable = false; expect(await history.redo(runner)).toEqual({ status: 'empty' }); expect(history.redoSize).toBe(1)
-  editable = true; await history.redo(runner); expect(value).toBe(1)
- })
  it('restores the removed wire identity and deleted node placement',()=>{
   expect(inverseUndoStep(board,layout,boardStep({unwireConnection:{from:'entry:out',to:'worker:in'}}))).toEqual([boardStep({wireConnection:{id:'same-edge',from:'entry:out',to:'worker:in'}})])
   const inverse=inverseUndoStep(board,layout,boardStep({deleteFormation:{id:'worker'}}))[0]

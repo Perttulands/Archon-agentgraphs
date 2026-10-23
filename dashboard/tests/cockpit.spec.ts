@@ -105,7 +105,9 @@ test('two step windows open, resize, stack and stay off the zoom column', async 
   await page.routeWebSocket('**/seats/*/terminal', () => {})
   await page.goto('/')
   await page.getByTestId('formation-node-peer').locator('.tt').click()
-  await page.getByTestId('formation-node-execution').locator('.tt').click()
+  // A card's click replaces the open card window (archon-kiwt.2); a step shown from the run bar opens beside it.
+  await expect(page.locator('[data-window-id="node:peer"]')).toBeVisible()
+  await page.getByTestId('run-banner').getByRole('button', { name: 'running Execution' }).click()
   const peer = page.locator('[data-window-id="node:peer"]')
   const run = page.locator('[data-window-id="node:execution"]')
   await expect(peer).toBeVisible()
@@ -302,19 +304,6 @@ test('a run blocked at its judge rings the gate and names it with the reason in 
   await point.click()
   await expect(gate).toHaveClass(/\blocated\b/)
   await expect.poll(offCentre).toBeLessThan(3)
-})
-
-for (const width of [1440, 390]) test(`the persona editor stays inside the viewport at ${width}px`, async ({ page }) => {
-  await page.setViewportSize({ width, height: 844 })
-  await cockpitFixture(page)
-  await page.goto('/')
-  await page.getByTestId('roles-toggle').click()
-  await page.getByRole('button', { name: 'Edit Codex builder' }).click()
-  const editor = page.getByTestId('persona-editor')
-  await expect(editor.getByLabel('Role display name')).toHaveValue('Codex builder')
-  const box = (await editor.boundingBox())!
-  expect(box.x).toBeGreaterThanOrEqual(0)
-  expect(box.x + box.width).toBeLessThanOrEqual(width)
 })
 
 test('a formation without seats shows its fields and never opens a different formation\'s terminal', async ({ page }) => {

@@ -1024,23 +1024,25 @@ and a link to a run of the deleted mission is reported and not shown
 for a human, then running, then blocked, newest first. The navigator on the
 left lists every mission with its runs (archon-o7p.2, archon-fh5c.4), open runs
 by attention and then finished runs newest first, the first five shown and the
-rest behind "N earlier runs". Every run row shows its local start time and
-state, followed by its Bead or the start of its first input. Choosing one shows
-it; a mission's Edit mission row puts the shown run
-away and returns to the current revision for authoring. The run bar has a
-reserved, fixed-height row even before selection and during loading, so
-Canvas and Flow never shift when it appears or changes. The canvas creation
-palette is absent from Flow. Gate verdicts read PASS and FAIL on Canvas, in Flow
+rest behind "N earlier runs". Every run row shows its number in its mission
+(Run 3), its local start time and state, followed by its Bead or the start of
+its first input. Choosing one shows it; a mission's Edit mission row puts the
+shown run away and returns to authoring (archon-kiwt.3). The row under the top
+bar has a fixed height: while the mission is authored on Canvas it holds the
+building blocks, Formation, Gate, End and Limit (a click on Formation adds
+one; each drags onto the canvas), and while a run is open, including during
+loading, it is the run bar, so Canvas and Flow never shift when it appears or
+changes (archon-kiwt.4). The building blocks are absent from Flow. Roles and
+characters are kept in the Agents view; the canvas staffs slots through their
+sentences. Gate verdicts read PASS and FAIL on Canvas, in Flow
 and in attempts; run and formation statuses keep their own words. Canvas or Flow
 is remembered once per browser across missions and runs. The old per-mission
-preference migrates once from the first opened mission, then is removed. The run bar says when
-the shown run started, how long it took and who drives it; a run waiting at a
-gate says since when; and a run that ran an
-earlier revision draws its frozen graph and run states on Canvas and Flow,
-read only. Runs without their own saved geometry use a deterministic compact
-arrangement of their frozen nodes; viewing a run never writes a layout or
-borrows positions from a newer mission revision. The dock
-names the revision shown and offers Edit current mission. Every run that needs
+preference migrates once from the first opened mission, then is removed. The run bar names
+the shown run by its number, says when it started, how long it took and who
+drives it; a run waiting at a gate says since when. A run always shows on the
+mission as it is now, whichever revision it ran: the cockpit shows no
+revision, and the runtime still runs the snapshot it admitted. Viewing a run
+never writes a layout. Every run that needs
 the operator, waiting at a human gate or blocked, is counted (archon-n7u.29):
 in the navigator's Needs you group, above the missions and across all of them,
 and in the page title ("(3) Scouting · Archon"). The navigator's Sessions group
@@ -1132,7 +1134,7 @@ drag pans them together, and Z or another click fits them again. While the run
 is live the window reads the attempts again as the run records them and follows
 a new attempt, unless the operator stepped back to an older one.
 
-Missions and frozen runs open at authored reading scale (100%), including
+Missions and runs open at authored reading scale (100%), including
 when their positions are derived because no matching layout exists. A graph
 that does not fit is navigated from its leading edge; an open run centres on
 the card it has reached. This keeps the smallest card text at least 11 CSS
@@ -1756,6 +1758,14 @@ read in full and edited in place: titles, the Input card's goal, inputs, input h
 and files, a formation's type, brief and staffing, and a gate's kinds,
 check, criterion, judge and files. Each save is one mission edit with undo. Ports, edges, layout and notes are
 unchanged.
+One card window is open at a time: clicking another card replaces it, and the
+file and attempts windows opened from it close with it; a route followed from
+a window opens beside it. A plain click on bare canvas closes every floating
+window (node, gate, Input and End windows, run evidence, attempts, files and
+the gate answer) and folds every open note sticky, which keeps its unsaved
+draft; a drag that pans is not a click, and a click inside a window keeps them
+all (archon-kiwt.2). A gate talk terminal is a session, not a reading window,
+and stays open.
 Undo and Redo are visible toolbar words with Ctrl+Z and Ctrl+Shift+Z.
 Every canvas edit that changes the mission is one undo entry. Undo reverses
 the newest; Redo restores the fields and identities Undo reversed. A new edit
@@ -1814,8 +1824,9 @@ a rejected start names.
 
 ### Run inspection
 
-`run list` prints one line per run, newest first: its ID, mission, status,
-Bead (`-` when none), start, last change and driver, tab-separated; `--json` prints
+`run list` prints one line per run, newest first: its ID, mission, its number
+in the mission (`#3`), status, Bead (`-` when none), start, last change and
+driver, tab-separated; `--json` prints
 the list data as JSON. With `--server` that is the compact discovery summary
 described below; `run status` reads one run's full projection. Starting a run
 without `--cwd` allocates a workspace
@@ -1997,13 +2008,16 @@ already has saves nothing in the same way (archon-62h). Runtime routes start/lis
 (`GET /api/runs?mission=<slug>` lists the runs of the mission now under that
 slug or ID, and none for a mission that does not exist; `needs=you` keeps the
 open runs waiting at a human gate or blocked). Each list entry is a compact
-summary: `runId`, `status`, `final`, `missionSlug`, `missionId`, `missionRev`,
+summary: `runId`, `number`, `status`, `final`, `missionSlug`, `missionId`, `missionRev`,
 `inputCardId`, `beadId`, `eventCount`, `resumeAllowed`, optional `resumePolicy`
 and `blockCode`, the start/change times and driver, `inputExcerpt` (the first
 text input, or first input, collapsed to one line and at most 90 Unicode
 characters including an ellipsis), and `sessions` (`sessionName`, `nodeId`,
 `slotId`) in creation order. A kept-on-call cleanup keeps its session; another
-cleanup removes it. Final runs list no sessions. Lists carry no event history,
+cleanup removes it. Final runs list no sessions. `number` counts a mission's
+runs from 1 in start order, over every run ledger the daemon reads, before any
+filter, so the CLI and the cockpit name a run alike; it is derived on each read
+and the run's own read does not carry it. Lists carry no event history,
 full inputs, outputs or pending gate requests. The selected run's read still
 returns its complete projection, including events. Listing reads and projects
 each ledger once and derives summary state from those same validated events;

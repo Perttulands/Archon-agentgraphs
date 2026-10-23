@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formationSummary, inputFeedLabel, agentRole, agentState, byRoleName, initials, inSlotsWords, outputRowStatus, roleUses, rolesInUseLabel } from './formationsCockpitVisuals'
+import { formationSummary, inputFeedLabel, agentRole, byRoleName, initials, inSlotsWords, outputRowStatus } from './formationsCockpitVisuals'
 import type { AgentProjection, FormationNode } from './formationsTypes'
 
 const agent = (over: Partial<AgentProjection> & { assignable: boolean }): AgentProjection => ({ id: 'a', ...over })
@@ -17,14 +17,6 @@ describe('agentRole', () => {
     expect(agentRole(agent({ assignable: true, kind: 'reviewer' }))).toBe('reviewer')
     expect(agentRole(agent({ assignable: false, unbound: true }))).toBe('unbound')
     expect(agentRole(agent({ assignable: true }))).toBe('role')
-  })
-})
-
-describe('agentState', () => {
-  it('is on when live or assignable, otherwise idle', () => {
-    expect(agentState(agent({ assignable: false, liveness: 'live' }))).toBe('on')
-    expect(agentState(agent({ assignable: true, liveness: 'dead' }))).toBe('on')
-    expect(agentState(agent({ assignable: false, liveness: 'dead' }))).toBe('idle')
   })
 })
 
@@ -80,18 +72,8 @@ describe('outputRowStatus', () => {
   })
 })
 
-describe('rolesInUseLabel', () => {
-  it('labels every count in the same words on both rosters', () => {
-    expect(rolesInUseLabel(25, 6)).toBe('25 roles · 6 in use')
-    expect(rolesInUseLabel(25, 5, 2)).toBe('25 roles · 5 in use · 2 live')
-    expect(rolesInUseLabel(1, 0)).toBe('1 role · 0 in use')
-    expect(rolesInUseLabel('…', 0)).toBe('… roles · 0 in use')
-  })
-
-  it('counts each role\'s slots across the mission and says so in words', () => {
-    const formation = (id: string, roles: Array<string | undefined>) => ({ id, type: 'peer', title: id, inputs: [], outputs: [], slots: roles.map((agentId, index) => ({ id: `${id}-${index}`, label: 'A', controller: false, ...(agentId ? { agentId } : {}) })) }) as FormationNode
-    const uses = roleUses([formation('a', ['critic', 'builder']), formation('b', ['critic', undefined])])
-    expect([...uses]).toEqual([['critic', 2], ['builder', 1]])
+describe('inSlotsWords', () => {
+  it('says a role in use in words', () => {
     expect(inSlotsWords(2)).toBe('in 2 slots')
     expect(inSlotsWords(1)).toBe('in 1 slot')
     expect(inSlotsWords(0)).toBe('')

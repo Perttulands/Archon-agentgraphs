@@ -490,8 +490,12 @@ archon $S run status "$ARCHON_RUN_ID" --json
   a run. Run status, lists and the run bar show that recorded ID verbatim
   (`startedBy` in JSON), including the default `agent:archon`.
 - A lost receipt: check `run list --mission "$M" --json` before starting again.
-  It lists only that mission's runs, each with `status`, `startedBy`,
+  It lists only that mission's runs, each with `number`, `status`, `startedBy`,
   `startedAt`, `updatedAt` (a final run ended then) and `inputs`.
+- A run's number counts its mission's runs in start order; plain `run list`
+  prints it as `#3` after the mission. Say "Run 3" to the operator: the
+  cockpit's run list and run bar name runs that way and show no revisions,
+  drawing every run on the mission as it is now.
 
 ### Watch
 

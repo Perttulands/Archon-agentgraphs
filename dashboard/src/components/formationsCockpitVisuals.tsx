@@ -38,22 +38,6 @@ export const FORMATION_SVG = (
   </svg>
 )
 
-export const LOCK_SVG = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="5" y="11" width="14" height="9" rx="1.5" />
-    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-  </svg>
-)
-
-export const ROLES_SVG = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="9" cy="9" r="3" />
-    <path d="M3.5 19c.6-3 2.7-4.5 5.5-4.5s4.900 1.500 5.500 4.500" />
-    <circle cx="17" cy="8" r="2.300" />
-    <path d="M16 14.200c2.400 0 4 1.300 4.500 3.800" />
-  </svg>
-)
-
 export const END_SVG = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
     <circle cx="12" cy="12" r="8.5" />
@@ -90,9 +74,6 @@ export function agentRole(agent: AgentProjection): string {
   if (agent.unbound) return 'unbound'
   return agent.kind || 'role'
 }
-export function agentState(agent: AgentProjection): 'on' | 'idle' {
-  return agent.liveness === 'live' || agent.assignable ? 'on' : 'idle'
-}
 
 export interface OutputRowStatus {
   label: string
@@ -119,22 +100,6 @@ export function outputRowStatus(runSelected: boolean, state: NodeRunState | unde
     default:
       return hasOutput ? { label: 'output ready', tone: 'done' } : { label: 'not reached', tone: 'idle' }
   }
-}
-
-/* Both rosters count roles the same way: how many there are, and how many staff
-   a slot of this mission (every formation on it), with the live sessions where
-   the view shows them. */
-export function rolesInUseLabel(roles: number | string, inUse: number, live = 0): string {
-  return [`${roles} role${roles === 1 ? '' : 's'}`, `${inUse} in use`, live ? `${live} live` : ''].filter(Boolean).join(' · ')
-}
-
-/** How many slots of these formations each role staffs. */
-export function roleUses(formations: FormationNode[]): Map<string, number> {
-  const uses = new Map<string, number>()
-  for (const formation of formations) {
-    for (const slot of formation.slots) if (slot.agentId) uses.set(slot.agentId, (uses.get(slot.agentId) || 0) + 1)
-  }
-  return uses
 }
 
 /** "in 2 slots": a role in use, said in words rather than by dimming it. */

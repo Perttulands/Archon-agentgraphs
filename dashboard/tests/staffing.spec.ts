@@ -277,43 +277,6 @@ test('a wrong slot is fixed in one drag that swaps, one Ctrl+Z puts both back, a
   await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Codex builder | Codex · default model · medium')
 })
 
-test('a role dragged from the rail lands by the same rule, previews on the slot, and a missed drop says so', async ({ page }) => {
-  const fixture = await cockpitFixture(page, { emptyWorker: true, roles })
-  await page.goto('/')
-  await page.getByTestId('roles-toggle').click()
-  const scout = page.getByTestId('roster-agent-scout')
-  const worker = page.getByTestId('slot-execution-worker')
-  await expect(scout).toBeVisible()
-  await waitForCanvasSlot(page, worker)
-  const from = (await scout.boundingBox())!
-  const to = (await worker.boundingBox())!
-  await page.mouse.move(from.x + 40, from.y + 10)
-  await page.mouse.down()
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 15 })
-  await expect(worker).toHaveClass(/snaptarget/)
-  await expect(caption(page, 'slot-execution-worker')).toHaveAttribute('data-staffing', 'Repo Scout | Claude Code · opus · low')
-  // The ghost waits beside the slot, off the caption it previews, and still does after a zoom mid-drag.
-  const offPreview = async () => {
-    const [ghost, preview] = [(await page.locator('.staffing-ghost').boundingBox())!, (await caption(page, 'slot-execution-worker').boundingBox())!]
-    return ghost.x + ghost.width <= preview.x || ghost.x >= preview.x + preview.width || ghost.y + ghost.height <= preview.y || ghost.y >= preview.y + preview.height
-  }
-  expect(await offPreview()).toBe(true)
-  for (let step = 0; step < 4; step++) { await page.mouse.wheel(0, -100); await page.waitForTimeout(120) }
-  const zoomed = (await worker.boundingBox())!
-  await page.mouse.move(zoomed.x + zoomed.width / 2, zoomed.y + zoomed.height / 2, { steps: 4 })
-  expect(await offPreview()).toBe(true)
-  await page.mouse.up()
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Effort low: scouting falls under errands.')
-  await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'scout', harness: 'claude-code', model: 'opus', effort: 'low' }])
-
-  await page.mouse.move(from.x + 40, from.y + 10)
-  await page.mouse.down()
-  await page.mouse.move(1000, 950, { steps: 10 })
-  await page.mouse.up()
-  await expect(page.getByTestId('staffing-stamp')).toHaveText('Not on a slot, so nothing changed.')
-  expect(assignments(fixture.patches)).toHaveLength(1)
-})
-
 test('the slot menu staffs in place and empties a slot on purpose with undo', async ({ page }) => {
   const fixture = await cockpitFixture(page, { roles })
   await page.goto('/')
@@ -480,45 +443,6 @@ test('the node window\'s staffing words open the same sentence beside it', async
   await expect(staffing).toContainText('Worker 1roleCodex builderharnessCodexmodeldefault modeleffortlow')
   await expect.poll(() => assignments(fixture.patches)).toEqual([{ formationId: 'execution', slotId: 'worker', agentId: 'codex', harness: 'openai-codex', model: '', effort: 'low' }])
 })
-
-// archon-n7u.38: the rail says which roles are in use, labels every count in the
-// Agents view's words, and opens a role in place.
-test('the rail states in words which roles are in use and opens a role in a window beside it', async ({ page }) => {
-  await cockpitFixture(page, { roles })
-  await page.goto('/')
-  await page.getByTestId('roles-toggle').click()
-  const roster = page.getByTestId('agent-roster')
-  await expect(page.getByTestId('roster-count')).toHaveText('6 roles · 2 in use')
-  const codex = page.getByTestId('roster-agent-codex')
-  await expect(codex.locator('.r')).toHaveText('in 2 slots · builder')
-  await expect(page.getByTestId('roster-agent-claude').locator('.r')).toHaveText('in 2 slots · controller')
-  await expect(page.getByTestId('roster-agent-scout').locator('.r')).toHaveText('scout')
-  // In use is said, not shown by dimming the row.
-  expect(await codex.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
-
-  await codex.click()
-  const role = page.getByRole('dialog', { name: 'role Codex builder' })
-  await expect(role).toContainText('builder')
-  await expect(role).toContainText('Builds the change.')
-  await expect(role.getByRole('region', { name: 'Slots this role staffs' }).locator('li')).toHaveText([
-    'Execution · Worker 1Codex · default model · medium',
-    'Peer review · ReviewerCodex · default model · medium',
-  ])
-  await role.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
-  const [row, window] = [(await codex.boundingBox())!, (await role.boundingBox())!]
-  // Beside the row, never over it.
-  expect(window.x >= row.x + row.width - 1 || window.x + window.width <= row.x + 1 || window.y >= row.y + row.height - 1 || window.y + window.height <= row.y + 1).toBe(true)
-  await role.getByRole('button', { name: 'Open Peer review' }).click()
-  await expect(page.getByRole('dialog', { name: 'Formation · Peer review' })).toBeVisible()
-  await role.getByRole('button', { name: 'Edit role' }).click()
-  await expect(page.getByTestId('persona-editor')).toBeVisible()
-  await page.keyboard.press('Escape')
-
-  await page.getByTestId('roster-agent-scout').click()
-  await expect(page.getByRole('dialog', { name: 'role Repo Scout' })).toContainText('Not in use. Drag it onto a slot, or pick it in a slot’s sentence.')
-  await expect(roster).toBeVisible()
-})
-
 
 // Keep the assignment pending so this exercises the race on every run.
 test('N skips a staffed slot while its assignment reply is pending', async ({ page }) => {

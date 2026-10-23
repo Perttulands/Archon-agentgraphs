@@ -42,7 +42,7 @@ describe('attempts opening placement', () => {
     place(document.querySelector('.flow-title')!, title)
     place(document.querySelector('.flow-status')!, status)
     place(document.querySelector('.attempts-open')!, { left: 1408, top: 405, width: 70, height: 18 })
-    expect(attemptsAnchor(document.querySelector('.attempts-open')!)).toEqual({ anchor: status, keepClear: [], anchorKind: 'node' })
+    expect(attemptsAnchor(document.querySelector('.attempts-open')!)).toEqual({ anchor: status, keepClear: [], anchorKind: 'node', owner: 'replay' })
   })
 
   for (const [width, height] of [[1920, 1080], [2560, 1440]]) {

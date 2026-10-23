@@ -4,7 +4,6 @@ import {
   artifactRawUrl,
   fetchArtifactPreview,
   fetchNodeEvidence,
-  fetchRunMission,
   type ArtifactKind,
   type EvidenceText,
 } from '../evidence/runEvidenceApi'
@@ -82,19 +81,6 @@ export function outputFileRequest(runId: string, nodeId: string, name: string, c
     },
     link: target => artifactFileRequest(runId, target, context),
     imageUrl: target => artifactRawUrl(runId, target),
-  }
-}
-
-/** The mission as a run froze it, which later edits never change. */
-export function runMissionFileRequest(runId: string, missionRev: number, missionTitle: string): FileRequest {
-  return {
-    id: `mission:${runId}`,
-    name: `${missionTitle || 'Mission'} as run ${runId.slice(-6)} ran it`,
-    context: `revision ${missionRev}`,
-    load: async () => {
-      const mission = await fetchRunMission(runId)
-      return { kind: 'text', text: mission.text }
-    },
   }
 }
 

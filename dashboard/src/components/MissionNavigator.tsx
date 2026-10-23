@@ -5,7 +5,7 @@
  * left edge. A run's state is a word; nothing here is a status dot. */
 import { useMemo, useRef, useState } from 'react'
 import type { BoardSummary, RunStatusProjection } from './formationsTypes'
-import { runInputExcerpt, runsInListOrder, shortTime } from './runList'
+import { runInputExcerpt, runName, runsInListOrder, shortTime } from './runList'
 import './missionNavigator.css'
 
 /** Compact run index entry; event histories belong to selected detail. */
@@ -43,7 +43,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
   shownRunId: string
   /** A mission dialog is open; mission actions wait for it. */
   busy: boolean
-  /** The canvas shows a frozen run, so the mission cannot be renamed or deleted from here. */
+  /** The mission has not opened yet, so it cannot be renamed or deleted. */
   readOnly: boolean
   /** A step's title when its mission is the one on the canvas; empty otherwise. */
   stepTitle: (slug: string, nodeId: string) => string
@@ -67,7 +67,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
   }, [runs])
   const live = useMemo(() => new Set(missions.map(mission => mission.slug)), [missions])
   const titleOf = (slug: string) => missions.find(mission => mission.slug === slug)?.title || slug
-  const matches = (run: ListedRun, title: string) => !needle || [title, runRowLabel(run, now), run.beadId || '', runInputExcerpt(run), runStateWord(run.status)].some(text => text.toLowerCase().includes(needle))
+  const matches = (run: ListedRun, title: string) => !needle || [title, runName(run), runRowLabel(run, now), run.beadId || '', runInputExcerpt(run), runStateWord(run.status)].some(text => text.toLowerCase().includes(needle))
 
   const needing = runsInListOrder(runs.filter(run => live.has(run.missionSlug) && needsOperator(run)), null).filter(run => matches(run, titleOf(run.missionSlug)))
   const sessions = runs.filter(run => live.has(run.missionSlug) && !run.final).flatMap(run => runSessions(run).map(session => ({ ...session, run })))
@@ -102,7 +102,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
       data-testid={`${id}-${run.runId}`} title={[run.runId, run.startedAt ? `started ${new Date(run.startedAt).toLocaleString()}` : '', runStateWord(run.status), run.beadId, runInputExcerpt(run)].filter(Boolean).join(' · ')}
       onClick={() => onRun(run.missionSlug, run.runId)}>
       <span className="nav-row-line">
-        <span className="nav-row-name">{runRowLabel(run, now)}</span>
+        <span className="nav-row-name"><span className="nav-run-number">{runName(run)}</span> <span className="nav-run-time">{runRowLabel(run, now)}</span></span>
         <span className={`nav-state ${run.status}`}>{runStateWord(run.status)}</span>
       </span>
       {secondary ? <span className="nav-row-sub">{secondary}</span> : null}
@@ -144,7 +144,6 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
                 data-testid={`nav-mission-${mission.slug}`} onClick={() => onEdit(mission.slug)}>
                 <span className="nav-row-line">
                   <span className="nav-row-name">Edit mission</span>
-                  <span className="nav-state rev">rev {mission.rev}</span>
                 </span>
               </button>
               {visible.length ? <div className="nav-runs-heading"><span>Runs</span><span>State</span></div> : null}
@@ -162,7 +161,7 @@ export default function MissionNavigator({ missions, loaded, runs, selectedSlug,
             data-testid={`nav-session-${session.sessionName}`} onClick={() => onSession(session.run.missionSlug, session.run.runId, session.nodeId)}>
             <span className="nav-row-line">
               <span className="nav-row-name">{stepTitle(session.run.missionSlug, session.nodeId) || titleOf(session.run.missionSlug)}</span>
-              <span className="nav-state rev">{runRowLabel(session.run, now)}</span>
+              <span className="nav-state">{runName(session.run)}</span>
             </span>
             <span className="nav-row-sub">{session.sessionName}</span>
           </button>

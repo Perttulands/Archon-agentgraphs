@@ -303,6 +303,8 @@ export interface RunStatusProjection {
   /** The mission's identity and the revision the run froze. */
   missionId?: string
   missionRev?: number
+  /** The run's number in its mission, in start order; run lists carry it, run detail does not. */
+  number?: number
   /** The run's driver: the actor that started it. */
   startedBy?: string
   /** When the run started and when its ledger last changed; a final run ended then. */

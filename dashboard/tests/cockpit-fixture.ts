@@ -428,6 +428,15 @@ export async function cockpitFixture(page: Page, options: { tomlStyle?: boolean;
             formation.inputs = formation.inputs.filter(port => port.id !== portId)
           }
           currentBoard.connections = [...edges, { id: `edge_${currentBoard.rev}`, from: edit.from, to }]
+        } else if (body.createFormation) {
+          // Mirrors the store (CreateFormation): a new step where it was put, unstaffed.
+          const { type = 'solo', title, x, y } = body.createFormation
+          const formation = { id: `fmn_${currentBoard.rev}`, title: title || 'New formation', type, inputs: [], outputs: [], slots: [] }
+          currentBoard.formations.push(formation as typeof currentBoard.formations[number])
+          nodes = [...nodes, { id: formation.id, x, y }]
+          currentBoard.rev++
+          currentBoard.etag = `board-${currentBoard.rev}`
+          return respond({ mission: boardState(), layout: { missionId: board.id, missionRev: currentBoard.rev, etag: `layout-${currentBoard.rev}`, nodes, edges: [] }, formation })
         } else if (body.createEnd) {
           // Mirrors the store (CreateEnd): done unless asked, titled after the outcome.
           const { outcome = 'done', title, x, y } = body.createEnd

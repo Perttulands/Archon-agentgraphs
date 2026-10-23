@@ -2840,10 +2840,10 @@ func TestArchonRunListJSONListsDurableRunsAndFiltersBoard(t *testing.T) {
 		t.Fatalf("beta run projection = %+v, want durable blocked run", byRunID[betaRun.RunID])
 	}
 
-	// Without --json each run is one line: run, mission, status, Bead,
+	// Without --json each run is one line: run, mission, number, status, Bead,
 	// started, updated, driver.
 	stdout, stderr, code = runArchon(t, &fakeTmux{live: map[string]bool{}}, "--workspace", workspace, "run", "list")
-	if lines := strings.Split(strings.TrimSpace(stdout), "\n"); code != 0 || len(lines) != 2 || len(strings.Split(lines[0], "\t")) != 7 || !strings.Contains(stdout, alphaRun.RunID+"\talpha\tsucceeded\t") {
+	if lines := strings.Split(strings.TrimSpace(stdout), "\n"); code != 0 || len(lines) != 2 || len(strings.Split(lines[0], "\t")) != 8 || !strings.Contains(stdout, alphaRun.RunID+"\talpha\t#1\tsucceeded\t") {
 		t.Fatalf("run list code=%d stderr=%s:\n%s", code, stderr, stdout)
 	}
 
@@ -2856,7 +2856,7 @@ func TestArchonRunListJSONListsDurableRunsAndFiltersBoard(t *testing.T) {
 		t.Fatalf("run list --board --json code=%d stderr=%s stdout=%s", code, stderr, stdout)
 	}
 	filtered := decodeArchonRunList(t, stdout)
-	if len(filtered.Runs) != 1 || filtered.Runs[0].RunID != alphaRun.RunID || filtered.Runs[0].BoardSlug != "alpha" {
+	if len(filtered.Runs) != 1 || filtered.Runs[0].RunID != alphaRun.RunID || filtered.Runs[0].BoardSlug != "alpha" || filtered.Runs[0].Number != 1 {
 		t.Fatalf("board-filtered run list = %+v, want only alpha run", filtered.Runs)
 	}
 }

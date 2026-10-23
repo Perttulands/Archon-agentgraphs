@@ -1,8 +1,6 @@
-import { createContext, useContext, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import LinkedText from '../files/LinkedText'
 import Markdown from '../evidence/Markdown'
-
-export const AuthoringReadOnly = createContext(false)
 
 /**
  * One field of a node, read and edited in the same place. It reads as text, or
@@ -24,8 +22,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
   /** Drawn instead of the value while reading, for values that are not plain text. */
   children?: ReactNode
 }) {
-  const readOnly = useContext(AuthoringReadOnly)
-  const [draft, setDraft] = useState<string | null>(() => initiallyEditing && !readOnly ? value : null)
+  const [draft, setDraft] = useState<string | null>(() => initiallyEditing ? value : null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [savedReceipt, setSavedReceipt] = useState(false)
@@ -76,7 +73,7 @@ export function EditableField({ label, value, multiline = false, markdown = fals
     <div className={`nfield${draft !== null ? ' editing' : ''}`}>
       <div className="nfield-head">
         <span className="nfield-label">{label}</span>
-        {draft === null && !readOnly ? (
+        {draft === null ? (
           <button type="button" className="nfield-edit" aria-label={`Edit ${name}`} onClick={() => { setSavedReceipt(false); setDraft(value) }}>Edit</button>
         ) : null}
       </div>

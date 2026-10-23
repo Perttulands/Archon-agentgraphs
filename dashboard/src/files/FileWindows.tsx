@@ -26,6 +26,22 @@ export interface FilePlace {
   keepClear: readonly WindowRect[]
   /** A chip in the run bar is a control: its file opens right below it. */
   anchorKind: 'node' | 'control'
+  /**
+   * The step the window was opened from: its card, Flow row or window, or a
+   * window opened from those. It closes when that step's window is replaced.
+   */
+  owner?: string
+}
+
+/** A request to close windows: all of them, or those owned by the given steps. */
+export interface WindowClosing {
+  seq: number
+  owners?: readonly string[]
+}
+
+/** Whether a closing request covers a window owned by `owner`. */
+export function closes(closing: WindowClosing, owner: string | undefined): boolean {
+  return !closing.owners || (owner !== undefined && closing.owners.includes(owner))
 }
 
 interface OpenFile {
@@ -51,12 +67,21 @@ export function fileAnchor(control: Element): FilePlace {
   const anchorElement = !holder || holder.hasAttribute('data-flow-node') ? control : holder
   const anchor = measureElement(anchorElement, true)!
   const anchorKind = holder?.matches('.fwin, [data-file-anchor]') ? 'control' : 'node'
-  return { anchor, keepClear: nodeId ? nodeBoxes([nodeId]) : [], anchorKind }
+  const windowId = holder?.closest('.fwin')?.getAttribute('data-window-id') || ''
+  const owner = nodeId || windowOwner(windowId)
+  return { anchor, keepClear: nodeId ? nodeBoxes([nodeId]) : [], anchorKind, ...(owner ? { owner } : {}) }
+}
+
+// A step's own windows name it; a file window's owner is looked up when it opens.
+function windowOwner(windowId: string): string {
+  const step = /^(node|attempts|evidence):(.+)$/.exec(windowId)
+  if (step) return step[2]
+  return windowId ? `window:${windowId}` : ''
 }
 
 const FileWindowsContext = createContext<FileWindowsState | null>(null)
 
-export function FileWindowsProvider({ stack, children }: { stack: WindowStack; children: ReactNode }) {
+export function FileWindowsProvider({ stack, closing = null, children }: { stack: WindowStack; closing?: WindowClosing | null; children: ReactNode }) {
   const [files, setFiles] = useState<readonly OpenFile[]>([])
   // The stack changes whenever a window is raised; opening stays the same function.
   const stackRef = useRef(stack)
@@ -66,9 +91,13 @@ export function FileWindowsProvider({ stack, children }: { stack: WindowStack; c
     // object or a later attempt overwrites the same artifact path. Keep the
     // window identity and its original place so its geometry stays put.
     const fresh = { ...request }
-    setFiles(current => current.some(file => file.request.id === request.id)
-      ? current.map(file => file.request.id === request.id ? { ...file, request: fresh } : file)
-      : [...current, { request: fresh, place: place || null }])
+    setFiles(current => {
+      if (current.some(file => file.request.id === request.id)) return current.map(file => file.request.id === request.id ? { ...file, request: fresh } : file)
+      // A file opened from another file window belongs to that window's step.
+      const from = place?.owner?.startsWith('window:') ? current.find(file => file.request.id === place.owner!.slice('window:'.length)) : undefined
+      const owned = place && from ? { ...place, owner: from.place?.owner } : place
+      return [...current, { request: fresh, place: owned || null }]
+    })
     stackRef.current.focus(request.id)
   }, [])
   useEffect(() => {
@@ -80,6 +109,9 @@ export function FileWindowsProvider({ stack, children }: { stack: WindowStack; c
     return () => document.removeEventListener('archon-open-path', receive)
   }, [open])
   const close = useCallback((id: string) => setFiles(current => current.filter(file => file.request.id !== id)), [])
+  useEffect(() => {
+    if (closing) setFiles(current => current.filter(file => !closes(closing, file.place?.owner)))
+  }, [closing])
   const value = useMemo(() => ({ files, open, close }), [close, files, open])
   return <FileWindowsContext.Provider value={value}>{children}</FileWindowsContext.Provider>
 }

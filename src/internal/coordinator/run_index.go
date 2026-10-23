@@ -11,12 +11,14 @@ import (
 // RunSummary is the discovery index. Full inputs, outputs, pending requests and
 // event history belong to a selected run's detail projection, never this list.
 type RunSummary struct {
-	RunID         string              `json:"runId"`
-	Status        string              `json:"status"`
-	Final         bool                `json:"final"`
-	MissionSlug   string              `json:"missionSlug"`
-	MissionID     string              `json:"missionId"`
-	MissionRev    int                 `json:"missionRev"`
+	RunID       string `json:"runId"`
+	Status      string `json:"status"`
+	Final       bool   `json:"final"`
+	MissionSlug string `json:"missionSlug"`
+	MissionID   string `json:"missionId"`
+	MissionRev  int    `json:"missionRev"`
+	// Number counts the mission's runs in start order, from 1 (formations.NumberRuns).
+	Number        int                 `json:"number"`
 	InputCardID   string              `json:"inputCardId"`
 	BeadID        string              `json:"beadId"`
 	EventCount    int                 `json:"eventCount"`
@@ -66,7 +68,7 @@ func (c *Coordinator) listRuns(w http.ResponseWriter, r *http.Request) {
 func summarizeRun(status *formations.RunStatusProjection, events []formations.RunEvent) RunSummary {
 	summary := RunSummary{
 		RunID: status.RunID, Status: status.Status, Final: status.Final,
-		MissionSlug: status.BoardSlug, MissionID: status.BoardID, MissionRev: status.BoardRev,
+		MissionSlug: status.BoardSlug, MissionID: status.BoardID, MissionRev: status.BoardRev, Number: status.Number,
 		InputCardID: status.MissionID, BeadID: status.BeadID, EventCount: status.EventCount,
 		StartedBy: status.StartedBy, StartedAt: status.StartedAt, UpdatedAt: status.UpdatedAt,
 		ResumeAllowed: status.ResumeAllowed, ResumePolicy: status.ResumePolicy, BlockCode: status.BlockCode,

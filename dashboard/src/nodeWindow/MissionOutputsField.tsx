@@ -1,5 +1,4 @@
-import { AuthoringReadOnly } from './EditableField'
-import { useContext, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import type { BoardDocument, MissionOutput, PortKind } from '../components/formationsTypes'
 import { portKindOf } from '../components/portKind'
 
@@ -43,7 +42,6 @@ export function MissionOutputsField({ outputs, ports, onSave }: {
   /** Resolves true once the change is saved. */
   onSave: (outputs: MissionOutput[]) => Promise<boolean>
 }) {
-  const readOnly = useContext(AuthoringReadOnly)
   const [draft, setDraft] = useState<MissionOutput[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -77,7 +75,7 @@ export function MissionOutputsField({ outputs, ports, onSave }: {
     <div className={`nfield${draft ? ' editing' : ''}`}>
       <div className="nfield-head">
         <span className="nfield-label">Outputs</span>
-        {draft || readOnly ? null : <button type="button" className="nfield-edit" aria-label="Edit outputs" onClick={() => { setSaved(false); setDraft(declared.map(output => ({ ...output }))) }}>Edit</button>}
+        {draft ? null : <button type="button" className="nfield-edit" aria-label="Edit outputs" onClick={() => { setSaved(false); setDraft(declared.map(output => ({ ...output }))) }}>Edit</button>}
       </div>
       {saved ? <p className="nfield-note" role="status">Outputs saved.</p> : null}
       {draft ? (

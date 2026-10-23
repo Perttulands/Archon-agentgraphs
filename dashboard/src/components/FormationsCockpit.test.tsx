@@ -705,30 +705,20 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(screen.queryByTestId('formation-node-fmn_frame')).toBeNull())
   })
 
-  it('keeps undo history while viewing a frozen run and allows it after Edit current mission', async () => {
-    window.history.replaceState(null, '', '/?mission=test-board&run=run_01FROZEN')
-    installRunsMock([{ runId: 'run_01FROZEN', status: 'succeeded', final: true, missionSlug: 'test-board', missionId: 'brd_test', missionRev: 5, inputCardId: 'mis_showcase', eventCount: 0 }])
+  it('shows a run of an older revision on the current mission by its number, still editable with undo', async () => {
+    window.history.replaceState(null, '', '/?mission=test-board&run=run_01OLDER')
+    installRunsMock([{ runId: 'run_01OLDER', number: 3, status: 'succeeded', final: true, missionSlug: 'test-board', missionId: 'brd_test', missionRev: 5, inputCardId: 'mis_showcase', eventCount: 0 }])
     const { container } = await renderCockpit()
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit current mission · revision 7' }))
+    await waitFor(() => expect(screen.getByTestId('run-name')).toHaveTextContent('Run 3'))
+    expect(screen.getByTestId('nav-run-run_01OLDER')).toHaveTextContent('Run 3')
+    // No revision shows anywhere, and the run bar takes the block row's place (archon-kiwt.3, kiwt.4).
+    expect(container.textContent).not.toMatch(/revision|\brev\b|read only/i)
+    expect(screen.queryByTestId('block-row')).toBeNull()
     fireEvent.click(screen.getByTestId('formation-type-fmn_frame'))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Peer' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled())
-    fireEvent.click(screen.getByTestId('nav-run-run_01FROZEN'))
-    // A frozen run offers no undo; the history waits for the mission to be edited again.
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull())
-    expect(screen.queryByRole('button', { name: 'Redo' })).toBeNull()
-    const before = patches.length
-    const canvas = container.querySelector('.viewport') as HTMLElement
-    canvas.focus()
-    fireEvent.keyDown(canvas, { key: 'Delete' })
-    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true })
-    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true, shiftKey: true })
-    expect(patches).toHaveLength(before)
-    fireEvent.click(screen.getByRole('button', { name: 'Edit current mission · revision 8' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     await waitFor(() => expect(screen.getByTestId('formation-type-fmn_frame')).toHaveTextContent('orchestrated'))
-    expect(patches).toHaveLength(before + 1)
   })
 
   let patches: RecordedPatch[]
@@ -876,7 +866,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.getByTestId('mission-title')).toHaveTextContent('No missions')
     expect(screen.queryByText('Improve session search')).toBeNull()
     expect(screen.getByTestId('new-board')).toBeEnabled()
-    expect(screen.getByTestId('new-formation')).toBeDisabled()
+    expect(screen.queryByTestId('block-row')).toBeNull()
     expect(patches).toEqual([])
   })
 
@@ -885,16 +875,13 @@ describe('FormationsCockpit reference parity', () => {
     render(<FormationsCockpit />)
     const sawEmpty = vi.fn()
     const observer = new MutationObserver(() => {
-      const counted = /in use/.test(screen.getByTestId('roster-count').textContent || '')
-      if (screen.queryByTestId('formations-empty-board') || (counted && screen.queryByTestId('formations-loading'))) sawEmpty()
+      if (screen.queryByTestId('formations-empty-board')) sawEmpty()
     })
     expect(screen.getByTestId('formations-loading')).toBeInTheDocument()
-    expect(screen.getByTestId('roster-count')).toHaveTextContent('Loading…')
     expect(screen.getByTestId('mission-title')).toHaveTextContent('Loading…')
     observer.observe(document.body, { childList: true, subtree: true, characterData: true })
     await waitFor(() => expect(screen.queryByTestId('formations-loading')).toBeNull())
     observer.disconnect()
-    expect(screen.getByTestId('roster-count')).toHaveTextContent(/in use/)
     expect(screen.queryByTestId('formations-empty-board')).toBeNull()
     expect(sawEmpty).not.toHaveBeenCalled()
   })
@@ -1193,67 +1180,6 @@ describe('FormationsCockpit reference parity', () => {
     expect(screen.queryByRole('dialog', { name: 'Delete mission' })).toBeNull()
     fireEvent.click(screen.getByTestId('new-board'))
     expect(screen.queryByRole('dialog', { name: 'Create mission' })).toBeNull()
-  })
-
-  it('keeps loading agent dialogs focused and restores their trigger on Escape', async () => {
-    let releaseDetail: (() => void) | undefined
-    const detailGate = new Promise<void>(resolve => { releaseDetail = resolve })
-    patches = installFetchMock({ agentDetailGate: detailGate })
-    await renderCockpit()
-    fireEvent.click(screen.getByTestId('roles-toggle'))
-    const trigger = screen.getByRole('button', { name: 'Edit Mason' })
-    fireEvent.click(trigger)
-    const dialog = await screen.findByRole('dialog', { name: /^Edit role / })
-    expect(within(dialog).getByRole('button', { name: 'Close role editor' })).toHaveFocus()
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Edit role / })).toBeNull())
-    await waitFor(() => expect(trigger).toHaveFocus())
-    await act(async () => { releaseDetail?.(); await detailGate })
-  })
-
-  it('shows the built-in roles beside the operator\'s own and persists UI overrides', async () => {
-    const presetAgents: AgentProjection[] = [
-      { id: 'claude-existing', displayName: 'Claude Existing', kind: 'builder', liveness: 'offline', assignable: true },
-      ...['scout', 'planner', 'builder', 'judge', 'orchestrator', 'debugger', 'reviewer'].map(role => ({
-        id: role,
-        displayName: `${role[0].toUpperCase()}${role.slice(1)}`,
-        kind: role,
-        tags: [`role:${role}`],
-        liveness: 'offline',
-        assignable: true,
-        preset: true,
-      })),
-    ]
-    patches = installFetchMock({ agents: presetAgents })
-    await renderCockpit()
-    fireEvent.click(screen.getByTestId('roles-toggle'))
-
-    const roster = screen.getByLabelText('Agent roster')
-    // Roles carry no harness: one list by name, not Codex and Claude groups.
-    expect(roster.querySelectorAll('.roster-group-label')).toHaveLength(0)
-    expect(Array.from(roster.querySelectorAll('.ragent .n')).map(name => name.textContent)).toEqual(['Builder', 'Claude Existing', 'Debugger', 'Judge', 'Orchestrator', 'Planner', 'Reviewer', 'Scout'])
-
-    const editTrigger = within(roster).getByRole('button', { name: 'Edit Builder' })
-    fireEvent.click(editTrigger)
-    const dialog = await screen.findByRole('dialog', { name: /^Edit role / })
-    expect(dialog).toHaveAttribute('data-testid', 'persona-editor')
-    expect(await within(dialog).findByLabelText('Role display name')).toHaveFocus()
-    fireEvent.change(within(dialog).getByLabelText('Role display name'), { target: { value: 'Repository Builder' } })
-    fireEvent.change(within(dialog).getByLabelText('Role capabilities'), { target: { value: 'implement, test, refactor' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save role' }))
-
-    await waitFor(() => expect(within(roster).getByText('Repository Builder')).toBeInTheDocument())
-    await waitFor(() => expect(editTrigger).toHaveFocus())
-    expect(recordedMutations).toContainEqual({ method: 'PATCH', url: '/api/agents/builder' })
-  })
-
-  it('shows only assignable persona cards in the formation staffing roster', async () => {
-    await renderCockpit()
-    const roster = screen.getByTestId('agent-roster')
-    expect(screen.getByTestId('roster-count')).toHaveTextContent(/^2 roles · 1 in use$/)
-    expect(roster).toHaveTextContent('Mason')
-    expect(roster).toHaveTextContent('Hazel')
-    expect(roster).not.toHaveTextContent('scratch')
   })
 
   it('renders judge connections as wires anchored on the gate socket', async () => {
@@ -1793,14 +1719,13 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(mission).getByText('Build the page')).toBeInTheDocument()
     const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
     expect(within(frame).getByText('Step 1 · Formation · orchestrated')).toBeInTheDocument()
+    // Another card's window replaces the open one (archon-kiwt.2).
+    expect(screen.queryByRole('dialog', { name: 'Input card · Showcase' })).toBeNull()
+    expect(mission).not.toBeInTheDocument()
     const review = await openNodeWindow(screen.getByTestId('gate-node-gate_review'), 'Gate · Review')
     expect(within(review).getByText('Review the frame')).toBeInTheDocument()
-    expect(Number(review.style.zIndex)).toBeGreaterThan(Number(mission.style.zIndex))
-
-    // Clicking the mission card again raises its open window instead of opening another.
-    clickCard(screen.getByTestId('mission-node-mis_showcase'))
-    await waitFor(() => expect(Number(mission.style.zIndex)).toBeGreaterThan(Number(review.style.zIndex)))
-    expect(screen.getAllByRole('dialog', { name: 'Input card · Showcase' })).toHaveLength(1)
+    expect(screen.queryByRole('dialog', { name: 'Formation · Frame' })).toBeNull()
+    expect(screen.getAllByRole('dialog').filter(dialog => dialog.classList.contains('fwin'))).toHaveLength(1)
     expect(patches).toEqual([])
 
     fireEvent.keyDown(review, { key: 'Escape' })
@@ -1812,6 +1737,30 @@ describe('FormationsCockpit reference parity', () => {
     await waitFor(() => expect(patches.some(patch => patch.url.endsWith('/layout'))).toBe(true))
     expect(screen.queryByRole('dialog', { name: 'Gate · Review' })).toBeNull()
     expect(patches.filter(patch => !patch.url.endsWith('/layout'))).toEqual([])
+  })
+
+  it('puts every window away on a click of bare canvas, folding stickies with their drafts, but not on a pan or a press in a window', async () => {
+    const { container } = await renderCockpit()
+    const frame = await openNodeWindow(within(screen.getByTestId('formation-node-fmn_frame')).getByText('Frame'), 'Formation · Frame')
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Note for the mission' }), { target: { value: 'Kept while folded' } })
+    const canvas = container.querySelector('.viewport') as HTMLElement
+    const press = (target: HTMLElement, pointerId: number, to = { clientX: 500, clientY: 500 }) => {
+      fireEvent.pointerDown(target, { button: 0, pointerId, clientX: 500, clientY: 500 })
+      if (to.clientX !== 500 || to.clientY !== 500) fireEvent.pointerMove(window, { pointerId, ...to })
+      fireEvent.pointerUp(window, { pointerId, ...to })
+    }
+    // A drag pans, and a press inside a window is not outside: both keep everything open.
+    press(canvas, 41, { clientX: 560, clientY: 540 })
+    press(within(frame).getByText('Step 1 · Formation · orchestrated'), 42)
+    expect(frame).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'mission notes' })).toBeInTheDocument()
+    // A plain click of bare canvas puts them all away (archon-kiwt.2).
+    press(canvas, 43)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Formation · Frame' })).toBeNull())
+    expect(screen.queryByRole('dialog', { name: 'mission notes' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Mission notes' }))
+    expect(await screen.findByRole('textbox', { name: 'Note for the mission' })).toHaveValue('Kept while folded')
   })
 
   it('states routes in words, follows them to other windows, and says a route not wired yet leads nowhere', async () => {
@@ -2755,7 +2704,7 @@ describe('FormationsCockpit reference parity', () => {
     expect(within(mission).queryByRole('region', { name: 'Run' })).toBeNull()
   })
 
-  type ListedRun = { runId: string; status: string; final: boolean; missionSlug: string; inputCardId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number; requestedAt?: string }>
+  type ListedRun = { runId: string; number?: number; status: string; final: boolean; missionSlug: string; inputCardId: string; eventCount: number; waitingGates?: Array<{ gateId: string; requestedSeq: number; requestedAt?: string }>
     missionId?: string; missionRev?: number; startedAt?: string; updatedAt?: string; startedBy?: string }
   function installRunsMock(runs: ListedRun[], events: Record<string, TestRunEvent[]> = {}) {
     const verdicts: Array<{ url: string; body: Record<string, unknown> }> = []
@@ -2778,7 +2727,6 @@ describe('FormationsCockpit reference parity', () => {
         const run = runs.find(item => item.runId === runURL[1])
         if (!run) return reply(null, 404)
         if (!runURL[2]) return reply({ status: { ...run, events: events[run.runId] || [] } })
-        if (runURL[2] === '/evidence/mission') return reply({ mission: { graph: { ...makeBoard(), rev: run.missionRev }, missionRev: run.missionRev, text: { text: '', bytes: 0 } } })
         if (runURL[2] === '/events') return reply({ events: events[run.runId] || [] })
         if (runURL[2] === '/escalations') return reply({ escalations: [] })
         if (runURL[2].endsWith('/request')) return reply({ request: { gateId: 'gate_review', requestedSeq: 4, criterion: 'Review the frame', input: { fromNodeId: 'fmn_frame', text: 'Question for ' + run.runId, truncated: false } } })
@@ -2875,20 +2823,19 @@ describe('FormationsCockpit reference parity', () => {
   it.each([
     { when: 'during the day', now: new Date(2026, 9, 3, 12, 0), asked: new Date(2026, 9, 3, 11, 55), started: new Date(2026, 9, 3, 11, 54), askedLabel: '11:55', startedLabel: '11:54' },
     { when: 'just after midnight', now: new Date(2026, 9, 3, 0, 2), asked: new Date(2026, 9, 2, 23, 57), started: new Date(2026, 9, 2, 23, 56), askedLabel: '2 Oct 23:57', startedLabel: '2 Oct 23:56' },
-  ])('says since when a run waits, who started it and which revision it ran $when', async ({ now, asked, started, askedLabel, startedLabel }) => {
+  ])('says which run waits, since when, and who started it $when', async ({ now, asked, started, askedLabel, startedLabel }) => {
     // Freeze Date alone so polling and Testing Library's waits still use real timers.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(now)
-    installRunsMock([{ runId: 'run_01SINCE', status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4,
+    installRunsMock([{ runId: 'run_01SINCE', number: 2, status: 'waiting_human', final: false, missionSlug: 'test-board', inputCardId: 'mis_showcase', eventCount: 4,
       missionId: 'brd_test', missionRev: 5, startedAt: started.toISOString(), startedBy: 'agent:driver',
       waitingGates: [{ gateId: 'gate_review', requestedSeq: 4, requestedAt: asked.toISOString() }] }], { run_01SINCE: waitingEvents('run_01SINCE') })
     await renderCockpit()
     const banner = await screen.findByTestId('run-banner')
     await waitFor(() => expect(within(banner).getByTestId('run-point')).toHaveTextContent(`waiting for you at Review since ${askedLabel}`))
     expect(banner.querySelector('.run-when')?.textContent).toBe(`started ${startedLabel} · for 6m · agent:driver`)
-    const dock = screen.getByTestId('canvas-dock')
-    expect(dock).toHaveTextContent('Showing revision 5 · read only')
-    expect(within(dock).getByRole('button', { name: 'Edit current mission · revision 7' })).toBeInTheDocument()
+    expect(within(banner).getByTestId('run-name')).toHaveTextContent('Run 2')
+    expect(banner.textContent).not.toMatch(/revision/i)
   })
 
   it.each([
@@ -3571,33 +3518,6 @@ describe('FormationsCockpit reference parity', () => {
     unmount()
     expect(viewport).not.toHaveClass('panning')
   })
-  it('REVIEW note save survives a historical view visit without leaving Saving stuck', async () => {
-    window.history.replaceState(null, '', '/?mission=test-board&run=run_01FROZEN')
-    installRunsMock([{runId:'run_01FROZEN',status:'succeeded',final:true,missionSlug:'test-board',missionId:'brd_test',missionRev:5,inputCardId:'mis_showcase',eventCount:0}])
-    await renderCockpit()
-    fireEvent.click(await screen.findByRole('button',{name:'Edit current mission · revision 7'}))
-    const originalFetch=globalThis.fetch
-    let release!: () => void
-    const held=new Promise<void>(resolve=>{release=resolve})
-    globalThis.fetch=vi.fn(async (input,init)=>{
-      const response=await originalFetch(input,init)
-      if(String(input).endsWith('/notes')&&init?.method==='PATCH')await held
-      return response
-    })
-    fireEvent.click(screen.getByRole('button',{name:'Mission notes'}))
-    const note=await screen.findByRole('textbox',{name:'Note for the mission'})
-    fireEvent.change(note,{target:{value:'Submitted before history'}})
-    fireEvent.click(screen.getByRole('button',{name:'Add note'}))
-    await screen.findByRole('button',{name:'Saving…'})
-    fireEvent.click(screen.getByTestId('nav-run-run_01FROZEN'))
-    await screen.findByRole('button',{name:'Edit current mission · revision 7'})
-    await act(async()=>{release();await held})
-    fireEvent.click(screen.getByRole('button',{name:'Edit current mission · revision 7'}))
-    await waitFor(()=>expect(note).not.toHaveAttribute('readonly'))
-    expect(screen.queryByRole('button',{name:'Saving…'})).toBeNull()
-    expect(screen.getByRole('button',{name:/^(Add note|Reply)$/})).toBeEnabled()
-  })
-
   it('channel-save start must not launch another mission after navigation', async () => {
     const second={...makeBoard(),id:'second',slug:'second-board',title:'Second board',etag:'second-etag'}
     patches=installFetchMock({boards:[makeBoard(),second],runStatus:{status:'succeeded',final:true}})

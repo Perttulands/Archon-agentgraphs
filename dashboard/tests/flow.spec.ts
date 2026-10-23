@@ -155,7 +155,7 @@ test('Flow reads declared values without a saved layout and keeps rows still whe
   await outputs.getByRole('button').click()
   await expect(page.getByRole('dialog', { name: 'file summary', exact: true })).toContainText('All tests pass.')
   await page.keyboard.press('Escape')
-  await expect(page.getByTestId('canvas-dock')).toHaveCount(0)
+  await expect(page.getByTestId('block-row')).toHaveCount(0)
   await expect(page.getByTestId('flow-step-gate').locator('.flow-state')).toHaveText('pass')
   await expect(page.getByTestId('run-banner').locator('.run-when')).toHaveText('by agent:archon')
   const reason = flow.getByRole('button', { name: 'The reviewed implementation passes all checks.' })
