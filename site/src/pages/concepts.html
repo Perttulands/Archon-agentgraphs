@@ -1,0 +1,86 @@
+<!--
+title: Concepts
+description: The words Archon uses on every surface, from mission and Input card to slot, seat, gate, End node, Limit card and run.
+lead: Archon uses one name per thing, in the cockpit, the CLI, the skill and notes. Learn these and every other page reads plainly. Data names in parentheses appear only in JSON and TOML.
+-->
+
+<h2>The mission</h2>
+
+<dl>
+  <dt>Mission</dt>
+  <dd><p>The reusable unit: one graph in one file, <code>&lt;slug&gt;.mission.toml</code>, with a stable ID, a slug and a revision. A mission works like a skill: it carries everything a run needs, so an agent can start it, send it off inside other work or chain it after another mission. Never call it a board; that was the old name.</p></dd>
+  <dt>Input card (<code>inputCard</code>)</dt>
+  <dd><p>The mission's entry node. It holds the mission's goal, the inputs a run supplies, the outputs a successful run promises, and an <code>out</code> port wired to the first step. A mission has exactly one.</p></dd>
+  <dt>Input</dt>
+  <dd><p>A named value each run supplies: <code>text</code>, <code>file</code> or <code>folder</code>, required or optional. Step briefs reference it as <code>{name}</code>. A mission that declares none takes one required text input called <code>brief</code>.</p></dd>
+  <dt>Output</dt>
+  <dd><p>A named result a successful run promises, bound to one step's output port with <code>from = "&lt;step-id&gt;:&lt;port-id&gt;"</code>. Drivers chain missions by passing an output to the next mission's input.</p></dd>
+  <dt>Note</dt>
+  <dd><p>A thread on the mission or on one node, shown as a sticky on the canvas. Notes hold the operator's intent and the conversation about it. They are not instructions to seats: the managing agent turns them into briefs, staffing and wiring.</p></dd>
+</dl>
+
+<h2>Steps and the agents in them</h2>
+
+<dl>
+  <dt>Formation, or step</dt>
+  <dd><p>A unit of work on the canvas: the team of agents that does it. In sentences for the operator "step" means the same thing. There are three types and no others:</p>
+    <ul>
+      <li><strong>solo</strong>: one seat.</li>
+      <li><strong>peer</strong>: two or more seats that open independently, then converse until every peer acknowledges one proposed result.</li>
+      <li><strong>orchestrated</strong>: one controller that directs its bound workers.</li>
+    </ul></dd>
+  <dt>Slot</dt>
+  <dd><p>A position in a formation. The slot owns what its seat runs: a harness (<code>claude-code</code>, <code>openai-codex</code> or <code>pi</code>), a model (blank means the harness default) and an effort. The cockpit writes a slot as a sentence: <em>Worker 1 is vanilla on Claude Code · opus · low.</em></p></dd>
+  <dt>Role (persona card)</dt>
+  <dd><p>Optional, generic role text on a slot, such as <code>reviewer</code>. A role carries no harness, model or effort. Every Archon has seven built-in roles: <code>scout</code>, <code>planner</code>, <code>builder</code>, <code>judge</code>, <code>orchestrator</code>, <code>debugger</code> and <code>reviewer</code>. A slot without a role is a <em>vanilla</em> agent.</p></dd>
+  <dt>Character</dt>
+  <dd><p>A saved staffing: a name, a role, a harness, a model and an effort. Stamping a slot with a character copies those values and keeps no link.</p></dd>
+  <dt>Seat</dt>
+  <dd><p>A slot's running agent session: an ordinary tmux session named <code>archon-&lt;run&gt;-&lt;slot&gt;</code>. The runtime creates it, briefs it and cleans it up. You may type into it at any time.</p></dd>
+  <dt>Brief</dt>
+  <dd><p>What a formation's seats are told: the step's goal and any reference files. The runtime wraps it with the run's inputs, routed work, gate feedback and the output contract.</p></dd>
+</dl>
+
+<h2>Checking and ending</h2>
+
+<dl>
+  <dt>Gate</dt>
+  <dd><p>A criterion checked between steps by one or more kinds, run in this order and stopping at the first failure: <strong>code</strong> (a string check on the output), <strong>formation</strong> (a judge chain of agents) and <strong>human</strong> (the operator's verdict). A gate's ports are <code>in</code>, <code>pass</code>, <code>fail</code> and <code>judge</code>. Verdicts read <span class="verdict pass">PASS</span> and <span class="verdict fail">FAIL</span>.</p></dd>
+  <dt>Judge chain</dt>
+  <dd><p>The formations wired from a gate's <code>judge</code> port and back to it. Each judge reads the work (and the judges before it); the last one's verdict decides.</p></dd>
+  <dt>Pushback edge</dt>
+  <dd><p>A gate's <code>fail</code> route wired back to earlier work. It delivers the verdict as feedback and starts the next attempt. Only a Limit card caps how many times it loops.</p></dd>
+  <dt>End node (<code>end</code>)</dt>
+  <dd><p>Ends a path on purpose, with outcome <code>done</code> or <code>rejected</code>. Every step output and every gate route must lead to a step, a gate or an End node.</p></dd>
+  <dt>Limit card (<code>limit</code>)</dt>
+  <dd><p>Caps the rounds, time or tokens of one step, or of the whole mission when it covers the Input card. A run has no limits without one, and nothing adds one by default.</p></dd>
+  <dt>Question and answer</dt>
+  <dd><p>What a human gate asks the operator, and the operator's verdict there: Approve or Send back, with a response that travels on with the work.</p></dd>
+</dl>
+
+<h2>Runs</h2>
+
+<dl>
+  <dt>Run</dt>
+  <dd><p>One admitted start of a mission, or of a single step on its own. A run freezes the mission, its staffing and its roles when it starts, so later edits change later runs only. The cockpit names a run by its number in its mission: Run 3.</p></dd>
+  <dt>Attempt</dt>
+  <dd><p>One execution of a step. A send-back, a resume that redispatches or a grant starts the next attempt. Each attempt has its own artifact directory.</p></dd>
+  <dt>Driver</dt>
+  <dd><p>The recorded actor that started a run (<code>startedBy</code>), such as <code>agent:archon</code> or <code>human:ui</code>. Shown verbatim.</p></dd>
+  <dt>The operator and the agent</dt>
+  <dd><p>The operator is the person (<code>human:ui</code> in data when acting through the cockpit). The agent is the managing agent the operator works with through the CLI. The managing agent is never a seat.</p></dd>
+  <dt>Ledger and projection</dt>
+  <dd><p>Each run's history is an append-only file of numbered events. Everything you see, in the CLI, the API and the cockpit, is a sanitized projection of that ledger.</p></dd>
+</dl>
+
+<h2>How a run moves</h2>
+
+<ol class="steps">
+  <li><p><strong>Admission.</strong> The daemon validates the mission and the supplied inputs, freezes definitions and staffing, records <code>run_started</code> and answers HTTP 202 with the run ID. Any problem rejects the start with every finding listed, and no run is recorded.</p></li>
+  <li><p><strong>Dispatch.</strong> Every step whose inputs have all arrived starts at once. Its seats get a one-line pointer to a brief file and work in the run's directory.</p></li>
+  <li><p><strong>Output.</strong> A seat finishes with one <code>archon-outputs</code> block naming each declared port, then the run's completion sentinel. The output moves along every wire from that port.</p></li>
+  <li><p><strong>Gates.</strong> A gate evaluates one input at a time: code check, judge chain, then the human, and routes <span class="verdict pass">PASS</span> or <span class="verdict fail">FAIL</span>.</p></li>
+  <li><p><strong>Finish.</strong> When every path has ended and nothing else can run, the run succeeds; or it fails because a path reached a rejected End; or it ends <code>picked</code> when its work came through a best-attempt pick.</p></li>
+</ol>
+
+<p>See <a href="runs.html">Run and drive</a> for the commands, and <a href="repo:docs/CONTRACT.md#definitions-and-storage">CONTRACT.md, Definitions and storage</a> for the full table of nouns.</p>

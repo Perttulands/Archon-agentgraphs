@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Archon mark: an A whose apex is the coordinating node. Colours are the
+       chrote-dark theme tokens: surface, accent and text. -->
+  <rect width="32" height="32" rx="7" fill="#1a1a1a"/>
+  <path d="M8 26 16 9l8 17" fill="none" stroke="#6b9fff" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M11.5 20h9" stroke="#6b9fff" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="16" cy="8" r="4.2" fill="#e5e5e5"/>
+</svg>

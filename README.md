@@ -11,6 +11,11 @@ work in tmux sessions on your machine. The UI shows their assignments and
 terminal output; the coordinator routes results through the graph and keeps
 the run history on disk.
 
+A source checkout also holds a documentation site covering installation,
+first runs, missions, gates, limits, Pi, operation and reference; see
+[site/README.md](https://github.com/Perttulands/Archon-agentgraphs/blob/main/site/README.md)
+to build and preview it. Release archives do not include it.
+
 ## What Archon is
 
 Archon makes chaining agents and gates easy and great. That is all it does.
@@ -53,6 +58,12 @@ one archive. Choose `amd64` for x86-64 machines or `arm64` for ARM64, then
 download the archive and `SHA256SUMS` from the
 [latest release](https://github.com/Perttulands/Archon-agentgraphs/releases/latest).
 No Go, Node or frontend server is needed to use the release.
+
+The latest published release is v0.1.0 (2026-09-14). It predates missions,
+End nodes, Limit cards, `run wait` and Pi seats, which this README describes.
+Until a newer release is published, [build from source](#build-from-source)
+to get them; `VERSION` still reads `0.1.0`, so identify a build by the commit
+`archon --version` prints.
 
 For the x86-64 release:
 
@@ -173,10 +184,11 @@ select one with `--arch amd64` or `--arch arm64`.
 ```bash
 git clone https://github.com/Perttulands/Archon-agentgraphs.git archon
 cd archon
-./scripts/build-release.sh --out "$PWD/release" --arch amd64
+./scripts/build-release.sh --out "$PWD/dist" --arch amd64
 ```
 
-Install the resulting archive as above. See [release packaging](docs/releasing.md)
+Install the resulting archive from `dist/` as above; Git ignores `dist/`, so
+later builds are not refused for untracked output. See [release packaging](docs/releasing.md)
 for the archive layout, checks and publication procedure.
 
 ## Develop

@@ -1,0 +1,180 @@
+<!--
+title: Missions
+description: Author a mission in the cockpit or with the CLI: the Input card, inputs and outputs, steps, briefs, wiring, fan-out and join, validation and layout.
+lead: A mission is a graph in one TOML file. You can draw it in the cockpit, build it with the CLI, or let an agent build it with you; all three edit the same file through the same rules. Drafts save with blanks, and only validation and run admission reject gaps.
+-->
+
+<h2>Two ways to author</h2>
+
+<div class="split">
+<div>
+<h3>In the cockpit</h3>
+<p>The row under the top bar holds the building blocks: Formation, Gate, End and Limit. Click Formation to add one, or drag any block onto the canvas. Right-click the canvas for the same choices. Drag from an output port to an input to wire.</p>
+<p>Click a card to open its window beside it; every field reads in full and edits in place. Each save is one undo step (Ctrl+Z, Ctrl+Shift+Z). Delete or Backspace removes the selection when the canvas has focus.</p>
+</div>
+<div>
+<h3>With the CLI</h3>
+<p>Every authoring command works offline on the files (<code>--workspace &lt;state-dir&gt;</code>) or through the daemon (<code>--server &lt;url&gt;</code>). Through the daemon, an open cockpit shows each edit live. There is no default: a command with neither flag says so and stops.</p>
+<p><code>archon -h</code> lists the nouns, <code>archon mission -h</code> a noun's commands, and <code>archon mission run -h</code> one command's flags. See the <a href="cli.html">CLI reference</a>.</p>
+</div>
+</div>
+
+<h2>Build a reviewed step with the CLI</h2>
+
+<p>This builds a step that makes a change, a judge gate that reviews it and sends failures back, an End node, a Limit card and a declared output. Take every ID from the JSON a command returns; never guess one. The commands are for bash or zsh and need <code>jq</code>. With no daemon running, use <code>--workspace "$ARCHON_STATE"</code> in place of <code>--server "$ARCHON_SERVER"</code>.</p>
+
+<code-block lang="bash">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+M=review
+
+archon --server "$ARCHON_SERVER" mission new "$M" --title "Reviewed change" --json
+archon --server "$ARCHON_SERVER" mission create "$M" --title "Change" --goal "Deliver a reviewed change" --json
+archon --server "$ARCHON_SERVER" mission input "$M" change --required --description "What to deliver and why" --json
+
+# The step that does the work. A new formation has one input, one output and its slots.
+WORK_JSON=$(archon --server "$ARCHON_SERVER" formation create "$M" solo --title "Build" --json)
+WORK=$(jq -r .formation.id <<<"$WORK_JSON")
+WORK_IN=$(jq -r '.formation.inputs[0].id' <<<"$WORK_JSON")
+WORK_OUT=$(jq -r '.formation.outputs[0].id' <<<"$WORK_JSON")
+WORK_SLOT=$(jq -r '.formation.slots[0].id' <<<"$WORK_JSON")
+archon --server "$ARCHON_SERVER" formation assign "$M" "$WORK" --slot "$WORK_SLOT" \
+  --harness openai-codex --effort medium --role builder --json
+archon --server "$ARCHON_SERVER" formation set-brief "$M" "$WORK" --goal "Make the change: {change}" --json
+archon --server "$ARCHON_SERVER" mission wire "$M" "$WORK:$WORK_IN" --json        # Input card -> Build
+
+# A judge, and a gate it decides.
+JUDGE_JSON=$(archon --server "$ARCHON_SERVER" formation create "$M" solo --title "Judge" --json)
+JUDGE=$(jq -r .formation.id <<<"$JUDGE_JSON")
+archon --server "$ARCHON_SERVER" formation assign "$M" "$JUDGE" --slot "$(jq -r '.formation.slots[0].id' <<<"$JUDGE_JSON")" \
+  --harness claude-code --model opus --effort xhigh --role judge --json
+archon --server "$ARCHON_SERVER" formation set-brief "$M" "$JUDGE" --goal "Judge whether the work delivers {change}." --json
+GATE=$(archon --server "$ARCHON_SERVER" gate create "$M" --kinds formation --title "Review" \
+         --criterion "The change satisfies the brief" --json | jq -r .gate.id)
+archon --server "$ARCHON_SERVER" gate judge "$M" "$GATE" --chain "$JUDGE" --json
+
+# Route everything: work into the gate, FAIL back, PASS to an End node.
+archon --server "$ARCHON_SERVER" formation wire "$M" "$WORK:$WORK_OUT" "$GATE:in" --json
+archon --server "$ARCHON_SERVER" formation wire "$M" "$GATE:fail" "$WORK:$WORK_IN" --json
+DONE=$(archon --server "$ARCHON_SERVER" end create "$M" --json | jq -r .end.id)
+archon --server "$ARCHON_SERVER" formation wire "$M" "$GATE:pass" "$DONE:in" --json
+
+# Optional: cap the loop, and promise an output.
+archon --server "$ARCHON_SERVER" limit create "$M" --target "$WORK" --rounds 3 --when-spent best --json
+archon --server "$ARCHON_SERVER" mission output "$M" result --from "$WORK:$WORK_OUT" --required \
+  --description "What changed" --json
+
+archon --server "$ARCHON_SERVER" mission validate "$M"
+archon --server "$ARCHON_SERVER" mission arrange "$M" --json > /dev/null
+</code-block>
+
+<p><code>mission validate</code> should print <code>review	0 errors	0 warnings</code>. After building or rewiring a graph, <code>mission arrange</code> lays it out in compact reading rows. Arrange replaces saved positions, so use it on purpose; ordinary edits place new cards without moving others.</p>
+
+<h2>The Input card</h2>
+
+<p>The Input card is the mission's entry and its contract with whoever runs it. It holds the goal, the inputs a run supplies, the outputs a successful run promises, optional reference files and how human gates reach the operator (<a href="gates.html#session-channel">the human channel</a>).</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" mission update "$M" --title "Change" --goal "Deliver a reviewed change"
+archon --server "$ARCHON_SERVER" mission update "$M" --file /abs/path/to/rubric.md      # repeat; --file '' clears
+</code-block>
+
+<h3 id="inputs">Inputs</h3>
+
+<p>Declare what a run must supply instead of baking specifics into briefs. A name is a lowercase letter followed by lowercase letters, digits or underscores. The kind is <code>text</code> (the default), <code>file</code> or <code>folder</code>; an input is optional unless required.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" mission input "$M" change --required --description "What to deliver and why"
+archon --server "$ARCHON_SERVER" mission input "$M" spec --kind file --description "An existing spec to follow"
+archon --server "$ARCHON_SERVER" mission input "$M"            # list what a run supplies
+archon --server "$ARCHON_SERVER" mission input "$M" spec --delete
+</code-block>
+
+<p>Briefs reference inputs as <code>{name}</code>. Each seat's brief gets the value in its place, or <code>(not supplied)</code> for an optional input left out. <code>{bead}</code> takes the run's <code>--bead</code> unless the mission declares an input named <code>bead</code>. Write <code>{{name}}</code> to show a seat a literal <code>{name}</code>. A reference to an undeclared name is the validation error <code>unknown_input_reference</code>.</p>
+
+<p>A mission that declares no inputs takes one required text input, <code>brief</code>, described by the Input card's input hint (<code>mission update --input-hint</code>).</p>
+
+<h3 id="outputs">Outputs</h3>
+
+<p>Declare what a successful run promises so an agent can chain the mission without reading its steps. Each output is bound to one step output port of the same kind.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" mission output "$M" report --kind file --from "$WORK:$WORK_OUT" --required --description "The final report"
+archon --server "$ARCHON_SERVER" mission output "$M"           # list them
+</code-block>
+
+<p>When the run ends at a <code>done</code> End, each output is the payload of its bound port that went down the path to that End, never an attempt a gate rejected. A required output the path never delivered fails the run with <code>missing_output</code>. A run that ends at a <code>rejected</code> End promises nothing.</p>
+
+<h2>Steps, ports and briefs</h2>
+
+<p>A step's brief says what it does (<code>formation set-brief --goal</code>, plus <code>--file</code> for reference files). Keep everything mission-specific in briefs: roles are generic and shared across missions. Name reference files by absolute path; authoring refuses a relative one (<code>relative_file_reference</code>), and a file that does not exist yet saves with a warning.</p>
+
+<p>Output ports carry <code>text</code> (the default), a <code>file</code> or a <code>folder</code>. For a file or folder port the seat returns an absolute path, and Archon keeps a read-only copy of that attempt's version, so a send-back loop that rewrites one project file keeps every version.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" formation add-output "$M" "$WORK" --label site --kind folder
+archon --server "$ARCHON_SERVER" formation set-port "$M" "$WORK" "$WORK_OUT" --kind file
+archon --server "$ARCHON_SERVER" formation inspect "$M" "$WORK"
+</code-block>
+
+<p>Edit nodes in place so their wires survive: <code>formation rename</code>, <code>formation set-type</code>, <code>mission update</code>, <code>gate update</code>. An empty value clears a field.</p>
+
+<h2 id="fan-out-and-join">Fan out and join</h2>
+
+<p>An output port feeds any number of inputs. Every step whose inputs have arrived starts at once, so the branches of a fan-out work at the same time. Each formation input takes one feed, and a formation starts only when every input port has a delivery. To join, wire each upstream with <code>--join</code>: an occupied input gains a new port and its wire in one edit.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" formation wire "$M" "$WORK:$WORK_OUT" "$REV1:$REV1_IN"
+archon --server "$ARCHON_SERVER" formation wire "$M" "$WORK:$WORK_OUT" "$REV2:$REV2_IN"
+archon --server "$ARCHON_SERVER" formation wire "$M" "$REV1:$REV1_OUT" "$LEAD:$LEAD_IN" --join
+archon --server "$ARCHON_SERVER" formation wire "$M" "$REV2:$REV2_OUT" "$LEAD:$LEAD_IN" --join
+</code-block>
+
+<p>Gate and Tool inputs stay single-feed. In the cockpit, dropping a wire on a fed input makes the same join.</p>
+
+<h2>Notes</h2>
+
+<p>Notes are the operator's intent, shown as stickies on the canvas. They are threads: append, and change only your own entries. An agent that builds a step should explain it on the step's thread in words the operator reads on the canvas.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" mission notes "$M"
+archon --server "$ARCHON_SERVER" mission note "$M" --node "$WORK" --text "Here a builder makes the change; a judge reviews it and sends it back with reasons."
+</code-block>
+
+<h2>Validate</h2>
+
+<p><code>mission validate</code> lists every finding that would stop a run, naming each node by title and ID, and exits 1 on any error. Run admission performs the same checks and refuses with HTTP 422 <code>RUN_ADMISSION_FAILED</code>, recording no run. Common findings:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Finding</th><th scope="col">Means</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>route_leads_nowhere</code></th><td>A step output or a gate route is not wired to a step, gate or End node.</td></tr>
+    <tr><th scope="row"><code>unstaffed_slot</code></th><td>A slot has no harness and effort.</td></tr>
+    <tr><th scope="row"><code>unknown_input_reference</code></th><td>A brief names <code>{x}</code> but the mission declares no input <code>x</code>.</td></tr>
+    <tr><th scope="row"><code>unbound_mission_output</code></th><td>An output has no <code>from</code>, or names no step output port.</td></tr>
+    <tr><th scope="row"><code>invalid_limit</code></th><td>A Limit card is unwired, doubled on one target, or has a bad value.</td></tr>
+    <tr><th scope="row"><code>unreachable_node</code> (warning)</th><td>No path from the Input card reaches this node.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>All codes: <a href="codes.html#validation-findings">Codes and statuses</a>.</p>
+
+<h2>Where missions live</h2>
+
+<code-block lang="text" title="Inside the state directory">
+.archon/missions/<slug>.mission.toml    the mission
+.archon/notes/<slug>.notes.toml         its note threads
+.archon/layout/<slug>.layout.toml       card positions
+.archon/runs/                           run ledgers and frozen snapshots
+.archon/artifacts/<run>/<node>/<attempt>/   each attempt's evidence
+agents/                                 role cards that add or override roles
+briefs/                                 the brief files seats were given
+workspaces/<run>/                       automatic run workspaces
+</code-block>
+
+<p>Any of these may be a symlink, and so may a single mission file, for example one kept in a project repository: Archon reads and writes through the link. A mission whose link lost its target lists as broken and the rest keep working. Mission files are read as strict TOML; a hand edit that repeats a key is refused, never read leniently. Field-by-field: <a href="mission-file.html">Mission file reference</a>.</p>
+
+<h2>Delete</h2>
+
+<p><code>mission delete</code> removes the mission and its layout and keeps run history. <code>formation delete</code> removes a step, its wires and its Limit cards. <code>gate delete</code> removes a gate and its routes; its judge formations remain.</p>

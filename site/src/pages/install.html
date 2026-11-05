@@ -1,0 +1,112 @@
+<!--
+title: Install
+description: Install Archon on Linux from a release archive or build it from source, and understand the installed layout.
+lead: Archon runs on Linux, on x86-64 (`amd64`) and ARM64 (`arm64`). A release archive holds the CLI, the daemon, the cockpit, the examples, the docs and the agent skill. To get what these pages describe today, build that archive from source.
+-->
+
+<div class="callout">
+  <p class="kit-label">Release or source</p>
+  <p>The download on the releases page is {{release.tag}}, which predates missions, Limit cards, End nodes, <code>run wait</code> and Pi (<a href="versions.html">what differs</a>). To follow these docs, <a href="#build-from-source">build from source</a>; the archive you build installs exactly the same way.</p>
+</div>
+
+<h2>What you need</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">For</th><th scope="col">Needs</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Using an archive</th><td>Linux, a shell, <code>sha256sum</code> and <code>tar</code>. No Go, Node or web server.</td></tr>
+    <tr><th scope="row">Building from source</th><td>Go 1.26.6 or newer; Node 20.19+ in the 20.x line, or 22.12+; Bash, Git, GNU tar and coreutils.</td></tr>
+    <tr><th scope="row">Running real agents</th><td>tmux, and the harness CLIs your slots name (<code>claude</code>, <code>codex</code>, <code>pi</code>), installed and signed in. See <a href="first-real-run.html">First real run</a>.</td></tr>
+    <tr><th scope="row">The delivery example</th><td>Also Beads (<code>bd</code>) and the shared skills its briefs name. Archon bundles neither.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The installer does not install tmux, model CLIs, Beads or shared skills, and it creates no service.</p>
+
+<h2 id="build-from-source">Build from source</h2>
+
+<p>The build script rebuilds the cockpit with <code>npm ci</code> and <code>npm run build</code>, then compiles both commands with CGO disabled. It builds both architectures unless you pick one.</p>
+
+<code-block lang="bash">
+git clone https://github.com/Perttulands/Archon-agentgraphs.git archon
+cd archon
+./scripts/build-release.sh --out "$PWD/dist" --arch amd64
+</code-block>
+
+<p>The script refuses uncommitted or untracked source; <code>--allow-dirty</code> builds anyway and stamps the commit <code>-dirty</code>. Keep the output in <code>dist/</code>, which Git ignores, so the next build after a <code>git pull</code> is not refused for untracked files. The output is an archive per architecture and a <code>SHA256SUMS</code> file. Install it from that directory:</p>
+
+<code-block lang="bash">
+cd dist
+sha256sum --check SHA256SUMS
+tar -xzf archon-{{version}}-linux-amd64.tar.gz
+cd archon-{{version}}-linux-amd64
+./install.sh --prefix "$HOME/.local"
+</code-block>
+
+<p>The archive name carries the <code>VERSION</code> file's number, still <code>{{version}}</code>; <code>archon --version</code> prints the commit that tells this build apart (<a href="versions.html">Releases and source</a>).</p>
+
+<h3>Just the two commands</h3>
+
+<p>For development you can build the commands without an archive. A plain build reports its version as <code>dev</code>, and a daemon built this way has no bundled cockpit: pass <code>--ui-dir</code> pointing at a built <code>dashboard/dist</code>, or it serves only the API and answers 404 at <code>/</code>.</p>
+
+<code-block lang="bash">
+export ARCHON_BIN="$HOME/archon-dev/bin"   # any directory outside the checkout
+mkdir -p "$ARCHON_BIN"
+(cd src && go build -o "$ARCHON_BIN/archon" ./cmd/archon \
+        && go build -o "$ARCHON_BIN/archond" ./cmd/archond)
+(cd dashboard && npm ci && npm run build)
+export PATH="$ARCHON_BIN:$PATH"
+</code-block>
+
+<h2>Install an archive</h2>
+
+<p>For a downloaded archive, work in the directory holding it and <code>SHA256SUMS</code>. Verify the checksum, unpack, and run the bundled installer. It defaults to <code>$HOME/.local</code>; <code>--prefix /absolute/path</code> picks another location.</p>
+
+<code-block lang="bash">
+sha256sum --ignore-missing --check SHA256SUMS
+tar -xzf archon-{{version}}-linux-amd64.tar.gz
+cd archon-{{version}}-linux-amd64
+./install.sh --prefix "$HOME/.local"
+export PATH="$HOME/.local/bin:$PATH"
+archon --version
+archond --version
+</code-block>
+
+<p>The installer checks the platform and the archive's own manifest before it changes anything. Keep development builds out of <code>&lt;prefix&gt;/bin</code>: the installer refuses to replace command paths it does not manage.</p>
+
+<h3>The installed layout</h3>
+
+<code-block lang="text" title="Under the prefix">
+bin/archon  -> ../lib/archon/current/bin/archon
+bin/archond -> ../lib/archon/current/bin/archond
+lib/archon/current -> releases/<version>-<commit>-<platform>
+lib/archon/releases/<version>-<commit>-<platform>/
+    bin/            archon, archond
+    share/archon/
+        ui/         the cockpit, found by archond automatically
+        examples/   delivery and operations-proof missions
+        docs/       PRODUCT, CONTRACT, DESIGN, ADRs, OpenAPI
+        skills/archon/   the agent skill
+</code-block>
+
+<p>Later pages use <code>ARCHON_SHARE</code> for <code>&lt;prefix&gt;/lib/archon/current/share/archon</code>.</p>
+
+<h2>Upgrades</h2>
+
+<p>Installing a newer archive adds a release directory and switches the <code>current</code> link atomically. Older releases stay on disk. A running daemon keeps its loaded binary until you restart it; restart it with the same <code>--state-dir</code> to keep missions and history, and read <a href="recovery.html#restarting-the-daemon">Restarting the daemon</a> first if runs are active.</p>
+
+<p>The installer refuses to replace command paths or a <code>current</code> link it does not manage, and refuses a changed installation that claims the same release identity.</p>
+
+<h2>Keep state outside the install</h2>
+
+<p>Runtime state (missions, notes, layouts, run ledgers and artifacts) lives in a state directory you choose with <code>archond --state-dir</code> and <code>archon --workspace</code>. Keep it outside the install prefix and outside any source checkout, so replacing a release never touches it. A common choice:</p>
+
+<code-block lang="bash">
+export ARCHON_STATE="${XDG_DATA_HOME:-$HOME/.local/share}/archon/state"
+umask 077
+mkdir -p "$ARCHON_STATE"
+</code-block>
+
+<p>Release packaging, the archive layout and publication are documented in <a href="repo:docs/releasing.md">docs/releasing.md</a>.</p>

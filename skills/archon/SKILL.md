@@ -7,10 +7,11 @@ description: Author Archon missions and drive their runs through the archond dae
 
 What we already learned lives in the brain: `brain show agent-completion` (agents that say done before the work is real), `brain show workflow-encoding` (encoding work as Beads graphs), `brain show agent-quality` (iterating agents against a quality bar, with measured costs).
 
-This skill documents the Archon contract of VERSION 0.1.0 as of 2026-10-01:
+This skill documents the Archon contract of the source it ships with, which
+is newer than the v0.1.0 release although `VERSION` still reads 0.1.0:
 the reusable unit is a mission, each slot owns its harness, model and effort,
 a Limit card is the only run limit, drivers pull with `run wait`, and every surface uses
-current names only. It ships with that source.
+current names only.
 `archon --version` names the build on PATH, and `archon --server "$ARCHON_SERVER"
 version` the daemon's too. When a build is older, a flag or behaviour named
 here may differ: read the command's `-h` and trust the binary.

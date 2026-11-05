@@ -1,0 +1,122 @@
+<!--
+title: Recovery and evidence
+nav: Recovery and evidence
+description: Read a blocked run, resume or redispatch it, restart the daemon safely, check seat cleanup, and manage run evidence and storage.
+lead: Archon never guesses. When a run cannot go on by itself it blocks, names why, and says whether a resume can continue it. Every recovery is an explicit command with a reason, recorded in the run's ledger.
+-->
+
+<h2>Read the block</h2>
+
+<p>Start from fresh status: <code>status</code>, <code>final</code>, <code>resumeAllowed</code> and <code>resumePolicy</code>. The problems route lists every block and error with the nodes it names.</p>
+
+<p class="setup-note">Commands on this page are for bash or zsh and need <code>jq</code>. Take the run ID from <code>run list</code> or the command that started it; never guess one.</p>
+
+<code-block lang="bash" title="Shell setup for this page">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+RUN=run_...                                   # the blocked run, from: archon --server "$ARCHON_SERVER" run list
+</code-block>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run status "$RUN"
+curl --silent "$ARCHON_SERVER/api/runs/$RUN/evidence/problems" | jq .data.problems
+</code-block>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Code</th><th scope="col">Means</th><th scope="col">Next move</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>coordinator_interrupted</code></th><td>The daemon restarted with the run in flight.</td><td>Resume. For dispatches it cannot reattach (<code>dispatch_reattach_failed</code>), <code>--mode redispatch</code>.</td></tr>
+    <tr><th scope="row"><code>coordinator_shutdown</code></th><td>A shutdown, such as a deploy, cut work short.</td><td>Resume after the restart.</td></tr>
+    <tr><th scope="row"><code>run_work_unfinished</code></th><td>Work remains that the run still owes.</td><td>Resume.</td></tr>
+    <tr><th scope="row"><code>limit_reached</code></th><td>A Limit card is spent.</td><td>With authority: <code>--grant</code>, or <code>--pick-best</code> under <code>grant_or_pick</code>; or abort.</td></tr>
+    <tr><th scope="row"><code>invalid_judge_result</code></th><td>A judge broke the verdict contract twice.</td><td>Resume to ask the judge again, or <code>--take-fail</code>.</td></tr>
+    <tr><th scope="row"><code>invalid_judge_pick</code></th><td>A judge broke the pick contract twice.</td><td>Resume: the final judge is asked again.</td></tr>
+    <tr><th scope="row"><code>output_not_kept</code></th><td>A step finished but its file or folder output could not be copied (space, permissions, the capture budget).</td><td>Fix the cause, then resume: the copy runs again without rerunning the step.</td></tr>
+    <tr><th scope="row"><code>seat_idle_without_sentinel</code></th><td>A seat sat idle twice for five minutes without finishing.</td><td>Inspect the seat, then <code>--mode redispatch</code>.</td></tr>
+    <tr><th scope="row"><code>tmux_server_start_failed</code></th><td>No tmux server on the daemon's socket.</td><td>Start it, then resume.</td></tr>
+    <tr><th scope="row"><code>reachable_node_starved</code></th><td>A join can never receive a missing input.</td><td>Not resumable. Fix the wiring and start a new run.</td></tr>
+    <tr><th scope="row"><code>persona_snapshot_invalid</code></th><td>The run's frozen staffing cannot start a seat.</td><td>Start a new run.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Resume</h2>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run resume "$RUN" --reason "Recovery evidence inspected"
+archon --server "$ARCHON_SERVER" run resume "$RUN" --mode redispatch --reason "Seat lost; run the step again"
+</code-block>
+
+<p>A plain resume (<code>--mode reattach</code>) runs whatever is still owed and reattaches each open dispatch the block names. It never re-delivers an input a gate already evaluated and never invents a missing completion. <code>--mode redispatch</code> abandons the open dispatches and runs those steps again as new attempts, each one more round for a Limit card. Gates still waiting keep waiting through a resume, and a verdict given while the run was blocked is routed by it.</p>
+
+<h3>409 Conflict</h3>
+
+<p>A 409 means your view is stale. Read fresh status and use the current <code>requestedSeq</code>. <em>human gate request is no longer pending</em> means someone else decided first or the gate has evaluated newer input. <em>coordinator is executing</em> means the run's last command is still settling: retry after a few seconds.</p>
+
+<h2 id="restarting-the-daemon">Restarting the daemon</h2>
+
+<p>Restart with the same state directory and configuration. Abort runs first only if you mean to end their seats.</p>
+
+<ul>
+  <li><strong>On SIGTERM</strong> the daemon fences new commands and dispatch, gives active turns five seconds, then detaches from its seats without ending them. Open dispatches stay in a resumable block; waiting human requests stay answerable.</li>
+  <li><strong>On startup</strong>, before listening, it scans non-final runs, recovers completed native turns where it can, and records a block naming anything unresolved. It never adopts or cleans up old seats, except seats kept on call for a human gate, which it verifies and keeps managing.</li>
+  <li><strong>A run that only waits on gates</strong> survives the restart waiting, with each request's original sequence. A run between steps is blocked (<em>coordinator restarted between steps; resume to continue</em>).</li>
+</ul>
+
+<p>After the restart: <code>run list</code>, then <code>run status</code> for each open run, and resume what is blocked.</p>
+
+<h3>Recovering from a chosen transcript</h3>
+
+<p>When a turn completed but the daemon could not prove it, you can name the evidence explicitly. All three flags go together, with absolute paths; the daemon checks the original brief's digest, pointer, cwd, session, model, effort and completed turn before continuing.</p>
+
+<code-block lang="bash">
+# Start archond with the same flags it always uses, plus these three:
+archond --executor tmux --state-dir "$ARCHON_STATE" --listen 127.0.0.1:8091 \
+  --socket "$ARCHON_SOCKET" --tmux-bin "$(command -v tmux)" \
+  --claude-transcripts "$HOME/.claude/projects" --codex-transcripts "$HOME/.codex/sessions" \
+  --resume-run "$RUN" \
+  --completed-transcript /abs/path/to/native-transcript.jsonl \
+  --completed-brief "$ARCHON_STATE/briefs/original-brief-file"
+</code-block>
+
+<h2>Seats and cleanup</h2>
+
+<p>Check every <code>seat_cleanup</code> outcome in a run's events. A success does not erase a cleanup failure.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Outcome</th><th scope="col">Means</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>ended</code></th><td>The runtime ended the seat.</td></tr>
+    <tr><th scope="row"><code>kept_on_call</code></th><td>Left running for a session-channel human gate.</td></tr>
+    <tr><th scope="row"><code>left_shutdown</code></th><td>Shutdown detached from a working seat; the restarted daemon reattaches, and the step's next attempt or the run's end ends it.</td></tr>
+    <tr><th scope="row"><code>gone</code></th><td>A kept seat had already disappeared.</td></tr>
+    <tr><th scope="row"><code>left_socket_changed</code></th><td>The tmux server was replaced, so the original seat could not be proven and was left alone.</td></tr>
+    <tr><th scope="row"><code>left_cleanup_failed</code></th><td>Ending the seat failed. Inspect it on the host.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>A seat that waits a minute on something Archon cannot end records a <code>seat_state</code>: <code>seat_not_ready</code>, <code>waiting_for_idle_input</code>, <code>brief_not_taken</code>, <code>turn_ended_without_sentinel</code> or <code>background_work_pending</code>. <code>run seats</code> shows it as <code>waiting</code>. Find the pane with <code>run seats</code> (its <code>sessionName</code>) and <code>tmux -S &lt;socket&gt; list-panes -a</code>.</p>
+
+<h2 id="evidence-and-storage">Evidence and storage</h2>
+
+<p>Archon keeps compact history separately from temporary files. History, frozen definitions, verdicts and briefs stay; working files expire.</p>
+
+<ul>
+  <li>While a run executes, its declared output copies share a <strong>32 MiB</strong> capture budget and <strong>4,096</strong> entries. A copy that would exceed it blocks with <code>output_not_kept</code> instead of partly keeping anything.</li>
+  <li>Once a run is final, its artifact directory is compacted: declared snapshots first, then small Markdown, text and JSON reports (up to 256 KiB each), within the per-run budget.</li>
+  <li>Completed ordinary evidence shares a <strong>256 MiB</strong> pool; the oldest expires first. Non-final runs, and runs they reference, are protected.</li>
+  <li>Archon never cleans the project's cwd, native harness transcripts or files reached through symlinks.</li>
+</ul>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run storage "$RUN"              # size, policy, retention, protected references
+archon --server "$ARCHON_SERVER" run storage "$RUN" --archive    # keep large evidence outside the ordinary budget
+archon --server "$ARCHON_SERVER" run storage "$RUN" --unarchive
+archon --server "$ARCHON_SERVER" run storage "$RUN" --dispose    # remove a final run's artifact files, keep its history
+</code-block>
+
+<p>Archiving can also unblock a pending output copy before <code>run resume</code>. Archive cannot restore files that already expired. Export anything that must outlive this evidence into its own project.</p>
+
+<p>Full rules: <a href="repo:docs/CONTRACT.md#shutdown-and-recovery">CONTRACT.md, Shutdown and recovery</a>, <a href="repo:docs/CONTRACT.md#run-evidence-lifecycle">Run evidence lifecycle</a> and <a href="repo:skills/archon/references/recovery.md">the skill's recovery reference</a>.</p>

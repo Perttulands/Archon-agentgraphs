@@ -1,0 +1,102 @@
+<!--
+title: Lab quickstart
+nav: Lab quickstart
+description: Import the delivery mission, start a lab daemon, open the cockpit and run the mission without launching any agents.
+lead: The lab executor runs a mission's routing without launching agents: each step echoes what it received, and gates read synthetic verdicts you supply. It is the quickest way to see the cockpit, learn the commands and check that a mission is wired the way you think.
+-->
+
+<p>You need <code>archon</code> and <code>archond</code> on your <code>PATH</code>, from an archive or a source build (<a href="install.html">Install</a>). Lab needs no tmux and no model CLIs.</p>
+
+<h2 id="steps">Run the delivery mission in lab</h2>
+
+<ol class="steps">
+<li>
+<h3 id="state">Choose a state directory and the examples</h3>
+<p>The state directory is where the daemon keeps missions and run history. The examples ship in the archive's <code>share/archon/examples</code>, or in <code>examples/</code> of a checkout.</p>
+<code-block lang="bash">
+export ARCHON_STATE="${XDG_DATA_HOME:-$HOME/.local/share}/archon/state"
+export EXAMPLES="$HOME/.local/lib/archon/current/share/archon/examples"   # or: "$PWD/examples" in a checkout
+umask 077
+mkdir -p "$ARCHON_STATE/.archon/missions" "$ARCHON_STATE/.archon/notes"
+</code-block>
+</li>
+
+<li>
+<h3 id="import">Import the delivery mission</h3>
+<p>There is no import command: a mission is imported by copying (or symlinking) its TOML into the state directory. Then validate it and lay out its cards.</p>
+<code-block lang="bash">
+cp "$EXAMPLES/delivery.mission.toml" "$ARCHON_STATE/.archon/missions/"
+cp "$EXAMPLES/delivery.notes.toml"   "$ARCHON_STATE/.archon/notes/"
+archon --workspace "$ARCHON_STATE" mission validate delivery
+archon --workspace "$ARCHON_STATE" mission arrange delivery --json > /dev/null
+</code-block>
+<p><code>mission validate</code> prints <code>delivery	0 errors	0 warnings</code>. <code>--workspace</code> works on the files directly; it is for a state directory no daemon is serving.</p>
+</li>
+
+<li>
+<h3 id="daemon">Start a lab daemon</h3>
+<p>Leave it running in this terminal; Ctrl+C stops it.</p>
+<code-block lang="bash">
+archond --executor lab --state-dir "$ARCHON_STATE" --listen 127.0.0.1:8091
+</code-block>
+<p>From a source build, add <code>--ui-dir /absolute/path/to/archon/dashboard/dist</code> (after <code>npm ci &amp;&amp; npm run build</code> in <code>dashboard/</code>); an installed daemon finds its bundled cockpit by itself. The daemon prints <code>Archon coordinator http://127.0.0.1:8091</code> when it is listening.</p>
+</li>
+
+<li>
+<h3 id="cockpit">Open the cockpit</h3>
+<p>Open <a href="http://127.0.0.1:8091">http://127.0.0.1:8091</a>. On Missions, choose Delivery. Things to try:</p>
+<ul>
+  <li>Click a card to open its window beside it. Every field reads in full and edits in place, with Undo and Redo in the toolbar (Ctrl+Z, Ctrl+Shift+Z).</li>
+  <li>Click a slot to open its staffing sentence: <em>Plan is planner on Claude Code · opus · xhigh</em>. Each word opens its own list.</li>
+  <li>Read the note stickies: the operator's intent, kept on the canvas.</li>
+  <li>Switch between Canvas and Flow, which shows sequence, feeds and gating as a line.</li>
+  <li>Open Agents to see the seven built-in roles and which slots use each.</li>
+</ul>
+</li>
+
+<li>
+<h3 id="run">Run it in lab</h3>
+<p>Delivery takes one input, <code>change</code>. Its Beads review gate is a judge gate, and in lab a judge passes only if it finds exactly one <code>archon-verdict</code> block in what it reads, so put a synthetic one in the input. In a second terminal:</p>
+<code-block lang="bash">
+export ARCHON_SERVER=http://127.0.0.1:8091
+archon --server "$ARCHON_SERVER" mission input delivery
+
+cat > /tmp/lab-change.md <<'EOF'
+Add a CSV export to the report page.
+
+```archon-verdict
+{"verdict":"pass","reason":"Lab fixture","evidence":["Simulated input"]}
+```
+EOF
+
+RUN=$(archon --server "$ARCHON_SERVER" mission run delivery \
+        --input-file change=/tmp/lab-change.md --bead demo-1 --json | jq -r .data.runId)
+archon --server "$ARCHON_SERVER" run wait "$RUN" --until final
+</code-block>
+<p><code>run wait</code> prints <code>Run … (mission "Delivery") succeeded at #33.</code> and exits 0. Without the fixture the run would block at the judge, which is what lab is for: proving routing, not judging work.</p>
+</li>
+
+<li>
+<h3 id="inspect">Inspect what happened</h3>
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run list
+archon --server "$ARCHON_SERVER" run status   "$RUN"
+archon --server "$ARCHON_SERVER" run attempts "$RUN"
+ls "$ARCHON_STATE/briefs"        # lab-*.md: each brief as a seat would have received it
+</code-block>
+<p>In the cockpit the run appears under Delivery as Run 1. Choosing it shows each step's output chips; <em>N attempts</em> on a card opens the attempts window. Lab outputs read <code>lab-fake output from planner using claude-code for Plan</code>: honest about being simulated.</p>
+</li>
+</ol>
+
+<h2>Where to go next</h2>
+
+<ul>
+  <li><a href="first-real-run.html">First real run</a>: the same loop with a real agent.</li>
+  <li><a href="missions.html">Build missions</a>: write your own, starting from a one-step mission that validates.</li>
+  <li><a href="limits.html#best-of-n">Limit cards</a>: lab can also rehearse a best-of-N pick with an <code>archon-pick</code> fixture.</li>
+</ul>
+
+<div class="callout danger">
+  <p class="kit-label">No authentication</p>
+  <p>The daemon serves its API and cockpit to anyone who can reach the listener. Keep <code>--listen</code> on loopback or another interface you trust.</p>
+</div>

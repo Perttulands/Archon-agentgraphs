@@ -534,16 +534,6 @@ paths:
           description: Enveloped data.brief contains dispatchSeq, nodeId, slotId, attempt and text capped at 256 KiB. Only the path recorded by this run's slot_dispatch at that sequence, naming a direct child of the state directory's briefs, is read.
         '404':
           description: No such run, no slot_dispatch at that sequence, or no readable brief
-  /api/runs/{runId}/evidence/mission:
-    parameters:
-    - $ref: '#/components/parameters/RunID'
-    get:
-      summary: Read the mission as the run froze it at admission
-      responses:
-        '200':
-          description: Enveloped data.mission contains missionRev and text, the frozen mission TOML capped at 256 KiB; later edits never change it.
-        '404':
-          description: No such run
   /api/runs/{runId}/evidence/artifacts:
     parameters:
     - $ref: '#/components/parameters/RunID'
@@ -666,6 +656,28 @@ paths:
           description: No such file, or a directory or other non-regular file
         '413':
           description: Buffered file exceeds 16 MiB
+  /api/files/directory:
+    parameters:
+    - in: query
+      name: path
+      required: true
+      description: An absolute directory path on the daemon host. Symlinks are followed.
+      schema:
+        type: string
+    get:
+      summary: List a directory for the run start dialog's path picker
+      description: Lists subdirectories and regular files, directories first and then by name; entries that cannot be stat'ed and special files are skipped. Read-only.
+      responses:
+        '200':
+          description: Enveloped data contains path (the cleaned absolute path) and items, each with name, path (absolute) and isDir.
+        '400':
+          description: A relative path, which has no base; use an absolute path
+        '403':
+          description: The daemon's user may not read the directory
+        '404':
+          description: No such directory
+        '500':
+          description: The path is not a readable directory, such as a regular file
   /api/runs/{runId}/gates/{gateId}/verdict:
     parameters:
     - $ref: '#/components/parameters/RunID'

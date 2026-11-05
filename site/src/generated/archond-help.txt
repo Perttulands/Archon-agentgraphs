@@ -1,0 +1,39 @@
+Usage of archond:
+  -agents-dir string
+        absolute persona card directory; defaults to <state-dir>/agents
+  -claude-transcripts string
+        Claude native projects directory
+  -cockpit-url string
+        cockpit URL for links in notifications
+  -codex-transcripts string
+        Codex native sessions directory
+  -completed-brief string
+        absolute original brief file for that dispatch
+  -completed-transcript string
+        absolute native transcript for the unresolved completed dispatch
+  -executor string
+        seat executor: tmux (real seats) or lab (deterministic) (default "tmux")
+  -listen value
+        listen address; repeat for each trusted interface
+  -mission-label string
+        optional prefix before the unique run session name
+  -notify-command string
+        absolute executable run with each needs-you notification as JSON on stdin; empty disables notifications
+  -pi-transcripts string
+        Pi native sessions directory; defaults to Pi's own ($PI_CODING_AGENT_DIR/sessions, else ~/.pi/agent/sessions)
+  -resume-run string
+        explicitly resume this blocked run from a completed native turn
+  -run-workspace-root string
+        absolute root for automatic mission workspaces; defaults to <state-dir>/workspaces
+  -socket string
+        existing absolute tmux socket
+  -state-dir string
+        private absolute runtime and definition workspace
+  -theme-file string
+        absolute schema-1 theme file; empty uses bundled chrote-dark
+  -tmux-bin string
+        absolute guarded tmux wrapper
+  -ui-dir string
+        built UI directory; defaults to bundled UI when installed; empty disables UI
+  -version
+        print Archon version and source commit

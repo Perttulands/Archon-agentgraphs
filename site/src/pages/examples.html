@@ -1,0 +1,99 @@
+<!--
+title: Example missions
+nav: Examples
+description: The delivery mission and the historical operations-proof mission that ship with Archon, what they need and how to adapt them.
+lead: Archon ships two missions in `examples/` (and `share/archon/examples/` of an install). Read them for patterns; adapt their briefs before running them against real work.
+-->
+
+<h2>Delivery</h2>
+
+<p><a href="repo:examples/delivery.mission.toml">delivery.mission.toml</a> with its notes in <a href="repo:examples/delivery.notes.toml">delivery.notes.toml</a>. It takes a change from plan to reviewed delivery in a repository.</p>
+
+<figure class="diagram">
+  <svg viewBox="0 0 900 230" role="img" aria-labelledby="dl-title dl-desc">
+    <title id="dl-title">The delivery mission</title>
+    <desc id="dl-desc">Deliver a change feeds Plan, then Beads, then the Beads review gate, judged by the Beads reviewer. A fail sends the Beads back to Beads; a pass goes to Execution, an orchestrated step with a controller and three workers, then Final review, then the Delivered End node.</desc>
+    <defs><marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" class="g-arrow"/></marker></defs>
+    <path class="g-fail" d="M340 78 V40 H250 V84"/>
+    <text class="g-fail-text" x="262" y="32">FAIL</text>
+    <path class="g-wire" d="M110 110 H136" marker-end="url(#a2)"/>
+    <path class="g-wire" d="M220 110 H246" marker-end="url(#a2)"/>
+    <path class="g-wire" d="M330 110 H340"/>
+    <path class="g-pass" d="M420 110 H456" marker-end="url(#a2)"/>
+    <text class="g-pass-text" x="424" y="102">PASS</text>
+    <path class="g-wire" d="M600 110 H626" marker-end="url(#a2)"/>
+    <path class="g-wire" d="M730 110 H756" marker-end="url(#a2)"/>
+    <path class="g-judge" d="M370 142 V170"/>
+    <path class="g-judge" d="M390 170 V142"/>
+    <rect class="g-card" x="10" y="80" width="100" height="60" rx="4"/>
+    <text class="g-small" x="20" y="100">INPUT</text>
+    <text class="g-title" x="20" y="120" style="font-size:12px">change</text>
+    <rect class="g-card" x="140" y="80" width="80" height="60" rx="4"/>
+    <text class="g-small" x="150" y="100">SOLO</text>
+    <text class="g-title" x="150" y="120" style="font-size:12px">Plan</text>
+    <rect class="g-card" x="250" y="80" width="80" height="60" rx="4"/>
+    <text class="g-small" x="260" y="100">SOLO</text>
+    <text class="g-title" x="260" y="120" style="font-size:12px">Beads</text>
+    <rect class="g-gate" x="340" y="78" width="80" height="64" rx="4"/>
+    <text class="g-small" x="350" y="98">GATE</text>
+    <text class="g-title" x="350" y="118" style="font-size:12px">Beads</text>
+    <text class="g-text" x="350" y="132">review</text>
+    <rect class="g-card" x="320" y="170" width="130" height="44" rx="4"/>
+    <text class="g-small" x="330" y="187">JUDGE</text>
+    <text class="g-text" x="330" y="204">Beads reviewer</text>
+    <rect class="g-card" x="460" y="70" width="140" height="80" rx="4"/>
+    <text class="g-small" x="470" y="90">ORCHESTRATED</text>
+    <text class="g-title" x="470" y="110" style="font-size:12px">Execution</text>
+    <text class="g-text" x="470" y="128">Claude controller</text>
+    <text class="g-text" x="470" y="142">3 Codex workers</text>
+    <rect class="g-card" x="630" y="80" width="100" height="60" rx="4"/>
+    <text class="g-small" x="640" y="100">SOLO</text>
+    <text class="g-title" x="640" y="120" style="font-size:12px">Final review</text>
+    <rect class="g-end" x="760" y="85" width="120" height="50" rx="25"/>
+    <text class="g-small" x="782" y="106">END · DONE</text>
+    <text class="g-title" x="782" y="124" style="font-size:12px">Delivered</text>
+  </svg>
+  <figcaption>Delivery: a failed Beads review returns straight to Beads with the judge's reasons. Final review writes a report; no gate follows it, and the mission has no human gate.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Step</th><th scope="col">Staffing</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Plan</th><td><code>planner</code> on Claude Code at <code>xhigh</code></td></tr>
+    <tr><th scope="row">Beads</th><td>vanilla Claude Code at <code>medium</code></td></tr>
+    <tr><th scope="row">Beads reviewer (judge)</th><td><code>judge</code> on Claude Code at <code>xhigh</code></td></tr>
+    <tr><th scope="row">Execution</th><td><code>orchestrator</code> controller on Claude Code at <code>xhigh</code>; three <code>builder</code> workers on Codex at <code>medium</code></td></tr>
+    <tr><th scope="row">Final review</th><td><code>reviewer</code> on Codex with model <code>gpt-6-astra</code> at <code>max</code>, a consequential review</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>A run supplies one input, <code>change</code>, which every brief references as <code>{change}</code>. The target repository is the run's <code>--cwd</code> and the owning Bead its <code>--bead</code>.</p>
+
+<h3>What it needs</h3>
+<ul>
+  <li>Claude Code and Codex, signed in, and the Codex model the Final review slot names (or restaff it).</li>
+  <li>Beads (<code>bd</code>) in the target repository, and the shared skills its briefs name. Archon bundles neither.</li>
+  <li>A real change to deliver. Lab can rehearse its routing first (<a href="quickstart.html">Lab quickstart</a>).</li>
+</ul>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" mission run delivery \
+  --cwd /absolute/path/to/your/repository \
+  --input-file change=/absolute/path/to/change.md \
+  --bead your-project-123 --json
+</code-block>
+
+<h2>Operations proof</h2>
+
+<p><a href="repo:examples/operations-proof.mission.toml">operations-proof.mission.toml</a> is a historical proving mission from 2026-09-06: a producer writes an operations guide, an independent reviewer checks it against the source, an integrator folds in corrections, and the run ends at a real operator gate. Its briefs target that one task. Keep it as a pattern for producer, reviewer and human sign-off; adapt the briefs before running it.</p>
+
+<h2>More patterns</h2>
+
+<ul>
+  <li><a href="first-real-run.html#mission">The smallest mission that validates</a>: one step and an End.</li>
+  <li><a href="missions.html#build-a-reviewed-step-with-the-cli">A reviewed step</a>, built command by command.</li>
+  <li><a href="mission-file.html#a-complete-example">Draft and review</a>: a file output, judge plus human gate, pushback, best-of-three and a promised output.</li>
+  <li><a href="missions.html#fan-out-and-join">Fan out and join</a>: parallel reviewers merged by a lead.</li>
+</ul>

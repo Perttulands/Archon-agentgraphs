@@ -1,0 +1,93 @@
+<!--
+title: Contributing
+description: How the repository is laid out, the rules every change follows, where the canonical docs live, how to verify a change and how to work on this documentation site.
+lead: Archon is built in the open in one repository. Before changing it, read AGENTS.md and the area doc for what you are changing; they are the one statement of each area's vision and rules, and this page only points at them.
+-->
+
+<h2>The rules</h2>
+
+<p><a href="repo:AGENTS.md">AGENTS.md</a> holds three rules for every change, with reasons in <a href="repo:docs/PRODUCT.md">PRODUCT.md</a>:</p>
+
+<ul>
+  <li>Add no sandboxing, file confinement, blast-radius limits or authority checks.</li>
+  <li>Land renames and reshapes whole: migrate live data once, delete the old path, and add no deprecated aliases or compatibility shims.</li>
+  <li>Put no eval harness, tests or CI around the <code>archon</code> skill.</li>
+</ul>
+
+<p>Product direction (scope, the trust or visibility model, supported formation types, UX direction) is not settled inside a change; it is raised as a decision Bead labelled <code>product-decision</code>. Platform shortcomings found during work are recorded as Beads labelled <code>platform-gap</code>.</p>
+
+<h2>Canonical docs</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Doc</th><th scope="col">Is the source of truth for</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><a href="repo:docs/PRODUCT.md">docs/PRODUCT.md</a></th><td>What Archon is for, its philosophy and goals.</td></tr>
+    <tr><th scope="row"><a href="repo:docs/CONTRACT.md">docs/CONTRACT.md</a></th><td>The running contract: runtime semantics, authoring, gates and operator instructions.</td></tr>
+    <tr><th scope="row"><a href="repo:docs/DESIGN.md">docs/DESIGN.md</a></th><td>The cockpit's design language.</td></tr>
+    <tr><th scope="row"><a href="repo:docs/openapi/archon.yaml">docs/openapi/archon.yaml</a></th><td>The HTTP API's shapes.</td></tr>
+    <tr><th scope="row"><a href="repo:docs/releasing.md">docs/releasing.md</a></th><td>Release packaging, install and upgrade.</td></tr>
+    <tr><th scope="row"><a href="repo:skills/archon/SKILL.md">skills/archon/</a></th><td>How an agent drives Archon.</td></tr>
+    <tr><th scope="row"><code>docs/adr/</code></th><td>The rationale of past decisions, such as <a href="repo:docs/adr/0015-standalone-trusted-coordinator.md">ADR-0015</a> (the standalone trusted coordinator) and <a href="repo:docs/adr/0022-a-picked-run-is-not-a-success.md">ADR-0022</a> (picked runs).</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><code>docs/archive/</code> and <code>Perttus_vision_for_agent_orchestration/</code> are history, not instructions. When this site and a canonical doc disagree, the canonical doc wins: fix the site.</p>
+
+<h2>Project map</h2>
+
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>src/internal/formations/</code></th><td>The model, persistence and run engine.</td></tr>
+    <tr><th scope="row"><code>src/internal/coordinator/</code></th><td>Admission, runtime commands and projections.</td></tr>
+    <tr><th scope="row"><code>src/internal/api/</code></th><td>Authoring HTTP and local adapters.</td></tr>
+    <tr><th scope="row"><code>src/internal/daemon/</code></th><td><code>archond</code> flags, executor wiring and startup.</td></tr>
+    <tr><th scope="row"><code>src/cmd/archon/</code></th><td>The CLI.</td></tr>
+    <tr><th scope="row"><code>dashboard/</code></th><td>The mission editor and Agents view.</td></tr>
+    <tr><th scope="row"><code>site/</code></th><td>This documentation site.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Verify a change</h2>
+
+<code-block lang="bash" title="Go">
+cd src
+go test ./...
+go build ./cmd/archon && go build ./cmd/archond
+# CI has no claude or codex binary; check that too:
+env PATH=/usr/bin:/bin:$(dirname "$(command -v go)") go test ./...
+</code-block>
+
+<code-block lang="bash" title="Dashboard">
+cd dashboard
+npm ci
+npm run test:unit
+npm run build     # type-checks; npx tsc -b would break lint
+npm run lint
+ARCHON_BROWSER_PORT=<free-loopback-port> npm run test:browser
+</code-block>
+
+<p>Dashboard UI changes, and API changes that <code>dashboard/tests/cockpit-fixture.ts</code> mimics, run the browser suite and update the fixture.</p>
+
+<h2 id="this-site">Work on this site</h2>
+
+<p>The site lives in <code>site/</code> and needs only Node 20.19 or newer: no dependencies to install.</p>
+
+<code-block lang="bash">
+node site/build.mjs                           # writes site/dist and checks every link
+python3 -m http.server --directory site/dist 8000   # preview at http://127.0.0.1:8000
+</code-block>
+
+<ul>
+  <li>Pages are HTML fragments in <code>site/src/pages/</code>; the navigation is <code>site/site.config.mjs</code>.</li>
+  <li><code>repo:path#anchor</code> links point into the repository and are checked against the files and their headings.</li>
+  <li>The CLI and daemon references are generated from the binaries: <code>node site/tools/gen-reference.mjs --bin &lt;dir-with-archon-and-archond&gt;</code>, or <code>--check</code> to fail when they are stale.</li>
+  <li>Code blocks marked <code>validate="mission"</code> are validated by <code>archon mission validate</code> when the build is given <code>--archon &lt;path-to-archon&gt;</code>.</li>
+</ul>
+
+<p>CI's <code>docs-site</code> job runs the reference check and the build with <code>--archon</code> on every push.</p>
+
+<p>Release packaging, tagging and publishing are described in <a href="repo:docs/releasing.md">docs/releasing.md</a>.</p>

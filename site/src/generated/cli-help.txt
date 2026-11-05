@@ -1,0 +1,1051 @@
+=== archon
+usage: archon [--workspace <state-dir> | --server <url>] <mission|formation|gate|end|limit|tool|agent|run|peer> <command> [arguments]
+       archon [--server <url>] version
+
+Archon chains agents and gates. Name the state directory with --workspace to
+work on its files offline, or a daemon with --server; there is no default.
+Runtime commands (mission run, formation run, run, gate approve|reject) go
+through --server.
+
+  mission    missions: the reusable unit
+  formation  steps: the agents that do the work
+  gate       checks between steps, and human verdicts
+  end        End nodes, which end a path on purpose
+  limit      Limit cards, which cap a step or the whole mission
+  tool       Tool nodes
+  agent      role cards
+  run        runs, through the daemon
+  peer       a peer formation's conversation, for its seats
+
+Run "archon <noun> -h" for its commands and "archon <noun> <command> -h" for a command's flags.
+=== mission
+usage: archon mission <command> [arguments]
+
+A mission is the reusable unit: one .mission.toml file whose Input card starts each run.
+
+  delete <mission>                         remove the whole mission and its layout; run history remains
+  new <slug>                               create an empty mission
+  list                                     list the missions
+  inspect <mission> [<input>]              print the whole mission, or an Input card and the steps it reaches
+  notes <mission>                          print the mission's note threads
+  note <mission>                           add to a note thread
+  validate <mission>                       list every finding that would stop a run, naming each node by title and ID
+  arrange <mission>                        replace saved canvas positions with compact reading rows
+  create <mission>                         add the Input card to a mission that has none
+  update <mission> [<input>]               change the Input card
+  input <mission> [<name>]                 list the inputs a run supplies, or with a name declare, change or --delete that input
+  output <mission> [<name>]                list the outputs a successful run promises, or with a name declare, change or --delete that output
+  wire <mission> [<input>] <to-node:port>  wire the Input card to a step
+  run <mission>                            start a run
+
+<input> may be left out when the mission has one Input card.
+
+Run "archon mission <command> -h" for a command's arguments and flags.
+--- delete
+usage: archon mission delete <mission> [--json]
+Remove the whole mission and its layout; run history remains.
+
+flags:
+  -json
+        write JSON
+--- new
+usage: archon mission new <slug> [--title <title>] [--json]
+Create an empty mission.
+
+flags:
+  -json
+        write JSON
+  -title string
+        mission title
+  -updated-by string
+        update actor (default "agent:archon")
+--- list
+usage: archon mission list [--json]
+List the missions.
+
+flags:
+  -json
+        write JSON
+--- inspect
+usage: archon mission inspect <mission> [<input>] [--json]
+Print the whole mission, or an Input card and the steps it reaches.
+
+flags:
+  -json
+        write JSON
+--- notes
+usage: archon mission notes <mission> [--json]
+Print the mission's note threads.
+
+flags:
+  -json
+        write JSON
+--- note
+usage: archon mission note <mission> [--node <element-id>] (--text <text> | --file <path>) [--entry <id> [--clear]] [--author <human|agent>:<name>] [--json]
+Add to a note thread. With --entry, edit your own entry, or delete it with --clear.
+
+flags:
+  -author string
+        note author, human:<name> or agent:<name> (default "agent:archon")
+  -clear
+        delete the entry named by --entry
+  -entry string
+        your own entry to edit (with --text or --file) or delete (with --clear)
+  -file string
+        read note text from file
+  -json
+        write JSON
+  -node string
+        element id; omit for the mission thread
+  -text string
+        note text
+--- validate
+usage: archon mission validate <mission> [--json]
+List every finding that would stop a run, naming each node by title and ID. Exits 1 on any error.
+
+flags:
+  -json
+        write JSON
+--- arrange
+usage: archon mission arrange <mission> [--json]
+Replace saved canvas positions with compact reading rows.
+
+flags:
+  -json
+        write JSON
+--- create
+usage: archon mission create <mission> [--title <title>] [--goal <goal>] [--file <path>]... [--human-channel notify|session] [--x n] [--y n] [--json]
+Add the Input card to a mission that has none. Create the mission itself with archon mission new <slug>.
+
+flags:
+  -file value
+        reference file path; repeat for more
+  -goal string
+        mission goal
+  -human-channel string
+        how human gates reach the operator: notify (the default) or session
+  -json
+        write JSON
+  -title string
+        mission title
+  -updated-by string
+        update actor (default "agent:archon")
+  -x int
+        layout x coordinate
+  -y int
+        layout y coordinate
+--- update
+usage: archon mission update <mission> [<input>] [--title text] [--goal text] [--file path]... [--input-hint text] [--human-channel notify|session] [--json]
+Change the Input card. Only the flags you give change it, and an empty value clears that field.
+
+flags:
+  -file value
+        reference file path, replacing the current ones; repeat for more, or give an empty value to clear
+  -goal string
+        mission goal
+  -human-channel string
+        how human gates reach the operator: notify (the default) or session
+  -input-hint string
+        what a run brief for this mission should contain
+  -json
+        write JSON
+  -title string
+        mission title
+  -updated-by string
+        update actor (default "agent:archon")
+--- input
+usage: archon mission input <mission> [<name>] [--kind text|file|folder] [--required | --optional] [--description <text>] [--delete] [--json]
+List the inputs a run supplies, or with a name declare, change or --delete that input. A mission that declares none takes one required text input, brief. A new input is optional text unless the flags say otherwise, and only the flags you give change an existing one; step briefs reference it as {name}.
+
+flags:
+  -delete
+        remove the input
+  -description string
+        what the run should supply
+  -json
+        write JSON
+  -kind string
+        text (the default), file or folder
+  -optional
+        a run may leave it out
+  -required
+        a run must supply it
+  -updated-by string
+        update actor (default "agent:archon")
+--- output
+usage: archon mission output <mission> [<name>] [--kind text|file|folder] [--from <step-id>:<port-id>] [--required | --optional] [--description <text>] [--delete] [--json]
+List the outputs a successful run promises, or with a name declare, change or --delete that output. Each is bound with --from to one step output port of the same kind; when the run reaches a done End its value is that port's latest accepted output, a snapshot path for a file or folder. A missing required output fails the run. A new output is optional text unless the flags say otherwise, and only the flags you give change an existing one.
+
+flags:
+  -delete
+        remove the output
+  -description string
+        what the run produces
+  -from string
+        the step output port it comes from, <step-id>:<port-id>
+  -json
+        write JSON
+  -kind string
+        text (the default), file or folder
+  -optional
+        a successful run may leave it out
+  -required
+        a successful run must produce it
+  -updated-by string
+        update actor (default "agent:archon")
+--- wire
+usage: archon mission wire <mission> [<input>] <to-node:port> [--json]
+Wire the Input card to a step.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- run
+usage: archon mission run <mission> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]
+Start a run. Required: <mission>, and an --input or --input-file for each input the mission requires (archon mission input <mission> lists them); every other flag is optional. The mission's Limit cards set its limits; it has none without one.
+
+flags:
+  -actor string
+        run actor (default "agent:archon")
+  -bead string
+        the Beads issue the run belongs to
+  -context-path value
+        absolute file or directory the agents inspect as context; repeat for more
+  -cwd string
+        absolute existing directory the agents work in; omit to create a workspace for the run
+  -input value
+        an input value, name=value; repeat for each input (see archon mission input <mission>)
+  -input-file value
+        an input read from a UTF-8 file, name=path; repeat for more
+  -json
+        write JSON
+=== formation
+usage: archon formation <command> [arguments]
+
+A formation is a step: the team of agents that does it, solo, peer or orchestrated.
+
+  delete <mission> <formation>                             remove a step, its connections and its Limit cards
+  create <mission> [solo|peer|orchestrated]                add a step
+  list <mission>                                           list the steps with their slots and staffing
+  inspect <mission> <formation>                            print one step with its slots, ports, brief and connections
+  assign <mission> <formation>                             staff a slot
+  unassign <mission> <formation>                           empty a slot
+  set-brief <mission> <formation>                          write the step's brief
+  rename <mission> <formation> <title>                     change the step's title
+  set-type <mission> <formation> <solo|peer|orchestrated>  change the step's type
+  add-input <mission> <formation>                          add an input port
+  add-output <mission> <formation>                         add an output port
+  set-port <mission> <formation> <port>                    relabel a port, or set what an output port carries
+  wire <mission> <from-node:port> <to-node:port>           connect two ports
+  unwire <mission> <from-node:port> <to-node:port>         remove a connection
+  run <mission> <formation>                                run one step on its own
+
+Run "archon formation <command> -h" for a command's arguments and flags.
+--- delete
+usage: archon formation delete <mission> <formation> [--json]
+Remove a step, its connections and its Limit cards.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- create
+usage: archon formation create <mission> [solo|peer|orchestrated] [--title <title>] [--x n] [--y n] [--json]
+Add a step. It is solo unless you name another type.
+
+flags:
+  -json
+        write JSON
+  -title string
+        formation title
+  -updated-by string
+        update actor (default "agent:archon")
+  -x int
+        layout x (default 120)
+  -y int
+        layout y (default 120)
+--- list
+usage: archon formation list <mission> [--json]
+List the steps with their slots and staffing.
+
+flags:
+  -json
+        write JSON
+--- inspect
+usage: archon formation inspect <mission> <formation> [--json]
+Print one step with its slots, ports, brief and connections.
+
+flags:
+  -json
+        write JSON
+--- assign
+usage: archon formation assign <mission> <formation> --slot <slot> (--character <id> | --harness <claude-code|openai-codex|pi> --effort <effort>) [--model <model>] [--role <persona>] [--json]
+Staff a slot. A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent. --character stamps a saved character's role, harness, model and effort, each replaced by its own flag when given; the slot keeps no link to it.
+Choose the effort by the policy: low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand. claude-code takes low, medium, high, xhigh, max; openai-codex takes low, medium, high, xhigh, max, ultra; pi takes low, medium, high, xhigh, max; a known Codex model may take fewer.
+A blank --model means the harness default model. Known models: claude-code runs opus, sonnet, haiku, fable; pi runs anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, anthropic/claude-haiku-5-5, anthropic/claude-fable-5-1. Other model names are accepted; the harness decides.
+  -character string
+        saved character (agent characters) to staff the slot as: its role, harness, model and effort, each replaced by its own flag when given
+  -effort string
+        reasoning effort; policy: low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand
+  -harness string
+        harness the seat runs: claude-code or openai-codex or pi
+  -json
+        write JSON
+  -model string
+        model the seat runs; blank means the harness default model
+  -role string
+        optional role (persona id); omit it for a vanilla agent
+  -slot string
+        slot id
+  -updated-by string
+        update actor (default "agent:archon")
+--- unassign
+usage: archon formation unassign <mission> <formation> --slot <slot> [--json]
+Empty a slot.
+
+flags:
+  -json
+        write JSON
+  -slot string
+        slot id
+  -updated-by string
+        update actor (default "agent:archon")
+--- set-brief
+usage: archon formation set-brief <mission> <formation> --goal <goal> [--bead <beads-id>] [--file <path>]... [--link <url>]... [--json]
+Write the step's brief.
+
+flags:
+  -bead string
+        project Beads id
+  -file value
+        file reference
+  -goal string
+        brief goal
+  -json
+        write JSON
+  -link value
+        link reference
+  -updated-by string
+        update actor (default "agent:archon")
+--- rename
+usage: archon formation rename <mission> <formation> <title> [--json]
+Change the step's title.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- set-type
+usage: archon formation set-type <mission> <formation> <solo|peer|orchestrated> [--keep-slot <slot>] [--json]
+Change the step's type. --keep-slot names the slot a change to solo keeps.
+
+flags:
+  -json
+        write JSON
+  -keep-slot string
+        slot id or label to keep when changing to solo
+  -updated-by string
+        update actor (default "agent:archon")
+--- add-input
+usage: archon formation add-input <mission> <formation> --label <label> [--json]
+Add an input port.
+
+flags:
+  -json
+        write JSON
+  -label string
+        port label
+  -updated-by string
+        update actor (default "agent:archon")
+--- add-output
+usage: archon formation add-output <mission> <formation> --label <label> [--kind text|file|folder] [--json]
+Add an output port. A file or folder port's ref is an absolute path; Archon snapshots it into the attempt directory when the output is accepted.
+
+flags:
+  -json
+        write JSON
+  -kind string
+        what the port carries: text (the default), file or folder
+  -label string
+        port label
+  -updated-by string
+        update actor (default "agent:archon")
+--- set-port
+usage: archon formation set-port <mission> <formation> <port> [--label <label>] [--kind text|file|folder] [--json]
+Relabel a port, or set what an output port carries. <port> is the port's ID or label.
+
+flags:
+  -json
+        write JSON
+  -kind string
+        an output port's kind: text, file or folder
+  -label string
+        the port's label
+  -updated-by string
+        update actor (default "agent:archon")
+--- wire
+usage: archon formation wire <mission> <from-node:port> <to-node:port> [--join] [--json]
+Connect two ports. --join adds an input when the target is already fed.
+
+flags:
+  -join
+        join an occupied formation input by adding a new input port atomically
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- unwire
+usage: archon formation unwire <mission> <from-node:port> <to-node:port> [--json]
+Remove a connection.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- run
+usage: archon formation run <mission> <formation> [--input name=value]... [--input-file name=path]... [--cwd dir] [--context-path path]... [--bead id] [--actor actor] [--json]
+Run one step on its own. It takes the mission's inputs, as a mission run does.
+
+flags:
+  -actor string
+        run actor (default "agent:archon")
+  -bead string
+        the Beads issue the run belongs to
+  -context-path value
+        absolute file or directory the agents inspect as context; repeat for more
+  -cwd string
+        absolute existing directory the agents work in; omit to create a workspace for the run
+  -input value
+        an input value, name=value; repeat for each input (see archon mission input <mission>)
+  -input-file value
+        an input read from a UTF-8 file, name=path; repeat for more
+  -json
+        write JSON
+=== gate
+usage: archon gate <command> [arguments]
+
+A gate checks work between steps with code, a judge formation or a human, and routes it on pass or fail.
+
+  delete <mission> <gate>   remove a gate and its routes, including its judge attachment; judge formations remain
+  create <mission>          add a gate
+  update <mission> <gate>   change a gate
+  judge <mission> <gate>    attach a judge chain of formations, or detach it
+  request <runId> <gateId>  read a waiting human gate's question, routed input and where each verdict leads
+  approve <runId> <gateId>  pass a waiting human gate
+  reject <runId> <gateId>   send a waiting human gate's work back
+  pick <runId> <gateId>     pick the best attempt of a step whose spent Limit card asks the operator to pick
+
+Run "archon gate <command> -h" for a command's arguments and flags.
+--- delete
+usage: archon gate delete <mission> <gate> [--json]
+Remove a gate and its routes, including its judge attachment; judge formations remain.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- create
+usage: archon gate create <mission> [--kinds code,formation,human] [--title text] [--criterion text] [--check id --check-version version --check-value value] [--file path]... [--x n] [--y n] [--json]
+Add a gate. It is human unless --kinds says otherwise.
+
+flags:
+  -check string
+        registered code Gate profile id
+  -check-value string
+        code Gate profile value parameter
+  -check-version string
+        exact code Gate profile version
+  -criterion string
+        gate criterion
+  -file value
+        reference file path; repeat for more
+  -json
+        write JSON
+  -kinds string
+        comma-separated gate kinds: code, formation, human (default human)
+  -title string
+        gate title (default "Review gate")
+  -updated-by string
+        update actor (default "agent:archon")
+  -x int
+        layout x coordinate
+  -y int
+        layout y coordinate
+--- update
+usage: archon gate update <mission> <gate> [--title text] [--kinds code,formation,human] [--criterion text] [--check id] [--check-version version] [--check-value value | --clear-check] [--file path]... [--json]
+Change a gate. Only the fields given change, and an empty value clears one.
+
+flags:
+  -check string
+        registered code Gate profile id
+  -check-value string
+        code Gate profile value parameter
+  -check-version string
+        exact code Gate profile version
+  -clear-check
+        clear the code check profile, version and value
+  -criterion string
+        gate criterion
+  -file value
+        reference file path, replacing the current ones; repeat for more, or give an empty value to clear
+  -json
+        write JSON
+  -kinds string
+        comma-separated gate kinds
+  -title string
+        gate title
+  -updated-by string
+        update actor (default "agent:archon")
+--- judge
+usage: archon gate judge <mission> <gate> --chain f1,f2 | --detach [--json]
+Attach a judge chain of formations, or detach it.
+
+flags:
+  -chain string
+        comma-separated formation chain
+  -detach
+        detach judge
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- request
+archon gate request needs --server <url>: it reads the daemon
+usage: archon gate request <runId> <gateId> [--json]
+Read a waiting human gate's question, routed input and where each verdict leads. Needs --server.
+--- approve
+usage: archon gate approve <runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--actor actor] [--json]
+Pass a waiting human gate. The response travels with the gate's input.
+
+flags:
+  -actor string
+        deciding actor (default "agent:archon")
+  -json
+        write JSON
+  -relayed-by string
+        slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator
+  -response string
+        the response: approve delivers it downstream with the gate input, reject sends it back as feedback
+--- reject
+usage: archon gate reject <runId> <gateId> --requested-seq <seq> [--response text | --response-file path] [--relayed-by slot-id] [--actor actor] [--json]
+Send a waiting human gate's work back. The response is the feedback.
+
+flags:
+  -actor string
+        deciding actor (default "agent:archon")
+  -json
+        write JSON
+  -relayed-by string
+        slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator
+  -response string
+        the response: approve delivers it downstream with the gate input, reject sends it back as feedback
+--- pick
+usage: archon gate pick <runId> <gateId> --attempt <n> [--reason text] [--requested-seq <seq>] [--relayed-by slot-id] [--actor actor] [--json]
+Pick the best attempt of a step whose spent Limit card asks the operator to pick. The picked attempt goes on through the gate's pass route; without --requested-seq the gate's pending pick is read first.
+
+flags:
+  -actor string
+        deciding actor (default "agent:archon")
+  -attempt int
+        the attempt picked, one of the pending pick's candidates
+  -json
+        write JSON
+  -reason string
+        why this attempt; the ledger records it with the pick
+  -relayed-by string
+        slot ID of the seat that typed the operator's confirmed decision; the decider stays human:operator
+  -requested-seq int
+        exact pending human request sequence
+=== end
+usage: archon end <command> [arguments]
+
+An End node ends a path on purpose, done or rejected.
+
+  create <mission>        add an End node
+  update <mission> <end>  change an End node's title or outcome
+  delete <mission> <end>  remove an End node
+
+Run "archon end <command> -h" for a command's arguments and flags.
+--- create
+usage: archon end create <mission> [--outcome done|rejected] [--title text] [--x n] [--y n] [--json]
+Add an End node. Wire a route into it with archon formation wire <mission> <node:port> <end-id>:in.
+
+flags:
+  -json
+        write JSON
+  -outcome string
+        how the path ends: done, or rejected, which fails the run with the gate's reason (default "done")
+  -title string
+        End node title (default Done or Rejected)
+  -updated-by string
+        update actor (default "agent:archon")
+  -x int
+        layout x coordinate
+  -y int
+        layout y coordinate
+--- update
+usage: archon end update <mission> <end> [--outcome done|rejected] [--title text] [--json]
+Change an End node's title or outcome.
+
+flags:
+  -json
+        write JSON
+  -outcome string
+        how the path ends: done, or rejected, which fails the run with the gate's reason
+  -title string
+        End node title
+  -updated-by string
+        update actor (default "agent:archon")
+--- delete
+usage: archon end delete <mission> <end> [--json]
+Remove an End node.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+=== limit
+usage: archon limit <command> [arguments]
+
+A Limit card caps the step it covers, or the whole mission when it covers the Input card. With --when-spent fail the run fails at the limit; otherwise it blocks until run resume --grant, or, with --when-spent best, picks the step's best attempt and goes on.
+
+  create <mission>          add a Limit card
+  update <mission> <limit>  change a Limit card
+  delete <mission> <limit>  remove a Limit card
+
+Run "archon limit <command> -h" for a command's arguments and flags.
+--- create
+usage: archon limit create <mission> --target <step|input> [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--when-spent stop|best|fail] [--title text] [--x n] [--y n] [--json]
+Add a Limit card. --when-spent fail ends the run as failed, keeping attempt evidence. By default the run blocks; run resume --grant gives one more round, or the card's time or tokens again. With --when-spent best a step's card picks the best attempt its gate judged and goes on through the gate's pass route; the step needs one judge or human gate that only it feeds and whose fail returns to it. Tokens are approximate: input not read from the cache, cache writes included, plus output, subagents included.
+
+flags:
+  -json
+        write JSON
+  -rounds string
+        how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run
+  -target string
+        the step it covers by ID or title, or input (the Input card) for the whole mission
+  -time string
+        how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count
+  -title string
+        Limit card title (default Limit)
+  -tokens string
+        how many tokens the step, or every step of the mission, may spend, approximately: input not read from the cache, cache writes included, plus output, subagents included
+  -updated-by string
+        update actor (default "agent:archon")
+  -warn string
+        how much time is left when the covered seats are warned, such as 5m
+  -when-spent string
+        what the spent card does: fail ends the run as failed; stop (the default) blocks the run for a grant; best picks the best attempt the step's gate judged and goes on through its pass route
+  -x int
+        layout x coordinate
+  -y int
+        layout y coordinate
+--- update
+usage: archon limit update <mission> <limit> [--target <step|input>] [--rounds n] [--time 30m] [--warn 5m] [--tokens n] [--when-spent stop|best|fail] [--title text] [--json]
+Change a Limit card. Only the flags you give change; an empty --rounds, --time, --warn or --tokens clears that knob and an empty --target unwires the card.
+
+flags:
+  -json
+        write JSON
+  -rounds string
+        how many times the step may run, send-backs included (a peer step: its journal messages), or how many steps the whole mission may run
+  -target string
+        the step it covers by ID or title, or input (the Input card) for the whole mission
+  -time string
+        how long the step, or every step of the mission, may work in whole seconds, such as 45s, 30m or 1h30m; waiting on a human gate does not count
+  -title string
+        Limit card title (default Limit)
+  -tokens string
+        how many tokens the step, or every step of the mission, may spend, approximately: input not read from the cache, cache writes included, plus output, subagents included
+  -updated-by string
+        update actor (default "agent:archon")
+  -warn string
+        how much time is left when the covered seats are warned, such as 5m
+  -when-spent string
+        what the spent card does: fail ends the run as failed; stop (the default) blocks the run for a grant; best picks the best attempt the step's gate judged and goes on through its pass route
+--- delete
+usage: archon limit delete <mission> <limit> [--json]
+Remove a Limit card.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+=== tool
+usage: archon tool <command> [arguments]
+
+A Tool node runs a registered profile on its input.
+
+  create <mission>          add a Tool
+  update <mission> <tool>   change a Tool's title or parameters
+  delete <mission> <tool>   remove a Tool
+  inspect <mission> <tool>  print a Tool
+
+Run "archon tool <command> -h" for a command's arguments and flags.
+--- create
+usage: archon tool create <mission> --profile-id <id> --profile-version <version> --title <title> --params-json <object> [--x n --y n | --predecessor-node-id <id> | --successor-node-id <id>] [--json]
+Add a Tool.
+
+flags:
+  -json
+        write JSON
+  -params-json string
+        complete Tool parameter JSON object
+  -predecessor-node-id string
+        exact predecessor node id placement hint
+  -profile-id string
+        exact host Tool profile id
+  -profile-version string
+        exact host Tool profile version
+  -successor-node-id string
+        exact successor node id placement hint
+  -title string
+        Tool title
+  -updated-by string
+        update actor (default "agent:archon")
+  -x int
+        exact layout x coordinate
+  -y int
+        exact layout y coordinate
+--- update
+usage: archon tool update <mission> <tool> [--title <title>] [--params-json <object>] [--json]
+Change a Tool's title or parameters.
+
+flags:
+  -json
+        write JSON
+  -params-json string
+        complete replacement Tool parameter JSON object
+  -title string
+        replacement Tool title
+  -updated-by string
+        update actor (default "agent:archon")
+--- delete
+usage: archon tool delete <mission> <tool> [--json]
+Remove a Tool.
+
+flags:
+  -json
+        write JSON
+  -updated-by string
+        update actor (default "agent:archon")
+--- inspect
+usage: archon tool inspect <mission> <tool> [--json]
+Print a Tool.
+
+flags:
+  -json
+        write JSON
+=== agent
+usage: archon agent <command> [arguments]
+
+A role card is generic role text a slot may use; the slot owns its harness, model and effort.
+
+  list          list the roles and their liveness
+  inspect <id>  print a role card
+  characters    list the saved characters: named staffings formation assign --character stamps onto a slot
+  new <id>      create a role card
+  edit <id>     change a role card
+  spawn <id>    start the role's own session
+  attach <id>   attach to the role's live session
+  retire <id>   retire a role: it is no longer offered, and the slots that name it, which it lists, do not run until restaffed
+  restore <id>  bring a retired role back
+  delete <id>   delete a role's card; refused while a slot names the role, and for a built-in role
+
+Run "archon agent <command> -h" for a command's arguments and flags.
+--- list
+archon agent list needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- inspect
+archon agent inspect needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- characters
+archon agent characters needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- new
+archon agent new needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- edit
+archon agent edit needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- spawn
+archon agent spawn needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- attach
+archon agent attach needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- retire
+archon agent retire needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- restore
+archon agent restore needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+--- delete
+archon agent delete needs --workspace <state-dir>, ARCHON_AGENTS_DIR or --server <url>: there is no default role directory
+=== run
+usage: archon run <command> [arguments]
+
+A run is one start of a mission or a single step. Read and drive runs with --server.
+
+  list                    list runs, or one mission's, newest first: one line per run with its ID, mission, status, Bead, start and last change
+  status <runId>          print a run's status
+  storage <runId>         inventory run evidence and its ordinary budgets
+  attempts <runId>        list each attempt with its status, outputs and gate verdicts; add --files to list attempt files; JSON includes complete evidence
+  logs <runId>            print a run's projection
+  follow <runId>          print the run as it changes until it is final; exits 7 when it ended picked
+  wait <runId>            block until the run needs you, ends or changes; exits 0 when final, 7 when final as picked, 3 needs you, 4 changed
+  gates <runId>           list a run's waiting gates and the seats they asked
+  seats <runId>           list a run's seats, their session names and what each waits on
+  resume <runId>          resume a blocked run
+  abort <runId>           stop a run
+  ask <runId> [question]  summarize what a run has done, offline
+
+Run "archon run <command> -h" for a command's arguments and flags.
+--- list
+usage: archon run list [--mission <mission>] [--json]
+List runs, or one mission's, newest first: one line per run with its ID, mission, status, Bead, start and last change. --json prints each run's full projection.
+
+flags:
+  -json
+        write JSON
+  -mission string
+        list only this mission's runs
+--- status
+usage: archon run status <runId> [--json]
+Print a run's status. A final run adds outcome, reason (when recorded, with a code when present) and endedBy (when known) lines. A run that succeeded or was picked lists its mission outputs, one output line each with name, kind and value; pass a value to the next mission's --input. A picked run's outputs that came through a pick add picked and finding lines: failed work, not a pass.
+
+flags:
+  -json
+        write JSON
+--- storage
+usage: archon run storage <runId> [--archive | --unarchive | --dispose] [--json]
+Inventory run evidence and its ordinary budgets. Archive explicitly retains large evidence outside those budgets; resume a blocked run separately. Dispose removes final, unreferenced evidence and preserves compact history. Legacy runs are inventory-only unless explicitly disposed.
+
+flags:
+  -archive
+        retain this run outside the ordinary evidence budget; resume separately
+  -dispose
+        remove final run evidence, preserving compact history
+  -json
+        write JSON
+  -unarchive
+        return this run to ordinary evidence retention
+--- attempts
+usage: archon run attempts <runId> [--node <id>] [--files] [--json]
+List each attempt with its status, outputs and gate verdicts; add --files to list attempt files; JSON includes complete evidence.
+
+flags:
+  -files
+        list files in each attempt directory
+  -json
+        write JSON
+  -node string
+        only this step's attempts
+--- logs
+usage: archon run logs <runId> [--node <id>] [--follow] [--json]
+Print a run's projection.
+
+flags:
+  -follow
+        follow the ledger
+  -json
+        write JSON
+  -node string
+        node id filter
+--- follow
+usage: archon run follow <runId> [--since <seq>] [--node <id>] [--json]
+Print the run as it changes until it is final; exits 7 when it ended picked.
+
+flags:
+  -json
+        write NDJSON
+  -node string
+        node id filter
+  -since int
+        only emit events with seq greater than this value
+--- wait
+run wait needs --server: only the Archon daemon knows when a run has settled
+usage: archon run wait <runId> [--until needs-you|final|any-change] [--since <seq>] [--timeout <duration>] [--reconnect <duration>] [--json]
+Block until the run needs you, ends or changes; exits 0 when final, 7 when final as picked, 3 needs you, 4 changed. Needs --server.
+--- gates
+archon run gates needs --server <url>: it reads the daemon
+usage: archon run gates <runId> [--json]
+List a run's waiting gates and the seats they asked. Needs --server.
+--- seats
+archon run seats needs --server <url>: it reads the daemon
+usage: archon run seats <runId> [--json]
+List a run's seats, their session names and what each waits on. Needs --server.
+--- resume
+usage: archon run resume <runId> [--mode reattach|redispatch] [--grant | --pick-best] [--take-fail] [--reason text] [--actor actor] [--json]
+Resume a blocked run. --grant gives a step its spent Limit card stopped one more round, or the card's time or tokens again. --pick-best picks the best attempt the step's gate judged and goes on through its pass route instead, whatever the card's whenSpent. At a judge verdict Archon rejected, resume asks the judge again and --take-fail fails the gate instead.
+
+flags:
+  -actor string
+        resume actor (default "agent:archon")
+  -grant
+        give the step a spent Limit card stopped one more allowance (one more round, or the card's time or tokens again); the ledger records the grant and who gave it
+  -json
+        write JSON
+  -mode string
+        resume mode (default "reattach")
+  -pick-best
+        pick the best attempt the stopped step's gate judged and go on through the gate's pass route, whatever the card's whenSpent; not with --grant
+  -reason string
+        resume reason
+  -take-fail
+        settle a gate blocked on a judge verdict Archon rejected as a fail: the gate fails and routes, and the judge is not asked again; without it, resume asks the judge again
+--- abort
+usage: archon run abort <runId> [--reason <reason>] [--requested-by <actor>] [--json]
+Stop a run.
+
+flags:
+  -json
+        write JSON
+  -reason string
+        abort reason (default "operator abort")
+  -requested-by string
+        requesting actor (default "agent:archon")
+--- ask
+usage: archon run ask <runId> [question] [--json]
+Summarize what a run has done, offline.
+
+flags:
+  -json
+        write JSON
+=== peer
+usage: archon peer <command> [arguments]
+
+A peer formation's seats converse through these commands, run with --workspace <state-dir>.
+
+  read     print the conversation
+  wait     wait for a later entry or a final state
+  post     post a message
+  propose  propose the full output
+  ack      acknowledge a proposal
+
+Run "archon peer <command> -h" for a command's arguments and flags.
+--- read
+usage: archon peer read --run <id> --node <id> --attempt <n>
+Print the conversation.
+
+flags:
+  -after int
+        wait until a later sequence or final state
+  -attempt int
+        formation attempt
+  -dissent
+        post an objection to --proposal; a new proposal is required before agreement
+  -json
+        responses are always JSON (default true)
+  -node string
+        formation ID
+  -proposal int
+        exact proposal sequence for acknowledgement or dissent
+  -run string
+        run ID
+  -slot string
+        participant slot ID, required for writes
+  -text string
+        message or proposed final output
+  -text-file string
+        UTF-8 file containing the complete message or proposal
+--- wait
+usage: archon peer wait --run <id> --node <id> --attempt <n> --after <seq>
+Wait for a later entry or a final state.
+
+flags:
+  -after int
+        wait until a later sequence or final state
+  -attempt int
+        formation attempt
+  -dissent
+        post an objection to --proposal; a new proposal is required before agreement
+  -json
+        responses are always JSON (default true)
+  -node string
+        formation ID
+  -proposal int
+        exact proposal sequence for acknowledgement or dissent
+  -run string
+        run ID
+  -slot string
+        participant slot ID, required for writes
+  -text string
+        message or proposed final output
+  -text-file string
+        UTF-8 file containing the complete message or proposal
+--- post
+usage: archon peer post --run <id> --node <id> --attempt <n> --slot <id> (--text <text> | --text-file <path>) [--dissent --proposal <seq>]
+Post a message. With --dissent and --proposal, object to a proposal.
+
+flags:
+  -after int
+        wait until a later sequence or final state
+  -attempt int
+        formation attempt
+  -dissent
+        post an objection to --proposal; a new proposal is required before agreement
+  -json
+        responses are always JSON (default true)
+  -node string
+        formation ID
+  -proposal int
+        exact proposal sequence for acknowledgement or dissent
+  -run string
+        run ID
+  -slot string
+        participant slot ID, required for writes
+  -text string
+        message or proposed final output
+  -text-file string
+        UTF-8 file containing the complete message or proposal
+--- propose
+usage: archon peer propose --run <id> --node <id> --attempt <n> --slot <id> (--text <text> | --text-file <path>)
+Propose the full output.
+
+flags:
+  -after int
+        wait until a later sequence or final state
+  -attempt int
+        formation attempt
+  -dissent
+        post an objection to --proposal; a new proposal is required before agreement
+  -json
+        responses are always JSON (default true)
+  -node string
+        formation ID
+  -proposal int
+        exact proposal sequence for acknowledgement or dissent
+  -run string
+        run ID
+  -slot string
+        participant slot ID, required for writes
+  -text string
+        message or proposed final output
+  -text-file string
+        UTF-8 file containing the complete message or proposal
+--- ack
+usage: archon peer ack --run <id> --node <id> --attempt <n> --slot <id> --proposal <seq>
+Acknowledge a proposal.
+
+flags:
+  -after int
+        wait until a later sequence or final state
+  -attempt int
+        formation attempt
+  -dissent
+        post an objection to --proposal; a new proposal is required before agreement
+  -json
+        responses are always JSON (default true)
+  -node string
+        formation ID
+  -proposal int
+        exact proposal sequence for acknowledgement or dissent
+  -run string
+        run ID
+  -slot string
+        participant slot ID, required for writes
+  -text string
+        message or proposed final output
+  -text-file string
+        UTF-8 file containing the complete message or proposal
