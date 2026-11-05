@@ -329,6 +329,7 @@ export interface Parsed {
 const HARNESS_WORDS: Record<string, string> = {
   claude: 'claude-code', 'claude-code': 'claude-code', cc: 'claude-code',
   codex: 'openai-codex', openai: 'openai-codex', 'openai-codex': 'openai-codex',
+  pi: 'pi',
 }
 const EFFORT_ALIASES: Record<string, string> = { med: 'medium', mid: 'medium', hi: 'high', xh: 'xhigh', 'x-high': 'xhigh', 'extra-high': 'xhigh', lo: 'low' }
 const VANILLA_WORDS = new Set(['vanilla', 'none', 'norole', '-role', 'no-role'])

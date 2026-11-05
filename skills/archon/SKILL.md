@@ -31,8 +31,8 @@ states the product's philosophy and goals.
 - A **formation** is a step. `solo` has one seat, `peer` has two or more seats
   that converse, and `orchestrated` has one controller directing its bound
   workers. These three are the only types.
-- A **slot** is a position in a formation. It owns its harness (`claude-code`
-  or `openai-codex`), model and effort, and may name a **role**. Its runtime
+- A **slot** is a position in a formation. It owns its harness (`claude-code`,
+  `openai-codex` or `pi`), model and effort, and may name a **role**. Its runtime
   agent session is a **seat**.
 - A **role** (persona card) is optional, generic role text such as a code
   reviewer; it carries no harness, model or effort. Every Archon has the
@@ -209,7 +209,8 @@ named staffings listed by `agent characters`:
 `--character <id>` stamps one's role, harness, model and effort onto the slot,
 and any of those flags given beside it wins. `claude-code` takes
 `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex` also takes `ultra`,
-though a known Codex model may take fewer. The
+though a known Codex model may take fewer; `pi` takes the same as `claude-code`,
+and its models are `provider/model`, as in `anthropic/claude-opus-5-5`. The
 known models are in `GET /api/agents` `harnesses[].models` and the `formation
 assign` usage: `claude-code` offers `opus`, `sonnet`, `haiku` and `fable`,
 and Codex the models its CLI lists on the daemon host. The catalog is not exhaustive; other model

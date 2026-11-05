@@ -56,6 +56,7 @@ func TestAgentsRosterOffersEachHarnessesModels(t *testing.T) {
 			{ID: "gpt-6-astra", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
 			{ID: "gpt-5.5", Efforts: []string{"low", "medium", "high", "xhigh"}},
 		},
+		"pi": {{ID: "anthropic/claude-opus-5-5"}, {ID: "anthropic/claude-sonnet-5-5"}, {ID: "anthropic/claude-haiku-5-5"}, {ID: "anthropic/claude-fable-5-1"}},
 	}
 	if !reflect.DeepEqual(models, want) {
 		t.Fatalf("harness models = %+v, want %+v", models, want)

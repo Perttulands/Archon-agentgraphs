@@ -42,6 +42,7 @@ func Run(args []string) error {
 	tmux := flags.String("tmux-bin", "", "absolute guarded tmux wrapper")
 	codexTranscripts := flags.String("codex-transcripts", "", "Codex native sessions directory")
 	claudeTranscripts := flags.String("claude-transcripts", "", "Claude native projects directory")
+	piTranscripts := flags.String("pi-transcripts", "", "Pi native sessions directory; defaults to Pi's own ($PI_CODING_AGENT_DIR/sessions, else ~/.pi/agent/sessions)")
 	mission := flags.String("mission-label", "", "optional prefix before the unique run session name")
 	resume := flags.String("resume-run", "", "explicitly resume this blocked run from a completed native turn")
 	recoveryTranscript := flags.String("completed-transcript", "", "absolute native transcript for the unresolved completed dispatch")
@@ -84,6 +85,9 @@ func Run(args []string) error {
 		paths["tmux-bin"] = *tmux
 		paths["codex-transcripts"] = *codexTranscripts
 		paths["claude-transcripts"] = *claudeTranscripts
+		if *piTranscripts != "" {
+			paths["pi-transcripts"] = *piTranscripts
+		}
 	}
 	for name, value := range paths {
 		if !filepath.IsAbs(value) {
@@ -103,9 +107,9 @@ func Run(args []string) error {
 	c, err := coordinator.Open(*state, personas, func(store *formations.Store) formations.FormationExecutor {
 		store.RunWorkspaceRoot = *runWorkspaceRoot
 		if *executor == "lab" {
-			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: []string{"openai-codex", "claude-code"}})
+			return formations.NewLabFormationExecutor(store, personas, formations.LabExecutorConfig{Harnesses: formations.LaunchableHarnessIDs()})
 		}
-		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, Mission: *mission, SessionPrefix: "archon-", Harnesses: []string{"openai-codex", "claude-code"}, OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
+		return formations.NewTmuxFormationExecutor(store, personas, formations.TmuxExecutorConfig{Socket: *socket, StateDir: *state, CodexTranscriptRoot: *codexTranscripts, ClaudeTranscriptRoot: *claudeTranscripts, PiTranscriptRoot: *piTranscripts, Mission: *mission, SessionPrefix: "archon-", Harnesses: formations.LaunchableHarnessIDs(), OutputCapBytes: 1 << 20, RecoveryTranscript: *recoveryTranscript, RecoveryBrief: *recoveryBrief, PeerCLI: bundledCLI()})
 	})
 	if err != nil {
 		return err

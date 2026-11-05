@@ -104,6 +104,13 @@ func (t realSeatTransport) Create(ctx context.Context, socket, name, cwd, root s
 	if !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("absolute transcript root required for %s", v.ID)
 	}
+	if v.ID == piHarnessID {
+		// Pi creates its session directory only once a session starts, after this
+		// watch has to.
+		if err := os.MkdirAll(piSessionDir(root, cwd), 0o700); err != nil {
+			return nil, err
+		}
+	}
 	watch, err := filewatch.New(root)
 	if err != nil {
 		return nil, err
@@ -119,6 +126,10 @@ func (t realSeatTransport) Create(ctx context.Context, socket, name, cwd, root s
 	launch, err := v.SeatLaunchCommand(cwd)
 	if err != nil {
 		return nil, err
+	}
+	if v.ID == piHarnessID {
+		// Named outright, so no setting of the project's can save it out of sight.
+		launch += " --session-dir " + shellQuote(piSessionDir(root, cwd))
 	}
 	created := time.Now()
 	out, err := t.run(ctx, socket, nil, "new-session", "-d", "-P", "-F", "#{session_id} #{pane_id}", "-e", "TERM=xterm-256color", "-s", name, "-c", cwd, launch)
@@ -800,6 +811,9 @@ var ansiSGR = regexp.MustCompile("\x1b\\[([0-9;]*)m")
 // count. The harness is busy when a working line sits just above the input
 // box, as tmuxPaneShowsAgentWorking reads it.
 func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
+	if harness == piHarnessID {
+		return piInputClear(screen)
+	}
 	prompt := seatInputPrompt[harness]
 	lines := strings.Split(screen, "\n")
 	if prompt == "" || cursorX != 2 || cursorY < 0 || cursorY >= len(lines) {
@@ -834,6 +848,10 @@ func seatInputClear(harness, screen string, cursorX, cursorY int) bool {
 // any prompt line means the cursor is not in an input line, as while a dialog
 // shows, and nothing is found.
 func seatTypedText(harness, screen string, cursorX, cursorY int) (string, bool) {
+	if harness == piHarnessID {
+		typed, _, found := piEditor(screen)
+		return typed, found
+	}
 	prompt := seatInputPrompt[harness]
 	lines := strings.Split(screen, "\n")
 	if prompt == "" || cursorX < 0 || cursorY < 0 || cursorY >= len(lines) {

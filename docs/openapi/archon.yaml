@@ -2064,15 +2064,16 @@ components:
               - ""
               - claude-code
               - openai-codex
+              - pi
             model:
               type: string
               description: One model name without spaces; blank means the harness default model. A model outside
                 the harness's known models is accepted, and the answer carries data.warnings naming it. A known
-                Codex model narrows the efforts to its own.
+                Codex model narrows the efforts to its own. Pi takes provider/model names.
             effort:
               type: string
               description: One effort the harness accepts (claude-code low, medium, high, xhigh, max; openai-codex
-                also ultra). Choose it by the roster's effortPolicy.
+                also ultra; pi as claude-code). Choose it by the roster's effortPolicy.
             expectedRev:
               type: integer
             updatedBy:

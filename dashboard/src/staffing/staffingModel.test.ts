@@ -9,6 +9,16 @@ import {
 const context = { label: 'Agent', step: 'New formation' }
 const vanilla: Staffing = { role: '', harness: 'claude-code', model: 'opus', effort: 'low' }
 
+describe('a Pi slot', () => {
+  const withPi = { ...catalog, harnesses: [...catalog.harnesses, { id: 'pi', executable: 'pi', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium', models: [{ id: 'anthropic/claude-opus-5-5' }] }] }
+
+  it('reads as Pi with its provider/model, and "pi" picks the harness', () => {
+    expect(captionText({ role: '', harness: 'pi', model: 'anthropic/claude-opus-5-5', effort: 'xhigh' })).toBe('Pi · anthropic/claude-opus-5-5 · xhigh')
+    expect(parseWords(withPi, 'pi', vanilla).result.harness).toBe('pi')
+    expect(parseWords(withPi, 'pi anthropic/claude-opus-5-5 xhigh', vanilla).issues).toEqual([])
+  })
+})
+
 describe('the slot model in the cockpit', () => {
   it('reads a slot, and an empty one as nothing', () => {
     expect(staffingOf({ id: 's', label: 'A', controller: false })).toBeNull()

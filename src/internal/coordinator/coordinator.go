@@ -273,7 +273,7 @@ func (c *Coordinator) ResumeCompletedRun(runID string) error {
 		return err
 	}
 	c.launch(runID, func() error {
-		_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "operator:standalone", Mode: "completed-native-turn", Reason: "explicitly selected completed Codex turn"})
+		_, err := c.engine.ResumeRun(runID, formations.RunResumeRequest{Actor: "operator:standalone", Mode: "completed-native-turn", Reason: "explicitly selected completed native turn"})
 		return err
 	})
 	return nil

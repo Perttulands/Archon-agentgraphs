@@ -1,7 +1,7 @@
 # Test fixtures
 
 Fixtures here hold no real session content. Transcripts in `seats/` and `transcripts/`
-follow the native Claude Code and Codex formats but hold only the records and
+follow the native Claude Code, Codex and Pi formats but hold only the records and
 fields their tests read; session, turn, message and tool IDs, prompts, briefs
 and replies are made up, while record order, types and token counts follow what
 real seats wrote. The pane captures in `panes/` are screens of throwaway seats

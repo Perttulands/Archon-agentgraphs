@@ -14,7 +14,8 @@ const DefaultHarnessEffort = "medium"
 // LaunchableHarness is a harness whose seats Archon starts from slot settings.
 // Efforts lists the values its CLI accepts: `claude --effort` for Claude Code,
 // and the union of every Codex model's supported reasoning levels (Codex
-// models_cache.json) for Codex, whose `-c model_reasoning_effort` takes them.
+// models_cache.json) for Codex, whose `-c model_reasoning_effort` takes them,
+// and the `pi --thinking` levels that mean an effort for Pi.
 // Models lists the models it is known to run (HarnessModels).
 type LaunchableHarness struct {
 	ID            string         `json:"id"`
@@ -27,6 +28,7 @@ type LaunchableHarness struct {
 var launchableHarnesses = []LaunchableHarness{
 	{ID: "claude-code", Executable: "claude", Efforts: []string{"low", "medium", "high", "xhigh", "max"}, DefaultEffort: DefaultHarnessEffort},
 	{ID: "openai-codex", Executable: "codex", Efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}, DefaultEffort: DefaultHarnessEffort},
+	{ID: piHarnessID, Executable: "pi", Efforts: []string{"low", "medium", "high", "xhigh", "max"}, DefaultEffort: DefaultHarnessEffort},
 }
 
 // LaunchableHarnesses returns the harnesses Archon can start seats for, each
@@ -79,6 +81,10 @@ func (v HarnessVariant) RenderLaunch(executable string) (string, error) {
 		command += " -c check_for_update_on_startup=false --dangerously-bypass-approvals-and-sandbox"
 	case "claude-code":
 		command += " --effort " + shellQuote(v.effectiveEffort()) + " --dangerously-skip-permissions"
+	case piHarnessID:
+		// Pi asks no permissions and saves its session by default. Its credentials
+		// stay Pi's own: Archon never puts a key on a command line.
+		command += " --thinking " + shellQuote(v.effectiveEffort())
 	default:
 		return "", fmt.Errorf("unsupported seat harness %q", v.ID)
 	}
@@ -111,9 +117,13 @@ func (v HarnessVariant) LaunchCommand() (string, error) {
 // and for Codex that folder trusted for this launch only. Codex 0.159 asks
 // "Trust this folder?" in every new folder and saves the answer in the
 // operator's ~/.codex/config.toml; the override starts the seat without the
-// dialog and writes nothing there (archon-m1yg).
+// dialog and writes nothing there (archon-m1yg). Pi's --approve does the same
+// for its project-trust dialog, without touching its trust.json.
 func (v HarnessVariant) SeatLaunchCommand(cwd string) (string, error) {
 	command, err := v.LaunchCommand()
+	if err == nil && v.ID == piHarnessID {
+		return command + " --approve", nil
+	}
 	if err != nil || v.ID != "openai-codex" {
 		return command, err
 	}
@@ -125,7 +135,7 @@ func (v HarnessVariant) SeatLaunchCommand(cwd string) (string, error) {
 // harnesses it starts.
 func (v HarnessVariant) SpawnCommand() (string, error) {
 	if _, ok := launchableHarness(v.ID); !ok {
-		return "", fmt.Errorf("Archon cannot start harness %q; use claude-code or openai-codex", v.ID)
+		return "", fmt.Errorf("Archon cannot start harness %q; use %s", v.ID, strings.Join(LaunchableHarnessIDs(), " or "))
 	}
 	return v.LaunchCommand()
 }
@@ -136,6 +146,9 @@ func (v HarnessVariant) SpawnCommand() (string, error) {
 func (v HarnessVariant) modelObserved(observed string) bool {
 	if observed == v.Model {
 		return true
+	}
+	if v.ID == piHarnessID {
+		return piModelObserved(v.Model, observed)
 	}
 	if v.ID != "claude-code" || !slices.Contains(claudeCodeModels, v.Model) {
 		return false

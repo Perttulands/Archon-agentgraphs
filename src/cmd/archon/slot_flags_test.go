@@ -52,7 +52,7 @@ func TestArchonFormationAssignSetsTheSlotsSettings(t *testing.T) {
 		{"formation", "assign", "staff", "Work", "--slot", "slot_a", "--role", "builder"},
 	} {
 		_, stderr, code := archon(args...)
-		if code != 2 || !strings.Contains(stderr, "--harness <claude-code|openai-codex> --effort <effort>") || !strings.Contains(stderr, "low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand") {
+		if code != 2 || !strings.Contains(stderr, "--harness <claude-code|openai-codex|pi> --effort <effort>") || !strings.Contains(stderr, "low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand") {
 			t.Fatalf("%v: code=%d stderr=%s, want usage with the effort policy", args, code, stderr)
 		}
 	}
@@ -128,7 +128,7 @@ func TestArchonFormationAssignAcceptsAModelOutsideTheCatalog(t *testing.T) {
 	if _, stderr, code := archon("formation", "assign", "staff", "Work", "--slot", "slot_a", "--harness", "claude-code", "--model", "sonnet", "--effort", "xhigh"); code != 0 || stderr != "" {
 		t.Fatalf("known model: code=%d stderr=%q", code, stderr)
 	}
-	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable. Other model names are accepted; the harness decides.") {
+	if _, stderr, _ := archon("formation", "assign", "staff", "Work", "--slot", "slot_a"); !strings.Contains(stderr, "Known models: claude-code runs opus, sonnet, haiku, fable; pi runs anthropic/claude-opus-5-5, anthropic/claude-sonnet-5-5, anthropic/claude-haiku-5-5, anthropic/claude-fable-5-1. Other model names are accepted; the harness decides.") {
 		t.Fatalf("usage does not name the known models:\n%s", stderr)
 	}
 }
