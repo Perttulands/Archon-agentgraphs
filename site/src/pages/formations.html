@@ -1,0 +1,112 @@
+<!--
+title: Formations and staffing
+nav: Formations and staffing
+description: Solo, peer and orchestrated formations; slots with their harness, model and effort; roles, characters and the effort policy.
+lead: A formation is a step: the team of agents that does it. Each of its slots states exactly what its seat runs, a harness, a model and an effort, so the operator can read every agent's settings on the mission itself.
+-->
+
+<h2>Three types</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Type</th><th scope="col">Slots</th><th scope="col">How it works</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>solo</code></th><td>Exactly one</td><td>One seat does the step and returns its output.</td></tr>
+    <tr><th scope="row"><code>peer</code></th><td>Two or more, no controller</td><td>Each seat writes an independent opening; then they converse through a journal until every peer acknowledges one proposed output.</td></tr>
+    <tr><th scope="row"><code>orchestrated</code></th><td>One controller and at least one worker</td><td>The controller receives the brief and directs only its own bound workers, then returns the step's output.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>These are the only types; anything else is refused with <code>UNSUPPORTED_FORMATION_TYPE</code>. Change a type in place with <code>formation set-type</code> or the type chip on the card. Changing to solo with several staffed slots needs <code>--keep-slot &lt;slot&gt;</code> to say which one stays.</p>
+
+<h2>Slots</h2>
+
+<p>A slot owns its harness, model and effort, plus an optional role. Staffing always states the slot in full:</p>
+
+<p class="setup-note">Commands on this page are for bash or zsh and need <code>jq</code>. Take step, slot, gate and run IDs from the JSON a command returns (<code>formation list "$M"</code>, <code>run status "$RUN" --json</code>); never guess one.</p>
+
+<code-block lang="bash" title="Shell setup for this page">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+M=review                                      # the mission slug
+STEP=fmn_...                                  # a step ID from: archon --server "$ARCHON_SERVER" formation list "$M"
+SLOT=...                                      # a slot ID from: archon --server "$ARCHON_SERVER" formation inspect "$M" "$STEP"
+</code-block>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" formation assign "$M" "$STEP" --slot "$SLOT" \
+  --harness claude-code --model opus --effort xhigh --role reviewer
+archon --server "$ARCHON_SERVER" formation unassign "$M" "$STEP" --slot "$SLOT"
+archon --server "$ARCHON_SERVER" formation list "$M"
+</code-block>
+
+<p><code>--harness</code> and <code>--effort</code> are required. A blank or omitted <code>--model</code> means the harness default. Omit <code>--role</code> for a vanilla agent.</p>
+
+<h3 id="harnesses">Harnesses, models and efforts</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Harness</th><th scope="col">CLI</th><th scope="col">Models offered</th><th scope="col">Efforts</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>claude-code</code></th><td><code>claude</code></td><td class="wrap">The aliases <code>opus</code>, <code>sonnet</code>, <code>haiku</code>, <code>fable</code></td><td class="wrap"><code>low</code> <code>medium</code> <code>high</code> <code>xhigh</code> <code>max</code></td></tr>
+    <tr><th scope="row"><code>openai-codex</code></th><td><code>codex</code></td><td class="wrap">Whatever the Codex CLI lists in <code>$CODEX_HOME/models_cache.json</code> (default <code>~/.codex</code>) on the daemon host</td><td class="wrap">Also <code>ultra</code>; a known Codex model narrows the list to its own</td></tr>
+    <tr><th scope="row"><code>pi</code></th><td><code>pi</code></td><td class="wrap"><code>provider/model</code> names, such as <code>anthropic/claude-opus-5-5</code>; any provider Pi knows</td><td class="wrap">As <code>claude-code</code>; the effort is Pi's thinking level</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The catalog is a picker, not a whitelist: a model name outside it is accepted without a warning, and the harness decides whether it runs. The daemon serves the current catalog at <code>GET /api/agents</code> under <code>harnesses</code>. More on Pi: <a href="pi.html">Pi</a>.</p>
+
+<h3 id="effort-policy">Choosing an effort</h3>
+
+<p>The agent roster serves an effort policy, and the cockpit suggests efforts from it by the role's kind:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Job</th><th scope="col">Role kinds</th><th scope="col">Effort</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Errands</th><td><code>verifier</code>, <code>scout</code></td><td><code>low</code></td></tr>
+    <tr><th scope="row">Making things</th><td><code>builder</code>, <code>debugger</code>, <code>operator</code></td><td><code>medium</code></td></tr>
+    <tr><th scope="row">Architecture, design and review</th><td class="wrap"><code>reviewer</code>, <code>judge</code>, <code>architect</code>, <code>designer</code>, <code>planner</code>, <code>orchestrator</code></td><td><code>xhigh</code></td></tr>
+    <tr><th scope="row">Consequential review</th><td>Chosen by hand, never suggested</td><td><code>max</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="staffing-in-the-cockpit">Staffing in the cockpit</h3>
+
+<p>Every slot reads as a row: its harness mark, its role (or <code>vanilla</code>) over <code>Claude · opus · low</code>. Clicking a slot opens the staffing sentence where the slot is:</p>
+
+<p class="callout"><em>Worker 1 is</em> [vanilla] <em>on</em> [Claude Code] · [opus] · [low]</p>
+
+<p>Each bracketed word opens its own list. The first word also takes typed words in any order (<code>cri ast</code>, <code>sonnet high</code>), digits 1 to 6 set the effort, and N on the canvas jumps to the next empty slot. Dragging a role from the rail onto a slot staffs it; dragging one staffed slot onto another moves or swaps the staffing.</p>
+
+<h2>Roles and characters</h2>
+
+<dl>
+  <dt>Roles</dt>
+  <dd><p>A role is role text only: a name, kind, summary, capabilities, status and notes. It never carries a harness, model or effort, and the API refuses a role card that tries. The seven built-in roles are <code>scout</code>, <code>planner</code>, <code>builder</code>, <code>judge</code>, <code>orchestrator</code>, <code>debugger</code> and <code>reviewer</code>; a card in the agents directory (default <code>&lt;state-dir&gt;/agents</code>) adds a role or overrides a built-in one.</p>
+  <p><code>agent retire</code> takes a role out of staffing and names the slots that use it; those slots stop validation with <code>retired_persona</code> until restaffed or restored. <code>agent delete</code> works only while no slot names the role.</p></dd>
+  <dt>Characters</dt>
+  <dd><p>A character is a saved staffing: a name, an optional picture, and a role, harness, model and effort. It is a stamp: stamping copies the four values onto the slot and keeps no link. Make and edit them in the Agents view; on the CLI, <code>agent characters</code> lists them and <code>formation assign --character &lt;id&gt;</code> stamps one, with any of <code>--role</code>, <code>--harness</code>, <code>--model</code> or <code>--effort</code> given beside it winning.</p></dd>
+</dl>
+
+<p>The Agents view is the library of roles and characters. Picking a role shows every slot, in every mission, that uses it; a use opens its mission on Missions, where slots are staffed.</p>
+
+<h2>Peer formations</h2>
+
+<p>A peer step collects one independent opening from every seat before sharing them, then the same seats converse concurrently through an append-only journal for that run, step and attempt. There is no fixed turn order and no facilitator. Seats use the local <code>archon --workspace &lt;state&gt; peer</code> commands to <code>read</code>, <code>post</code>, <code>wait</code>, <code>propose</code> and <code>ack</code>.</p>
+
+<p>Any peer can propose the full output; every peer, its author included, must acknowledge it, and a contested proposal needs revision and fresh acknowledgements. The agreed result must still satisfy the step's declared output ports. Without a Limit card the conversation runs until it agrees; on a peer step a card's <code>rounds</code> counts journal messages. See <a href="repo:docs/adr/0020-peer-conversations.md">ADR-0020</a>.</p>
+
+<h2>Orchestrated formations</h2>
+
+<p>The controller's brief names its bound workers, and it may direct only those. Workers' briefs name the same attempt directory. Archon dispatches the controller; the controller pastes work to its workers, and their token use counts from the pointers it pastes. Agents other than an orchestrated controller must not type into seats or manage their sessions.</p>
+
+<h2>Running one step</h2>
+
+<p><code>formation run &lt;mission&gt; &lt;step&gt;</code> (▶ on a card) runs that step on its own, with the mission's inputs and the same run flags. Its step receives the inputs as a first step does, and its routes are ignored.</p>
+
+<h2>A role's own session</h2>
+
+<p>Outside missions, <code>archon agent spawn &lt;id&gt; --harness &lt;h&gt; --effort &lt;e&gt; [--model &lt;m&gt;]</code> starts a tmux session named after the role, and <code>agent attach</code> joins it. It refuses a role that is already running. These two commands work offline only.</p>

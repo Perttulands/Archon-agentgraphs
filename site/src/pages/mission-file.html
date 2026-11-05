@@ -1,0 +1,230 @@
+<!--
+title: Mission file reference
+nav: Mission file
+description: Every table and key of a schema-1 mission TOML file, the notes file, and a complete example that validates.
+lead: A mission is one strict TOML file, `<slug>.mission.toml`, in `<state-dir>/.archon/missions/`. You rarely need to write one by hand, but reading one is the fastest way to understand a mission completely. Archon refuses a file that is not strict TOML of its schema, such as one that repeats a key.
+-->
+
+<h2>A complete example</h2>
+
+<p>A drafting step whose file output is reviewed by a judge and then the operator, sent back on failure, capped at three drafts with the best one picked, and promised as the mission's output. It validates as written.</p>
+
+<code-block lang="toml" title="draft-review.mission.toml" validate="mission">
+schema = 1
+id = "msn_draft_review"
+slug = "draft-review"
+title = "Draft and review"
+rev = 1
+
+[[inputCard]]
+id = "inp_draft"
+title = "Draft"
+goal = "Draft a document and get it reviewed"
+inputs = [
+  { name = "topic", kind = "text", required = true, description = "What the document is about" },
+  { name = "style", kind = "file", description = "A style guide to follow" },
+]
+outputs = [
+  { name = "document", kind = "file", from = "fmn_draft:port_doc", required = true, description = "The reviewed document" },
+]
+
+[[formation]]
+id = "fmn_draft"
+type = "solo"
+title = "Draft"
+[formation.brief]
+goal = "Write a document about {topic}. Follow {style}. Write it as one Markdown file."
+[[formation.input]]
+id = "port_in"
+label = "Input"
+[[formation.output]]
+id = "port_doc"
+label = "Document"
+kind = "file"
+[[formation.slot]]
+id = "drafter"
+label = "Drafter"
+agentId = "builder"
+harness = "claude-code"
+model = "sonnet"
+effort = "medium"
+
+[[formation]]
+id = "fmn_judge"
+type = "solo"
+title = "Judge"
+[formation.brief]
+goal = "Judge whether the document covers {topic} accurately and follows the style guide."
+[[formation.input]]
+id = "port_in"
+label = "Input"
+[[formation.output]]
+id = "port_out"
+label = "Verdict"
+[[formation.slot]]
+id = "judge"
+label = "Judge"
+agentId = "judge"
+harness = "openai-codex"
+model = ""
+effort = "xhigh"
+
+[[gate]]
+id = "gate_review"
+title = "Review"
+kinds = ["formation", "human"]
+criterion = "The document is accurate, complete and in house style."
+
+[[end]]
+id = "end_done"
+title = "Published"
+outcome = "done"
+
+[[limit]]
+id = "lim_draft"
+title = "Three drafts"
+target = "fmn_draft"
+rounds = 3
+whenSpent = "best"
+
+[[connection]]
+id = "edge_start"
+from = "inp_draft:out"
+to = "fmn_draft:port_in"
+
+[[connection]]
+id = "edge_review"
+from = "fmn_draft:port_doc"
+to = "gate_review:in"
+
+[[connection]]
+id = "edge_judge"
+from = "gate_review:judge"
+to = "fmn_judge:port_in"
+
+[[connection]]
+id = "edge_judge_back"
+from = "fmn_judge:port_out"
+to = "gate_review:judge"
+
+[[connection]]
+id = "edge_pushback"
+from = "gate_review:fail"
+to = "fmn_draft:port_in"
+
+[[connection]]
+id = "edge_pass"
+from = "gate_review:pass"
+to = "end_done:in"
+</code-block>
+
+<h2>Top level</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Key</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>schema</code></th><td><code>1</code>.</td></tr>
+    <tr><th scope="row"><code>id</code></th><td>The mission's stable identity. New missions get <code>msn_</code> followed by a ULID; runs belong to a mission by this ID, not its slug.</td></tr>
+    <tr><th scope="row"><code>slug</code></th><td>The name commands use; matches the file name.</td></tr>
+    <tr><th scope="row"><code>title</code></th><td>The display name.</td></tr>
+    <tr><th scope="row"><code>rev</code></th><td>The revision, raised by every saved edit. Edits and run starts can require the current revision.</td></tr>
+    <tr><th scope="row"><code>updatedBy</code>, <code>updatedAt</code></th><td>Written by Archon.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><code>[[inputCard]]</code></h2>
+
+<p>Exactly one per file. A file with several loads and stays editable, but validation reports <code>several_input_cards</code> and no run starts.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Key</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>id</code>, <code>title</code>, <code>goal</code></th><td>Identity, display name and the mission goal every seat sees as context.</td></tr>
+    <tr><th scope="row"><code>inputs</code></th><td>Array of <code>{ name, kind, required, description }</code>. <code>kind</code> is <code>text</code> (default), <code>file</code> or <code>folder</code>.</td></tr>
+    <tr><th scope="row"><code>outputs</code></th><td>Array of <code>{ name, kind, required, description, from }</code>; <code>from</code> is <code>"&lt;step-id&gt;:&lt;port-id&gt;"</code> of a port of the same kind.</td></tr>
+    <tr><th scope="row"><code>inputHint</code></th><td>Describes the implicit <code>brief</code> input of a mission that declares none.</td></tr>
+    <tr><th scope="row"><code>files</code></th><td>Absolute paths of reference files.</td></tr>
+    <tr><th scope="row"><code>humanChannel</code></th><td><code>session</code> to route human gates to the asking seats; absent means <code>notify</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Its one output port is <code>out</code>, as in <code>from = "inp_draft:out"</code>.</p>
+
+<h2><code>[[formation]]</code></h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Key</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>id</code>, <code>title</code></th><td>Identity and display name.</td></tr>
+    <tr><th scope="row"><code>type</code></th><td><code>solo</code>, <code>peer</code> or <code>orchestrated</code>.</td></tr>
+    <tr><th scope="row"><code>[formation.brief]</code></th><td><code>goal</code> (the brief, with <code>{input}</code> references), <code>beadId</code>, <code>files</code> and <code>links</code>.</td></tr>
+    <tr><th scope="row"><code>[[formation.input]]</code></th><td><code>id</code>, <code>label</code>. Each input port takes one feed; a step waits for all of them.</td></tr>
+    <tr><th scope="row"><code>[[formation.output]]</code></th><td><code>id</code>, <code>label</code>, optional <code>kind</code> (<code>file</code> or <code>folder</code>; absent means text).</td></tr>
+    <tr><th scope="row"><code>[[formation.slot]]</code></th><td><code>id</code>, <code>label</code>, <code>harness</code>, <code>model</code>, <code>effort</code>, optional <code>agentId</code> (the role) and <code>controller</code>. In an orchestrated step exactly one slot has <code>controller = true</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Slot IDs are unique across the whole mission (a seat's session is named after its run and slot) and are a letter or digit followed by up to 63 letters, digits, underscores or hyphens.</p>
+
+<h2><code>[[gate]]</code></h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Key</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>id</code>, <code>title</code>, <code>criterion</code></th><td>Identity, display name and what the gate checks.</td></tr>
+    <tr><th scope="row"><code>kinds</code></th><td>Any of <code>"code"</code>, <code>"formation"</code>, <code>"human"</code>.</td></tr>
+    <tr><th scope="row"><code>check</code>, <code>checkVersion</code>, <code>checkValue</code></th><td>For the code kind: <code>output_contains</code> or <code>output_absent</code>, version <code>1</code>, and the text.</td></tr>
+    <tr><th scope="row"><code>files</code></th><td>Reference files such as a rubric.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Ports: <code>in</code>, <code>pass</code>, <code>fail</code>, <code>judge</code>. A judge chain is two or more connections through <code>judge</code>: out from the gate to the first judge, and from the last judge back to the gate.</p>
+
+<h2><code>[[end]]</code> and <code>[[limit]]</code></h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Table</th><th scope="col">Keys</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>[[end]]</code></th><td><code>id</code>, <code>title</code>, <code>outcome</code> (<code>done</code> or <code>rejected</code>). One port: <code>in</code>.</td></tr>
+    <tr><th scope="row"><code>[[limit]]</code></th><td><code>id</code>, <code>title</code>, <code>target</code> (a step ID, or the Input card's ID for the whole mission), <code>rounds</code>, <code>seconds</code>, <code>warnSeconds</code>, <code>tokens</code>, <code>whenSpent</code> (<code>best</code> or <code>fail</code>; absent means <code>stop</code>).</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><code>[[connection]]</code></h2>
+
+<p><code>id</code>, <code>from</code> and <code>to</code>, each endpoint <code>"&lt;node-id&gt;:&lt;port-id&gt;"</code>. Wires run from an output (<code>out</code>, a step output, <code>pass</code>, <code>fail</code>) to an input (a step input, a gate's <code>in</code>, an End's <code>in</code>); judge wiring uses <code>judge</code> on both ends.</p>
+
+<h2>Tool nodes</h2>
+
+<p>A Tool node runs a registered host profile on its input. This source registers one, <code>json.normalize</code> version <code>1</code>, which normalizes a JSON report. Create Tools with <code>archon tool create</code>, which validates the profile and its parameters, rather than by hand.</p>
+
+<h2>The notes file</h2>
+
+<p><code>.archon/notes/&lt;slug&gt;.notes.toml</code> is schema 2: <code>missionId</code>, <code>rev</code>, and one <code>[[entry]]</code> per note entry with <code>id</code>, <code>target</code> (<code>mission</code> or a node ID), <code>author</code> (<code>human:&lt;name&gt;</code> or <code>agent:&lt;name&gt;</code>), <code>createdAt</code>, optional edit time, and <code>text</code>.</p>
+
+<code-block lang="toml" title="Notes">
+schema = 2
+missionId = "msn_draft_review"
+rev = 1
+
+[[entry]]
+id = "nte_intent"
+target = "mission"
+author = "human:ui"
+createdAt = "2026-11-01T09:00:00Z"
+text = "Drafts should read like our handbook, not like marketing."
+</code-block>
+
+<h2>Layout</h2>
+
+<p><code>.archon/layout/&lt;slug&gt;.layout.toml</code> holds card positions (<code>[[node]]</code> with <code>id</code>, <code>x</code>, <code>y</code>) and wire lanes. It is separate so validation never touches positions; <code>mission arrange</code> rewrites it.</p>

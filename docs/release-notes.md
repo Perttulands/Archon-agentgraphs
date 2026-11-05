@@ -1,3 +1,7 @@
+<!-- Notes for the next release. release.yml publishes this file as the
+GitHub release body. Everything here is in the source after v0.1.0 and in no
+published archive until that release is cut. -->
+
 Archon is a standalone workbench for teams of coding agents. This release ships
 the `archon` CLI, `archond` coordinator and Archon UI together for Linux on
 x86-64 and ARM64.
@@ -6,7 +10,11 @@ x86-64 and ARM64.
 - The reusable unit is a mission and its entry node the Input card, on every
   surface: CLI, HTTP (`/api/missions`, `/api/runs`), JSON fields, files and
   the cockpit.
-- Run Claude Code and Codex seats through tmux, with durable run history.
+- Run Claude Code, Codex and Pi seats through tmux, with durable run history.
+- End runs at End nodes, and cap a step's or the mission's rounds, time and
+  tokens with Limit cards.
+- Drive runs from an agent with `run wait`, which returns when the run needs
+  an answer, changes or ends.
 - Inspect staffing and live output through the Agents view and floating Peek.
 - Install one archive with `install.sh`; the daemon finds its bundled UI.
 

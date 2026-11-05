@@ -1,0 +1,59 @@
+<!--
+title: Let agents drive Archon
+nav: Let agents drive
+description: Install the archon skill so Claude Code, Codex and Pi agents author missions, run them and answer gates with the operator.
+lead: Archon is agent-facing first. The operator steers through a managing agent: in that agent's own conversation it clarifies inputs, prepares or reuses a mission, runs it, follows progress and asks the consequential questions. The cockpit is where both of you look at the same mission.
+-->
+
+<h2>Install the skill</h2>
+
+<p>The <code>archon</code> skill ships in every archive at <code>share/archon/skills/archon</code>, and in a checkout at <a href="repo:skills/archon/SKILL.md">skills/archon</a>. Link it where your harnesses discover user-level skills: <code>~/.claude/skills</code> for Claude Code, <code>~/.agents/skills</code> for Codex and Pi. The loop below skips a directory that already provides an <code>archon</code> skill and never replaces an existing path.</p>
+
+<code-block lang="bash">
+export ARCHON_SHARE="$HOME/.local/lib/archon/current/share/archon"   # or: "$PWD" in a checkout
+for dir in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+  mkdir -p "$dir"
+  if [ -e "$dir/archon/SKILL.md" ]; then
+    echo "$dir/archon already provides the archon skill; left unchanged"
+  else
+    ln -sn "$ARCHON_SHARE/skills/archon" "$dir/archon"
+  fi
+done
+</code-block>
+
+<p>The links follow <code>current</code>, so an upgrade updates the skill with the binaries.</p>
+
+<h2>Tell the agent where Archon is</h2>
+
+<p>The skill reads two values from the environment or your runbook. Give the agent's session both:</p>
+
+<code-block lang="bash">
+export ARCHON_SERVER=http://127.0.0.1:8091      # literal IP, no trailing slash
+export ARCHON_STATE="$HOME/.local/share/archon/state"
+export ARCHON_DRIVER="agent:my-session"         # optional: recorded as the run's driver
+</code-block>
+
+<h2>What a good loop looks like</h2>
+
+<ol class="steps">
+  <li><p><strong>Clarify.</strong> The agent reads the mission, its notes and the role roster, and asks you for any missing input or authority, as one question with options and a recommendation.</p></li>
+  <li><p><strong>Prepare.</strong> It reuses a mission or builds one through <code>--server</code>, so you watch each edit land in the cockpit, and explains each step on its note thread.</p></li>
+  <li><p><strong>Run on your go.</strong> It starts the run only on an explicit go, with the owning Bead and its own session as the actor.</p></li>
+  <li><p><strong>Pull.</strong> It leaves <code>run wait</code> running in the background and reacts when it returns. Archon pushes nothing into its session.</p></li>
+  <li><p><strong>Ask and answer.</strong> At a gate it brings you the question, the input and where each verdict leads, and records your verdict with your exact words.</p></li>
+  <li><p><strong>Report.</strong> It gives the rundown from <code>run attempts</code> and the artifacts: what ran, what passed or failed, what it produced and where the evidence is.</p></li>
+</ol>
+
+<h2>Missions meant to run unattended</h2>
+
+<ul>
+  <li>Give each Limit card <code>--when-spent fail</code>, so exhaustion ends the run instead of waiting for a grant.</li>
+  <li>Leave an admitted run as it is. A grant or a mission edit needs the operator's authority; improvements land between runs.</li>
+  <li>Never pass a <code>picked</code> run's outputs on as if it had succeeded.</li>
+</ul>
+
+<h2>What agents must not do</h2>
+
+<p>Seats belong to the runtime. A managing agent never types into seats or manages their tmux sessions; only an orchestrated controller directs its own bound workers. The operator, on the other hand, may type into any seat at any time, and the seat treats that as an instruction.</p>
+
+<p>The skill itself is the reference for agents. Read <a href="repo:skills/archon/SKILL.md">SKILL.md</a> and its references on <a href="repo:skills/archon/references/recovery.md">recovery</a>, <a href="repo:skills/archon/references/human-gates.md">human gates</a>, <a href="repo:skills/archon/references/seat-output.md">seat output</a> and <a href="repo:skills/archon/references/lab-and-examples.md">lab and examples</a>.</p>

@@ -1,0 +1,164 @@
+<!--
+title: First real run
+description: Start a tmux server, configure archond for real seats and run a one-step mission with a real Claude Code, Codex or Pi agent.
+lead: A real run puts agents in tmux sessions on your machine. This page sets up everything the tmux executor needs and runs a one-step mission end to end, then shows where to look when something is missing.
+-->
+
+<div class="callout danger">
+  <p class="kit-label">Agents get full access</p>
+  <p>Seats are ordinary tmux sessions running as the daemon's user, started without permission prompts: Claude Code with <code>--dangerously-skip-permissions</code>, Codex with <code>--dangerously-bypass-approvals-and-sandbox</code>, and Pi, which asks no permissions, with <code>--approve</code> so it trusts the folder's project files for that launch. Archon adds no sandbox. Safety lives in how you configure the agents and the account they run as.</p>
+</div>
+
+<h2>Before you start</h2>
+
+<ul>
+  <li><strong>tmux</strong>, at an absolute path you will give the daemon. The tmux client and server must be the same version: a tmux 3.4 client cannot talk to a 3.6a server.</li>
+  <li><strong>The harness CLIs your slots name</strong>, signed in: <code>claude</code> for <code>claude-code</code>, <code>codex</code> for <code>openai-codex</code>, <code>pi</code> for <code>pi</code>. Archon never holds or passes credentials.</li>
+  <li>A state directory, as in the <a href="quickstart.html">lab quickstart</a>, served by no other daemon.</li>
+</ul>
+
+<h2>How the tmux executor finds things</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">What</th><th scope="col">Where it comes from</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">The tmux server</th><td>Must already be running on <code>--socket</code>, owned by the daemon's user. The daemon does not start one; a run that finds none blocks with <code>tmux_server_start_failed</code>. The socket path must be the real path, not a symlink.</td></tr>
+    <tr><th scope="row">The tmux client</th><td><code>--tmux-bin</code>, used for every tmux call. The flag's help calls it a "guarded wrapper": a host may point it at a wrapper script, but the plain tmux binary works.</td></tr>
+    <tr><th scope="row">Harness executables</th><td>Resolved on the <em>daemon's</em> <code>PATH</code> when a seat launches. A service needs a <code>PATH</code> that includes them.</td></tr>
+    <tr><th scope="row">A seat's environment</th><td>Taken from the tmux server, not the daemon. API keys and anything else a harness reads from its environment must be in the server's environment, or in the harness's own config files.</td></tr>
+    <tr><th scope="row">Completion</th><td>Read from each harness's native transcripts: <code>--claude-transcripts</code> (Claude's projects directory), <code>--codex-transcripts</code> (Codex's sessions directory) and optionally <code>--pi-transcripts</code> (defaults to <code>$PI_CODING_AGENT_DIR/sessions</code>, else <code>~/.pi/agent/sessions</code>). The first two are required with <code>--executor tmux</code>, even if you only run Pi.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Run one step with a real agent</h2>
+
+<ol class="steps">
+<li>
+<h3 id="tmux-server">Start a tmux server for seats</h3>
+<p>Give it a socket of its own and start it from a shell whose environment the seats should inherit, with the harness CLIs on <code>PATH</code>. A detached session keeps the server alive.</p>
+<code-block lang="bash">
+export ARCHON_STATE="${XDG_DATA_HOME:-$HOME/.local/share}/archon/state"
+export ARCHON_SOCKET="$ARCHON_STATE/tmux/seats.sock"
+export TMUX_BIN="$(command -v tmux)"
+mkdir -p "$(dirname "$ARCHON_SOCKET")"
+env -u TMUX "$TMUX_BIN" -S "$ARCHON_SOCKET" new-session -d -s archon-keep
+</code-block>
+</li>
+
+<li>
+<h3 id="mission">Add a one-step mission</h3>
+<p>This is the smallest mission that validates: an Input card, one solo step and an End node, with every route leading somewhere. Staff the slot with the harness you have signed in; Pi is shown, with the other two as comments.</p>
+<code-block lang="toml" title="$ARCHON_STATE/.archon/missions/hello.mission.toml" validate="mission">
+schema = 1
+id = "msn_hello"
+slug = "hello"
+title = "Hello"
+rev = 1
+
+[[inputCard]]
+id = "inp_hello"
+title = "Hello"
+goal = "Return the supplied input"
+
+[[formation]]
+id = "fmn_work"
+type = "solo"
+title = "Work"
+[formation.brief]
+goal = "Do what the input asks, briefly."
+[[formation.input]]
+id = "port_in"
+label = "Input"
+[[formation.output]]
+id = "port_out"
+label = "Result"
+[[formation.slot]]
+id = "slot_work"
+label = "Worker"
+harness = "pi"
+model = "anthropic/claude-haiku-5-5"
+effort = "low"
+# harness = "claude-code", model = "haiku"
+# harness = "openai-codex", model = "" (the Codex default)
+controller = true
+
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
+
+[[connection]]
+id = "edge_start"
+from = "inp_hello:out"
+to = "fmn_work:port_in"
+
+[[connection]]
+id = "edge_done"
+from = "fmn_work:port_out"
+to = "end_done:in"
+</code-block>
+<code-block lang="bash">
+archon --workspace "$ARCHON_STATE" mission validate hello
+</code-block>
+</li>
+
+<li>
+<h3 id="daemon">Start the daemon with the tmux executor</h3>
+<p>Every path is absolute. The transcript directories below are the harnesses' defaults; adjust them if you moved yours.</p>
+<code-block lang="bash">
+archond --executor tmux \
+  --state-dir "$ARCHON_STATE" \
+  --listen 127.0.0.1:8091 \
+  --socket "$ARCHON_SOCKET" \
+  --tmux-bin "$TMUX_BIN" \
+  --claude-transcripts "$HOME/.claude/projects" \
+  --codex-transcripts "$HOME/.codex/sessions"
+</code-block>
+<p><code>--executor tmux</code> is the default; it is written out here for clarity. Add <code>--ui-dir</code> for a source build, as in the quickstart.</p>
+</li>
+
+<li>
+<h3 id="start">Start the run and wait</h3>
+<p>The mission declares no inputs, so it takes the implicit <code>brief</code>. Without <code>--cwd</code> the daemon creates a private workspace for the run under <code>$ARCHON_STATE/workspaces/</code>.</p>
+<code-block lang="bash">
+export ARCHON_SERVER=http://127.0.0.1:8091
+RUN=$(archon --server "$ARCHON_SERVER" mission run hello \
+        --input brief="Reply with the word hello." --json | jq -r .data.runId)
+archon --server "$ARCHON_SERVER" run wait "$RUN" --until final
+archon --server "$ARCHON_SERVER" run attempts "$RUN"
+</code-block>
+<p>While it runs, open the cockpit, choose the run and click the Work card: its window is the seat's terminal. You can type to the agent there, even while it works.</p>
+</li>
+</ol>
+
+<h2>What happens in the seat</h2>
+
+<p>The daemon creates a tmux session named <code>archon-&lt;run&gt;-slot_work</code>, launches the harness with the slot's model and effort, and pastes a one-line pointer to a brief file under <code>$ARCHON_STATE/briefs</code> once the agent is idle with an empty input line. The brief tells the agent what to do, which ports to fill and how to finish:</p>
+
+<code-block lang="text" title="The end of a seat's answer">
+```archon-outputs
+{"port_out":{"text":"hello"}}
+```
+<<<ARCHON-DONE run-id=<run-id> status=ok artifact=<path-or-ref>>>
+</code-block>
+
+<p>Completion counts only when the harness's own transcript shows a finished turn carrying this run's sentinel. The seat is then cleaned up (<code>seat_cleanup</code> outcome <code>ended</code>) and the output moves on to the End node.</p>
+
+<h2>When it does not start</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">You see</th><th scope="col">Do this</th></tr></thead>
+  <tbody>
+    <tr><th scope="row" class="wrap"><code>standalone seats require an already running tmux server (tmux_server_start_failed)</code></th><td>Start the tmux server on the daemon's <code>--socket</code> (step 1), then <code>archon --server "$ARCHON_SERVER" run resume "$RUN" --reason "started tmux"</code>. The failed attempt stays in the history.</td></tr>
+    <tr><th scope="row"><code>&lt;harness&gt; is not on PATH</code></th><td>Restart the daemon with a <code>PATH</code> that includes the harness CLI.</td></tr>
+    <tr><th scope="row"><code>--&lt;flag&gt; requires an absolute path</code></th><td>The daemon refuses to start: every path flag, including both transcript flags, must be absolute.</td></tr>
+    <tr><th scope="row">The run blocks with <code>seat_idle_without_sentinel</code></th><td>The agent went quiet twice for five minutes without finishing. Open the seat, see why, then <code>run resume "$RUN" --mode redispatch</code>.</td></tr>
+    <tr><th scope="row">A Pi seat cannot reach its model</th><td>Pi resolves its own credentials: sign in with Pi, or put the provider key in the tmux server's environment and restart that server.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>More recovery: <a href="recovery.html">Recovery</a>. Every daemon flag: <a href="operate.html#daemon-flags">Operate</a>.</p>

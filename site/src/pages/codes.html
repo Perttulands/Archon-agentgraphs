@@ -1,0 +1,145 @@
+<!--
+title: Codes and statuses
+description: Run statuses, run wait exit codes, validation and admission findings, block codes, ledger events and seat outcomes in one place.
+lead: Archon names every state and problem with a stable code. This page collects them; each links to where it is explained. The words in messages are written for people, the codes for scripts.
+-->
+
+<h2 id="run-statuses">Run statuses</h2>
+
+<p><code>running</code>, <code>waiting_human</code>, <code>blocked</code>, and the final <code>succeeded</code>, <code>picked</code>, <code>failed</code> and <code>canceled</code>. Always check <code>final</code> and <code>resumeAllowed</code> as well. <a href="runs.html#run-wait">Explained in Run and drive</a>.</p>
+
+<h2 id="wait-exit-codes">run wait and run follow exit codes</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">0</th><td>Final: succeeded, failed or canceled.</td></tr>
+    <tr><th scope="row">7</th><td>Final as <code>picked</code>.</td></tr>
+    <tr><th scope="row">3</th><td>The run needs you (<code>needs-you</code>, or an ask during <code>any-change</code>).</td></tr>
+    <tr><th scope="row">4</th><td>Changed, with no new ask (<code>any-change</code>).</td></tr>
+    <tr><th scope="row">5</th><td><code>--timeout</code> passed first.</td></tr>
+    <tr><th scope="row">6</th><td>The daemon stayed unreachable for <code>--reconnect</code>.</td></tr>
+    <tr><th scope="row">1</th><td>Error, such as an unknown run or a <code>--since</code> past the last event.</td></tr>
+    <tr><th scope="row">2</th><td>Usage, or no <code>--server</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="validation-findings">Validation findings</h2>
+
+<p><code>mission validate</code> and run admission report the same findings. All are errors unless marked as a warning.</p>
+
+<h3 id="findings-graph" data-toc="no">Graph and routes</h3>
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>route_leads_nowhere</code></th><td>A step output or gate route is not wired to a step, gate or End.</td></tr>
+    <tr><th scope="row"><code>unreachable_node</code></th><td>Warning: no path from the Input card reaches this node.</td></tr>
+    <tr><th scope="row"><code>dangling_connection</code></th><td>A wire's end names no existing port.</td></tr>
+    <tr><th scope="row"><code>duplicate_input_producer</code></th><td>A second wire into an input port that takes one feed.</td></tr>
+    <tr><th scope="row"><code>duplicate_node_id</code></th><td>Two nodes share an ID.</td></tr>
+    <tr><th scope="row"><code>mission_count</code></th><td>The mission has no Input card.</td></tr>
+    <tr><th scope="row"><code>several_input_cards</code></th><td>The file holds more than one Input card; split it.</td></tr>
+    <tr><th scope="row"><code>mission_not_runnable</code></th><td>The Input card's <code>out</code> is wired to nothing.</td></tr>
+    <tr><th scope="row"><code>invalid_end</code></th><td>An End's outcome is not <code>done</code> or <code>rejected</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="findings-steps" data-toc="no">Steps and staffing</h3>
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>invalid_formation_type</code></th><td>A type other than solo, peer or orchestrated.</td></tr>
+    <tr><th scope="row"><code>invalid_formation_shape</code></th><td>The slots do not fit the type (one solo slot; two or more peers; one controller and a worker).</td></tr>
+    <tr><th scope="row"><code>unstaffed_slot</code></th><td>A slot has no harness and effort.</td></tr>
+    <tr><th scope="row"><code>invalid_slot_settings</code></th><td>The harness, model or effort cannot start a seat.</td></tr>
+    <tr><th scope="row"><code>unavailable_persona</code>, <code>retired_persona</code></th><td>The slot's role cannot be read, or is retired.</td></tr>
+    <tr><th scope="row"><code>duplicate_slot_id</code>, <code>invalid_slot_id</code></th><td>Slot IDs must be unique across the mission and well formed.</td></tr>
+    <tr><th scope="row"><code>invalid_port_kind</code></th><td>A kind on an input port, or a kind other than file or folder.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="findings-io" data-toc="no">Inputs, outputs and files</h3>
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>invalid_mission_input</code></th><td>A hand-written input with a bad name or kind.</td></tr>
+    <tr><th scope="row"><code>unknown_input_reference</code></th><td>A brief names <code>{x}</code> but no input <code>x</code> is declared.</td></tr>
+    <tr><th scope="row"><code>invalid_mission_output</code></th><td>A hand-written output with a bad name, kind or <code>from</code>.</td></tr>
+    <tr><th scope="row"><code>unbound_mission_output</code></th><td>An output has no <code>from</code>, or names no step output port.</td></tr>
+    <tr><th scope="row"><code>mission_output_kind_mismatch</code></th><td>An output's kind is not its port's kind.</td></tr>
+    <tr><th scope="row"><code>missing_file</code>, <code>relative_file</code></th><td>Warnings: a referenced file does not exist, or is not absolute.</td></tr>
+    <tr><th scope="row"><code>invalid_human_channel</code></th><td>A channel other than <code>notify</code> or <code>session</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="findings-gates" data-toc="no">Gates, limits and Tools</h3>
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>gate_not_routable</code></th><td>A gate lacks what its kinds need, such as a judge chain or a code check.</td></tr>
+    <tr><th scope="row"><code>invalid_judge_relationship</code></th><td>Judge wiring that does not form a chain back to its gate.</td></tr>
+    <tr><th scope="row"><code>invalid_code_gate_profile</code></th><td>An unknown code check or version.</td></tr>
+    <tr><th scope="row"><code>invalid_limit</code></th><td>A Limit card unwired, doubled, with a bad value, or a <code>best</code> card without a selecting gate.</td></tr>
+    <tr><th scope="row"><code>empty_limit</code></th><td>Warning: a Limit card sets no knob.</td></tr>
+    <tr><th scope="row"><code>invalid_tool</code>, <code>incompatible_media</code>, <code>incompatible_payload_kind</code></th><td>A Tool node, or a wire into one, that its profile does not accept.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="findings-admission" data-toc="no">Run inputs (admission only)</h3>
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>missing_input</code></th><td>A required input is missing or blank.</td></tr>
+    <tr><th scope="row"><code>unknown_input</code></th><td>A value for an input the mission does not declare.</td></tr>
+    <tr><th scope="row"><code>invalid_input</code></th><td>A file or folder value that is not the absolute path of one that exists.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="block-codes">Block and failure codes</h2>
+
+<p>Blocks are explained, with their next moves, in <a href="recovery.html">Recovery and evidence</a>. Codes that end runs:</p>
+
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>path_rejected</code></th><td>A path reached a rejected End.</td></tr>
+    <tr><th scope="row"><code>missing_output</code></th><td>A required mission output was never delivered, or a file output vanished.</td></tr>
+    <tr><th scope="row"><code>limit_reached</code></th><td>With <code>whenSpent = "fail"</code>, the run fails; otherwise it blocks.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="api-errors">API error codes</h2>
+
+<div class="table-wrap">
+<table>
+  <tbody>
+    <tr><th scope="row"><code>RUN_ADMISSION_FAILED</code> (422)</th><td>The start was refused; <code>error.findings</code> lists why.</td></tr>
+    <tr><th scope="row"><code>CONFLICT</code> (409)</th><td>A stale mission revision or ETag.</td></tr>
+    <tr><th scope="row"><code>BROKEN_LINK</code> (422)</th><td>A mission symlink whose target is gone.</td></tr>
+    <tr><th scope="row"><code>INVALID_SLOT_SETTINGS</code> (422)</th><td>Staffing without a harness and effort, or one the harness refuses.</td></tr>
+    <tr><th scope="row"><code>INVALID_AGENT_CARD</code> (422)</th><td>A role card with a harness, model, effort or unknown field.</td></tr>
+    <tr><th scope="row"><code>ROLE_IN_USE</code>, <code>ROLE_USAGE_INCOMPLETE</code> (409)</th><td>A role a slot names, or whose use cannot be established, cannot be deleted.</td></tr>
+    <tr><th scope="row"><code>INPUT_OCCUPIED</code>, <code>SELF_WIRE</code>, <code>DUPLICATE_CONNECTION</code></th><td>Wiring refused; join with <code>--join</code>.</td></tr>
+    <tr><th scope="row"><code>UNSUPPORTED_FORMATION_TYPE</code></th><td>Not solo, peer or orchestrated.</td></tr>
+    <tr><th scope="row"><code>INVALID_LIMIT</code> (400)</th><td>A Limit card write with a bad target, value or <code>whenSpent</code>.</td></tr>
+    <tr><th scope="row"><code>RELATIVE_FILE_REFERENCE</code> (400)</th><td>A reference file named by a relative path.</td></tr>
+    <tr><th scope="row"><code>INVALID_MISSION_INPUT</code>, <code>INVALID_MISSION_OUTPUT</code>, <code>INVALID_PORT</code></th><td>Authoring refused a bad input, output or port.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The CLI reports the same codes in lower case, such as <code>invalid_slot_settings</code>.</p>
+
+<h2 id="events">Ledger events</h2>
+
+<p>A typical run records <code>run_started</code>, <code>node_started</code>, <code>slot_dispatch</code>, <code>seat_created</code>, <code>seat_prompt_consumed</code>, <code>slot_result</code>, <code>seat_cleanup</code>, <code>node_output</code>, <code>gate_evaluating</code>, <code>gate_kind_result</code>, <code>gate_verdict</code> and an outcome: <code>run_succeeded</code>, <code>run_picked</code>, <code>run_failed</code> or <code>run_canceled</code>. Others include <code>run_blocked</code>, <code>run_resumed</code>, <code>human_input_requested</code>, <code>human_verdict_recorded</code>, <code>pick_started</code>, <code>judge_attempt_failed</code>, <code>limit_warning</code>, <code>token_usage</code>, <code>seat_state</code>, <code>human_ask_delivered</code> and <code>human_ask_fallback</code>. Each event has a sequence number, a timestamp, a type, an actor and the run's ID.</p>
+
+<p>Seat cleanup outcomes and seat states are in <a href="recovery.html">Recovery and evidence</a>.</p>

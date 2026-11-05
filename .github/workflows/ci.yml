@@ -34,3 +34,24 @@ jobs:
           npm run test:unit
           npm run build
           npm run lint
+
+  docs-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the commands the site documents
+        working-directory: src
+        run: |
+          go build -o "$RUNNER_TEMP/archon-bin/archon" ./cmd/archon
+          go build -o "$RUNNER_TEMP/archon-bin/archond" ./cmd/archond
+      - name: Generated CLI reference is current
+        run: node site/tools/gen-reference.mjs --bin "$RUNNER_TEMP/archon-bin" --check
+      - name: Site builds with every link and mission example valid
+        run: node site/build.mjs --out "$RUNNER_TEMP/archon-site" --archon "$RUNNER_TEMP/archon-bin/archon"

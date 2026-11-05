@@ -18,7 +18,9 @@ block with `code`, `reason`, `resumeAllowed` and the `nodeIds` it names.
 | `reachable_node_starved` | A formation can never receive a missing input. | Not resumable. Fix the wiring and start a new run. |
 | `limit_reached` | A Limit card is spent: "Review used 3 of 3 rounds", "Review used 30 min of 30 min" or "Review used 51,230 of 50,000 tokens" (`resumePolicy: grant`, `limit` names the card and its `kind`). `resumePolicy: grant_or_pick` means the step's gate judged attempts it can pick from. | With the operator's authority, `run resume "$ARCHON_RUN_ID" --grant --reason '<why more>'` gives one more round (on a peer step, room for a proposal and every peer's acknowledgement), or the card's time or tokens again; under `grant_or_pick`, `run resume "$ARCHON_RUN_ID" --pick-best --reason '<why go on>'` instead picks the best judged attempt and sends it on through the gate's pass route; or `run abort`. A plain resume is refused. |
 | `invalid_judge_pick` | A judge broke the pick contract twice while picking a step's best attempt. | Resume: the final judge is asked to pick again. |
-| Malformed `archon-verdict` | The judge broke the verdict contract. | Not resumable. Fix the judge brief and start a new run. |
+| `invalid_judge_result` | The judge broke the verdict contract twice. | Resume: the final judge is asked again in a new attempt. `run resume "$ARCHON_RUN_ID" --take-fail --reason '<why>'` settles the gate as a fail instead. |
+| `seat_idle_without_sentinel` | A seat sat idle at an empty prompt twice for five minutes without this run's sentinel. | Inspect the seat, then `run resume "$ARCHON_RUN_ID" --mode redispatch --reason '<why>'`. |
+| `tmux_server_start_failed` | No tmux server runs on the daemon's `--socket`; the daemon does not start one. | Start a tmux server on that socket as the daemon's user, then resume. |
 | `persona_snapshot_invalid` | The run's frozen staffing cannot start a seat. | Start a new run. |
 
 A failed or canceled run names who ended it in `endedBy`.

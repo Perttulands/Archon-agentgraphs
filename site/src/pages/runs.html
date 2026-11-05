@@ -1,0 +1,139 @@
+<!--
+title: Run and drive
+description: Start a run with its inputs, drive it with run wait, read its status and outputs, chain missions and inspect every attempt.
+lead: Runtime commands always go through the daemon with `--server`. The agent that starts a run drives it by pulling: `run wait` returns when the run needs an answer, ends or changes, and prints the exact command for what comes next.
+-->
+
+<h2>Start a run</h2>
+
+<p class="setup-note">Commands on this page are for bash or zsh and need <code>jq</code>. Take step, slot, gate and run IDs from the JSON a command returns (<code>formation list "$M"</code>, <code>run status "$RUN" --json</code>); never guess one.</p>
+
+<code-block lang="bash" title="Shell setup for this page">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+M=review                                      # the mission slug
+WORK=fmn_...                                  # a step ID from: archon --server "$ARCHON_SERVER" formation list "$M"
+</code-block>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" mission input "$M"                     # what a run supplies
+START=$(archon --server "$ARCHON_SERVER" mission run "$M" \
+  --input change="Add CSV export to the report page" \
+  --input-file spec=/abs/spec.md \
+  --cwd /abs/path/to/project \
+  --context-path /abs/prior-art \
+  --bead proj-123 \
+  --actor "agent:my-session" \
+  --json)
+RUN=$(jq -er .data.runId <<<"$START")
+</code-block>
+
+<dl>
+  <dt><code>--input name=value</code>, <code>--input-file name=path</code></dt>
+  <dd><p>One per input, repeated. <code>--input-file</code> sends a local UTF-8 file's text. A <code>file</code> or <code>folder</code> input takes the absolute path of something that exists on the daemon's host. A mission without declared inputs takes <code>--input brief=…</code>.</p></dd>
+  <dt><code>--cwd</code></dt>
+  <dd><p>An existing absolute directory every seat works in. Omit it and the daemon creates a private workspace under <code>&lt;state-dir&gt;/workspaces/&lt;run&gt;</code> (or <code>--run-workspace-root</code>). Workspaces stay after the run ends.</p></dd>
+  <dt><code>--context-path</code></dt>
+  <dd><p>Absolute files or directories every seat must inspect as prior art. Frozen as paths, not contents; reference, not permission to edit.</p></dd>
+  <dt><code>--bead</code></dt>
+  <dd><p>The Beads issue the run belongs to. Briefs can reference it as <code>{bead}</code>.</p></dd>
+  <dt><code>--actor</code></dt>
+  <dd><p>Who is driving, recorded as the run's <code>startedBy</code>. Defaults to <code>ARCHON_DRIVER</code>, then <code>agent:archon</code>.</p></dd>
+</dl>
+
+<p>Admission checks everything at once and refuses with every finding listed (HTTP 422, <code>RUN_ADMISSION_FAILED</code>); no run is recorded. If the start's answer is lost, check <code>run list --mission "$M"</code> before starting again: the run continues even if the client disconnected.</p>
+
+<h2 id="run-wait">Drive it with run wait</h2>
+
+<p>Start <code>run wait</code> right after the launch, and again after every answer. It blocks until something needs the driver, prints one paragraph written for an agent, and exits with a code that says what happened.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run wait "$RUN" --until needs-you
+</code-block>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Exit</th><th scope="col">Means</th><th scope="col">Do</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">3</th><td>The run needs you</td><td>Follow the paragraph: it names the gate, its criterion and input and where each verdict leads, with the exact <code>gate approve</code> and <code>gate reject</code> commands; or the <code>run resume</code> or <code>run abort</code> a block needs. Then wait again.</td></tr>
+    <tr><th scope="row">0</th><td>The run is final</td><td>Read how it ended: status, where it stopped, the reason and who ended it.</td></tr>
+    <tr><th scope="row">7</th><td>Final as <code>picked</code></td><td>Its outputs are failed work a pick carried on. Do not chain them as a success.</td></tr>
+    <tr><th scope="row">4</th><td>Something changed (<code>any-change</code>)</td><td>Read the listed events and wait again.</td></tr>
+    <tr><th scope="row">5</th><td><code>--timeout</code> passed first</td><td>Wait again with the same command.</td></tr>
+    <tr><th scope="row">6</th><td>The daemon stayed unreachable for <code>--reconnect</code> (default one minute)</td><td>Run the printed command once it is back.</td></tr>
+    <tr><th scope="row">1, 2</th><td>Error or usage</td><td>Read stderr; waiting will not fix it.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Every answer except a final one ends with <em>Wait for what comes next:</em> and the next command, carrying <code>--since &lt;seq&gt;</code>. Always run that command: an ask counts as new only after <code>--since</code>, so a loop sees each ask once and misses nothing, even across a daemon restart.</p>
+
+<ul>
+  <li><code>--until needs-you</code> (default): gates, blocking escalations, blocks and the end.</li>
+  <li><code>--until final</code>: only the end.</li>
+  <li><code>--until any-change</code>: every ledger event, still answering 3 when an event opens an ask.</li>
+</ul>
+
+<p><code>--json</code> prints the same answer for machines, with <code>next</code> holding the next command. <code>run follow</code> streams a projection after each durable change until the run is final; <code>run status</code> reads it once. Interrupting any of them stops watching, not the run.</p>
+
+<h2>Read the status</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Status</th><th scope="col">Means</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>running</code></th><td>Work is under way.</td></tr>
+    <tr><th scope="row"><code>waiting_human</code></th><td>At least one human gate waits, even if other steps still run. Each waiting gate is in <code>waitingGates</code> with <code>gateId</code> and <code>requestedSeq</code>.</td></tr>
+    <tr><th scope="row"><code>blocked</code></th><td>Stopped until someone resumes or aborts it. Never a delivery. Check <code>resumeAllowed</code> and <code>resumePolicy</code>.</td></tr>
+    <tr><th scope="row"><code>succeeded</code></th><td>Final: every path ended at a done End without a pick.</td></tr>
+    <tr><th scope="row"><code>picked</code></th><td>Final: the work reached a done End through a best-attempt pick. Failed work, retained.</td></tr>
+    <tr><th scope="row"><code>failed</code></th><td>Final: a rejected End, a missing output, a <code>fail</code> Limit card or a coordinator failure. <code>endedBy</code> says who.</td></tr>
+    <tr><th scope="row"><code>canceled</code></th><td>Final: aborted.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Runtime JSON is wrapped in <code>.data</code>; authoring JSON is not. Plain <code>run status</code> prints readable lines, including one <code>output</code> line per mission output.</p>
+
+<h2 id="outputs-and-chaining">Outputs and chaining</h2>
+
+<p>A succeeded or picked run lists its mission outputs: in <code>run status</code>, in the final <code>run wait</code> answer and in the cockpit. Chain a mission by passing a value on:</p>
+
+<code-block lang="bash">
+REPORT=$(archon --server "$ARCHON_SERVER" run status "$RUN" --json | jq -er '.data.outputs[] | select(.name == "report") | .value')
+archon --server "$ARCHON_SERVER" mission run next-mission --input spec="$REPORT" --json
+</code-block>
+
+<p>A file or folder output's value is the path of the read-only copy Archon kept, under the run's artifact directory.</p>
+
+<h2>Attempts and evidence</h2>
+
+<p>Every attempt of every step, judges included, has its own directory, <code>&lt;state-dir&gt;/.archon/artifacts/&lt;run&gt;/&lt;node&gt;/&lt;attempt&gt;/</code>, where the seat writes selected evidence and Archon keeps output copies.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run attempts "$RUN"                   # every step and attempt, verdicts and outputs
+archon --server "$ARCHON_SERVER" run attempts "$RUN" --node "$WORK" --files
+archon --server "$ARCHON_SERVER" run seats "$RUN"                      # seats, session names and what each waits on
+archon --server "$ARCHON_SERVER" run storage "$RUN"                    # evidence size and retention
+</code-block>
+
+<p>In the cockpit, a step that ran shows <em>N attempts</em>; one click opens the attempts window, one column per attempt, oldest first: outcome, each gate's verdict and evidence, then what each output produced. Press C to compare two attempts side by side. The run bar's Produced list leads with what the run's final steps produced.</p>
+
+<p>Run artifacts are temporary evidence with an ordinary budget of 32 MiB and 4,096 entries per run; history stays after files expire. Keep deliverables in the project. See <a href="recovery.html#evidence-and-storage">Evidence and storage</a>.</p>
+
+<h2>Stop a run</h2>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run abort "$RUN" --reason "Wrong repository"
+</code-block>
+
+<p>Abort cancels only that run and waits for its seats to be cleaned up before answering <code>canceled</code>. For blocked runs and restarts, see <a href="recovery.html">Recovery</a>.</p>
+
+<h2>In the cockpit</h2>
+
+<ul>
+  <li>Start mission (or ▶ on a step) opens one dialog asking for each input, the workspace, context paths and Bead.</li>
+  <li>The navigator lists every mission with its runs, by attention; a Needs you group counts every run waiting at a human gate or blocked, across all missions, and the page title carries the count.</li>
+  <li>The run bar names the run (Run 3), when it started, how long it took, who drives it, every gate that waits and every step that runs.</li>
+  <li>Clicking a seated step opens the seat's terminal. Type to the agent, select to copy, scroll.</li>
+  <li><code>/?mission=&lt;slug&gt;&amp;run=&lt;runId&gt;</code> links straight to a run; notifications carry these links.</li>
+</ul>

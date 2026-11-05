@@ -1,0 +1,65 @@
+<!--
+title: Releases and source
+nav: Releases and source
+description: How the current Archon source differs from the public v0.1.0 release, and how to tell which build you are running.
+lead: These docs describe Archon's current source. The newest public release, {{release.tag}} from {{release.date}}, is several hundred commits older and uses different names and commands. Read this page before you mix the two.
+-->
+
+<h2>Which build do you have?</h2>
+
+<p>Ask the binaries. Both print a version and the source commit they were built from, and the daemon's answer includes its own build:</p>
+
+<code-block lang="bash">
+archon --version
+archond --version
+archon --server http://127.0.0.1:8091 version   # the CLI's build and the running daemon's
+</code-block>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">It prints</th><th scope="col">You are running</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>Archon 0.1.0 (7304800…)</code></th><td>The {{release.tag}} release. Most pages here do not apply; use the README and docs inside that archive.</td></tr>
+    <tr><th scope="row"><code>Archon dev (&lt;commit&gt;)</code></th><td>A plain <code>go build</code> of the source. Matches these docs when the commit matches.</td></tr>
+    <tr><th scope="row"><code>Archon {{version}} (&lt;commit&gt;)</code> with a newer commit</th><td>An archive built from source with <code>scripts/build-release.sh</code>. The <code>VERSION</code> file still says <code>{{version}}</code>, so trust the commit, not the number.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+  <p class="kit-label">Same number, different software</p>
+  <p>The repository's <code>VERSION</code> file has not been bumped since {{release.tag}}, so a release archive built from today's source is also named <code>archon-{{version}}-linux-&lt;arch&gt;.tar.gz</code>. Until a new release is cut, the commit is the only reliable identity.</p>
+</div>
+
+<h2>What changed since {{release.tag}}</h2>
+
+<p>Archon lands renames whole, with no compatibility layer. The current source therefore refuses many things {{release.tag}} accepted. The main differences:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Area</th><th scope="col">{{release.tag}}</th><th scope="col">Current source</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Reusable unit</th><td class="wrap">Board, <code>.formations/boards/*.formation.toml</code>, <code>archon board …</code></td><td class="wrap">Mission, <code>.archon/missions/*.mission.toml</code>, <code>archon mission …</code></td></tr>
+    <tr><th scope="row">Entry node</th><td class="wrap">Mission node on a board</td><td class="wrap">Input card with declared inputs and outputs</td></tr>
+    <tr><th scope="row">Commands</th><td class="wrap"><code>archon</code>, <code>archond</code> and a <code>formationsd</code> compatibility command</td><td class="wrap"><code>archon</code> and <code>archond</code> only</td></tr>
+    <tr><th scope="row">HTTP</th><td class="wrap"><code>/api/formations/*</code> still answered</td><td class="wrap"><code>/api/missions</code>, <code>/api/runs</code>; the old routes are gone</td></tr>
+    <tr><th scope="row">Run inputs</th><td class="wrap"><code>--mission</code> and <code>--brief</code> on <code>mission run</code></td><td class="wrap">Named inputs: <code>--input name=value</code>, <code>--input-file name=path</code></td></tr>
+    <tr><th scope="row">Limits</th><td class="wrap">Launch flags such as <code>--max-dispatch</code>, <code>--max-attempts</code>, <code>--wall-clock-seconds</code></td><td class="wrap">Only Limit cards on the mission; a launch sets none</td></tr>
+    <tr><th scope="row">Ending paths</th><td class="wrap">No End nodes</td><td class="wrap">End nodes (<code>done</code>, <code>rejected</code>); every route must lead somewhere</td></tr>
+    <tr><th scope="row">Driving a run</th><td class="wrap"><code>run status</code>, <code>run follow</code></td><td class="wrap">Adds <code>run wait</code> with exit codes and the next command</td></tr>
+    <tr><th scope="row">Harnesses</th><td class="wrap">Claude Code and Codex</td><td class="wrap">Claude Code, Codex and Pi</td></tr>
+    <tr><th scope="row">Staffing</th><td class="wrap">Personas chose the harness</td><td class="wrap">Each slot states its harness, model and effort; roles are text only</td></tr>
+    <tr><th scope="row">Cockpit</th><td class="wrap">Board editor and terminal Peek</td><td class="wrap">Floating node windows, seat terminals, attempts, best-attempt picks, Flow view</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The draft notes for the next release are in <a href="repo:docs/release-notes.md">docs/release-notes.md</a>. The release workflow publishes that file as the release body.</p>
+
+<h2>Moving from {{release.tag}} state</h2>
+
+<p>There is no migration command in the CLI. State from {{release.tag}} lives under <code>&lt;state-dir&gt;/.formations/</code>; current Archon reads only <code>&lt;state-dir&gt;/.archon/</code>. The release notes describe the cut-over as a one-time migration a deployment performs with <code>archond</code> stopped; that tooling lives with the host deployment, outside this repository. For a personal setup, the simplest path is a fresh state directory: copy the current examples in and rebuild your missions with the current commands.</p>
+
+<h2>Getting the current source</h2>
+
+<p>Until a newer release is published, build from source to use what these pages describe. <a href="install.html#build-from-source">Install, build from source</a> shows how.</p>

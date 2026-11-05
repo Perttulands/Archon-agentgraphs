@@ -1,0 +1,112 @@
+<!--
+title: Limit cards
+description: Cap a step or a whole mission by rounds, time or tokens, and choose what happens when a card is spent: stop for a grant, fail the run, or pick the best attempt.
+lead: A run has no limits unless its mission holds a Limit card, and nothing adds one for you. Without a card, a send-back loop continues until its gate passes or someone stops the run, and a step works as long as it takes. Add a card where a loop or a step needs a guard.
+-->
+
+<h2>One card, one target</h2>
+
+<p>A Limit card covers one target: a step, or the Input card for the whole mission. A target has at most one card. A step covered by its own card and the mission's card stops at whichever is spent first.</p>
+
+<p class="setup-note">Commands on this page are for bash or zsh and need <code>jq</code>. Take step, slot, gate and run IDs from the JSON a command returns (<code>formation list "$M"</code>, <code>run status "$RUN" --json</code>); never guess one.</p>
+
+<code-block lang="bash" title="Shell setup for this page">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+M=review                                      # the mission slug
+WORK=fmn_...  DRAFT=fmn_...                  # steps to cap
+LIMIT=lim_...                                 # a Limit card ID from: archon --server "$ARCHON_SERVER" mission inspect "$M"
+RUN=run_...  GATE=gate_...  SEQ=...           # a run blocked or waiting for a pick, from run status
+</code-block>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" limit create "$M" --target "$WORK" --rounds 3
+archon --server "$ARCHON_SERVER" limit create "$M" --target input --rounds 20 --time 2h --warn 10m --title "Mission cap"
+archon --server "$ARCHON_SERVER" limit update "$M" "$LIMIT" --tokens 500000 --when-spent fail
+archon --server "$ARCHON_SERVER" limit update "$M" "$LIMIT" --time ''        # an empty value clears a knob
+archon --server "$ARCHON_SERVER" limit delete "$M" "$LIMIT"
+</code-block>
+
+<p>In the cockpit, drag the Limit block onto a step or the Input card. The card states its knobs in words (<em>at most 3 rounds · 30 min</em>) and has a dashed tether to its target; drag the tether's handle to rewire it.</p>
+
+<h2>The three knobs</h2>
+
+<p>Each knob is optional, and each one set is enforced.</p>
+
+<dl>
+  <dt><code>--rounds</code></dt>
+  <dd><p>On a step: how many times it may run, send-backs and resumed re-runs included. On a peer step: how many journal messages its conversation may hold. On the Input card: how many step runs the whole mission may make, judges included. A start that a crash or shutdown cut short before its output is not a round.</p></dd>
+  <dt><code>--time</code> (and <code>--warn</code>)</dt>
+  <dd><p>Wall time in whole seconds, written <code>45s</code>, <code>30m</code> or <code>1h30m</code>. On a step it counts while an attempt runs: startup, work and finalization, but not waits on a human gate, blocks or daemon downtime, so a send-back resumes the step with the time it has left. On the Input card it counts while any step works. At the deadline the step's seats stop, keeping partial evidence. <code>--warn 5m</code> pastes one warning into the covered seats when that much time is left.</p></dd>
+  <dt><code>--tokens</code></dt>
+  <dd><p>What the covered seats spend, approximately and the same way for every harness: input not read from cache (cache writes included) plus all output, reasoning and subagents included. Seats are counted every two seconds, so a count can pass the budget by what was spent in between. Steps working at once share what the mission card has left.</p></dd>
+</dl>
+
+<h2>When a card is spent</h2>
+
+<p><code>--when-spent</code> says what happens. Before a step starts, the engine checks its own card, then the mission's, rounds before time before tokens.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Value</th><th scope="col">What happens</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>stop</code> (default)</th><td>The run blocks with <code>limit_reached</code> and a plain reason (<em>Review used 3 of 3 rounds</em>). It waits for a grant: <code>run resume --grant</code> gives one more round, or the card's time or tokens again.</td></tr>
+    <tr><th scope="row"><code>fail</code></th><td>The run fails at once with <code>limit_reached</code>, keeping every attempt's verdicts and outputs as evidence. Needs no one. Use it for missions meant to run unattended.</td></tr>
+    <tr><th scope="row"><code>best</code></th><td>Only on a step's card. The step's gate picks the best attempt it has judged, and that attempt goes on through the gate's pass route. See below.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run resume "$RUN" --grant --reason "One more round; the reviewer's last points were small"
+</code-block>
+
+<p>A plain resume at a spent limit is refused with 409. In the cockpit the run bar offers the grant in words: Grant one more round, or Grant 30 min more.</p>
+
+<h2 id="best-of-n">Best of N</h2>
+
+<p>Best of N is a step, its gate's fail route back to it, and a <code>best</code> card with N rounds. The step needs a <em>selecting gate</em>: exactly one judge or human gate that only this step feeds and whose fail route returns to it. A code-only gate cannot compare attempts.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" limit create "$M" --target "$DRAFT" --rounds 3 --when-spent best
+</code-block>
+
+<p>When the card is spent, the candidates are the attempts the gate has judged. An attempt the limit cut short or a crash ended has no output and is never a candidate. With one candidate Archon takes it; with several, the gate decides:</p>
+
+<ul>
+  <li><strong>A judge gate</strong> runs its chain once more on one input that shows every candidate side by side. Judges before the last recommend; the final judge answers with one <code>archon-pick</code> block.</li>
+  <li><strong>A human gate</strong> asks the operator, with any judge's pick as a recommendation. Answer in the step's attempts window (Pick attempt N) or with <code>gate pick</code>.</li>
+</ul>
+
+<code-block lang="text" title="The final judge's pick">
+```archon-pick
+{"attempt":2,"reason":"Why this attempt is the best","evidence":["what decided it"]}
+```
+</code-block>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" gate pick "$RUN" "$GATE" --attempt 2 --requested-seq "$SEQ" --reason "Tightest draft"
+</code-block>
+
+<div class="callout">
+  <p class="kit-label">A picked run is not a success</p>
+  <p>A pick happens only when no attempt passed, so the picked attempt is failed work, retained. A run whose work reached its done End through a pick ends <code>picked</code>, not <code>succeeded</code>; <code>run wait</code> and <code>run follow</code> exit 7, and each output a pick carried names the pick and the verdict that failed it. Feed a picked output only into a mission that starts by repairing those findings. See <a href="repo:docs/adr/0022-a-picked-run-is-not-a-success.md">ADR-0022</a>.</p>
+</div>
+
+<p>Any run blocked at a spent step card whose gate has judged attempts also offers <code>run resume --pick-best</code>, whatever the card's <code>whenSpent</code>.</p>
+
+<h3>Rehearse it in lab</h3>
+
+<p>Give the input a failing verdict and a pick naming an attempt; the judge fails each round until the card is spent, then picks:</p>
+
+<code-block lang="text" title="Lab input">
+```archon-verdict
+{"verdict":"fail","reason":"Lab fixture","evidence":[]}
+```
+```archon-pick
+{"attempt":2,"reason":"Lab fixture","evidence":[]}
+```
+</code-block>
+
+<h2>Validation</h2>
+
+<p>Validation reports <code>invalid_limit</code> for a card wired to nothing, a second card on one target, a value that is not a positive whole number, a warning without time or not shorter than it, and a <code>best</code> card on the mission or on a step without a selecting gate. It warns <code>empty_limit</code> for a card that sets no knob. Full rules: <a href="repo:docs/CONTRACT.md#limit-cards">CONTRACT.md, Limit cards</a> and <a href="repo:docs/CONTRACT.md#picking-the-best-attempt">Picking the best attempt</a>.</p>

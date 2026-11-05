@@ -1,0 +1,89 @@
+<!--
+title: Pi
+description: Run Pi seats in Archon missions: models, thinking levels, credentials, sessions, token counting and what differs from Claude Code and Codex.
+lead: Pi is Archon's third harness, beside Claude Code and Codex. A slot with harness `pi` runs the Pi coding agent in a tmux seat, with any model Pi can reach, and is briefed, completed, limited and cleaned up exactly like the other two.
+-->
+
+<div class="callout">
+  <p class="kit-label">Source only</p>
+  <p>Pi seats landed after {{release.tag}}. Build from source to use them (<a href="versions.html">Releases and source</a>).</p>
+</div>
+
+<h2>Staff a slot with Pi</h2>
+
+<p class="setup-note">Commands on this page are for bash or zsh and need <code>jq</code>. Take step, slot, gate and run IDs from the JSON a command returns (<code>formation list "$M"</code>, <code>run status "$RUN" --json</code>); never guess one.</p>
+
+<code-block lang="bash" title="Shell setup for this page">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+M=review                                      # the mission slug
+STEP=fmn_...                                  # a step ID from: archon --server "$ARCHON_SERVER" formation list "$M"
+SLOT=...                                      # a slot ID from: archon --server "$ARCHON_SERVER" formation inspect "$M" "$STEP"
+</code-block>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" formation assign "$M" "$STEP" --slot "$SLOT" \
+  --harness pi --model anthropic/claude-sonnet-5-5 --effort medium
+</code-block>
+
+<code-block lang="toml" title="The same slot in TOML">
+[[formation.slot]]
+id = "slot_draft"
+label = "Drafter"
+agentId = "builder"
+harness = "pi"
+model = "anthropic/claude-sonnet-5-5"
+effort = "medium"
+</code-block>
+
+<dl>
+  <dt>Model</dt>
+  <dd><p>A <code>provider/model</code> name. The catalog offers <code>anthropic/claude-opus-5-5</code>, <code>anthropic/claude-sonnet-5-5</code>, <code>anthropic/claude-haiku-5-5</code> and <code>anthropic/claude-fable-5-1</code>; a name from any other provider Pi knows works the same way, with that provider's credentials resolved by Pi. A blank model means Pi's own default.</p></dd>
+  <dt>Effort</dt>
+  <dd><p>Pi's thinking level, passed as <code>--thinking</code>: <code>low</code>, <code>medium</code>, <code>high</code>, <code>xhigh</code> or <code>max</code>, the same efforts as <code>claude-code</code>.</p></dd>
+</dl>
+
+<p>In the cockpit a Pi slot reads <em>Pi · anthropic/claude-sonnet-5-5 · medium</em> on the card and <em>Drafter is builder on Pi · anthropic/claude-sonnet-5-5 · medium</em> in its window.</p>
+
+<h2>How a Pi seat starts</h2>
+
+<p>The daemon resolves <code>pi</code> on its own <code>PATH</code> and launches, in a fresh tmux session:</p>
+
+<code-block lang="text" title="Seat command">
+exec /path/to/pi --model <model> --thinking <effort> --approve --session-dir <root>/<folder>
+</code-block>
+
+<ul>
+  <li><code>--approve</code> trusts the folder's project files for this launch only: no trust dialog, and nothing written to Pi's <code>trust.json</code>. Pi asks no tool permissions, so the seat has full access.</li>
+  <li><code>--session-dir</code> keeps the seat's saved session in Pi's own per-folder layout under the transcript root, whatever Pi's settings say, so <code>pi --resume</code> in the seat's folder finds it.</li>
+  <li>Archon never puts a key on a command line.</li>
+</ul>
+
+<h2>Credentials</h2>
+
+<p>A seat takes its environment from the tmux server, not from the daemon. A Pi seat's key therefore lives either in Pi's own auth file (sign in with Pi as the daemon's user) or in the tmux server's environment. Changing the server's environment means restarting that server; see <a href="first-real-run.html#tmux-server">Start a tmux server</a>.</p>
+
+<h2>Transcripts and completion</h2>
+
+<p>Archon reads Pi's session files to know when a turn finished. <code>archond --pi-transcripts</code> names the root; without it the daemon uses <code>$PI_CODING_AGENT_DIR/sessions</code>, else <code>~/.pi/agent/sessions</code>, from its own environment. A dispatch completes on Pi's assistant message with <code>stopReason</code> <code>stop</code> that carries this run's completion sentinel, in the seat's session, with the slot's model.</p>
+
+<h2>Token counting</h2>
+
+<p>For a Limit card's <code>--tokens</code>, a Pi dispatch counts <code>input + cacheWrite + output</code> of each assistant message after its brief pointer. That matches how Claude Code and Codex are counted: input the model did not read from its cache, plus every output token.</p>
+
+<h2>What differs from the other harnesses</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col"></th><th scope="col">Pi</th><th scope="col">Claude Code and Codex</th></tr></thead>
+  <tbody>
+    <tr><th scope="row">Permission prompts</th><td>None to bypass</td><td>Started with their bypass flags</td></tr>
+    <tr><th scope="row">Folder trust</th><td><code>--approve</code></td><td>Codex: the folder trusted for this launch only via <code>-c projects=…</code></td></tr>
+    <tr><th scope="row">Switching conversation</th><td>Not detected: Pi keeps no record of a process's current session. A seat moved with <code>/new</code> or <code>/resume</code> reaches idle recovery and blocks with <code>seat_idle_without_sentinel</code>.</td><td>Detected: the dispatch fails loudly</td></tr>
+    <tr><th scope="row">Transcript flag</th><td>Optional</td><td>Required with <code>--executor tmux</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Pi as the managing agent</h2>
+
+<p>Pi can also be the agent that drives Archon. Link the <code>archon</code> skill into <code>~/.agents/skills</code>, where Pi discovers user-level skills (<a href="agents-drive.html">Let agents drive</a>), and Pi authors missions, runs them with <code>run wait</code> and answers gates with you like any other managing agent.</p>

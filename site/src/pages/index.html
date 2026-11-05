@@ -1,0 +1,130 @@
+<!--
+title: Overview
+nav: Overview
+heading: Chain coding agents and gates.
+description: Archon is a workbench for teams of coding agents: draw the work, staff it with Claude Code, Codex and Pi, and decide where a review or human approval must happen before the next step runs.
+lead: Archon is a workbench for teams of coding agents. Draw the work as a graph, staff each step with Claude Code, Codex or Pi agents, and decide where a review or a human approval must pass before the next step runs. That is all it does.
+-->
+
+<div class="hero-actions">
+  <a class="button-primary" href="quickstart.html">Try it in lab, no agents needed</a>
+  <a class="button-quiet" href="first-real-run.html">Run real agents</a>
+  <a class="button-quiet" href="concepts.html">Learn the words</a>
+</div>
+
+<figure class="diagram">
+  <svg viewBox="0 0 860 330" role="img" aria-labelledby="hero-title hero-desc">
+    <title id="hero-title">A small mission</title>
+    <desc id="hero-desc">An Input card feeds a solo step named Draft, staffed by a planner on Claude, opus, xhigh. Draft's output goes to a gate named Review, judged by a judge formation. Review's pass route leads to an End node named Delivered, with outcome done; its fail route sends the work back to Draft with feedback. A Limit card caps Draft at three rounds and then picks the best attempt.</desc>
+    <defs>
+      <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="g-arrow"/></marker>
+    </defs>
+    <!-- fail: pushback to Draft -->
+    <path class="g-fail" d="M560 125 V72 Q560 60 548 60 H222 Q210 60 210 72 V153 Q210 165 222 165 H226"/>
+    <text class="g-fail-text" x="250" y="52">FAIL · BACK TO DRAFT WITH FEEDBACK</text>
+    <!-- wires -->
+    <path class="g-wire" d="M180 165 H226" marker-end="url(#arrow)"/>
+    <path class="g-wire" d="M430 165 H486" marker-end="url(#arrow)"/>
+    <path class="g-pass" d="M630 165 H696"/>
+    <text class="g-pass-text" x="644" y="156">PASS</text>
+    <path class="g-judge" d="M548 205 V248"/>
+    <path class="g-judge" d="M572 248 V207"/>
+    <path class="g-tether" d="M330 262 V232"/>
+    <!-- Input card -->
+    <rect class="g-card" x="20" y="120" width="160" height="90" rx="4"/>
+    <text class="g-small" x="34" y="142">INPUT CARD</text>
+    <text class="g-title" x="34" y="164">Deliver</text>
+    <text class="g-text" x="34" y="186">change · text</text>
+    <text class="g-text" x="34" y="200">required</text>
+    <circle class="g-port" cx="180" cy="165" r="4"/>
+    <!-- Draft -->
+    <rect class="g-card" x="230" y="100" width="200" height="130" rx="4"/>
+    <text class="g-small" x="244" y="122">SOLO STEP</text>
+    <text class="g-title" x="244" y="142">Draft</text>
+    <rect class="g-slot" x="242" y="152" width="176" height="62" rx="3"/>
+    <circle class="g-alive" cx="255" cy="171" r="3.5"/>
+    <text class="g-title" x="266" y="175" style="font-size:12px">planner</text>
+    <text class="g-text" x="254" y="197">Claude · opus · xhigh</text>
+    <circle class="g-port" cx="230" cy="165" r="4"/>
+    <circle class="g-port" cx="430" cy="165" r="4"/>
+    <!-- Gate -->
+    <rect class="g-gate" x="490" y="125" width="140" height="80" rx="4"/>
+    <text class="g-small" x="504" y="146">GATE · JUDGE</text>
+    <text class="g-title" x="504" y="168">Review</text>
+    <text class="g-text" x="504" y="188">meets the brief?</text>
+    <circle class="g-port" cx="490" cy="165" r="4"/>
+    <circle class="g-port" cx="630" cy="165" r="4"/>
+    <!-- Judge -->
+    <rect class="g-card" x="490" y="250" width="140" height="62" rx="4"/>
+    <text class="g-small" x="504" y="270">JUDGE</text>
+    <text class="g-text" x="504" y="290">judge · Codex</text>
+    <text class="g-text" x="504" y="304">default · xhigh</text>
+    <!-- End -->
+    <rect class="g-end" x="700" y="135" width="130" height="60" rx="30"/>
+    <text class="g-small" x="728" y="160">END · DONE</text>
+    <text class="g-title" x="728" y="180">Delivered</text>
+    <!-- Limit -->
+    <rect class="g-limit" x="230" y="262" width="200" height="50" rx="4"/>
+    <text class="g-small" x="244" y="282">LIMIT CARD</text>
+    <text class="g-text" x="244" y="300">at most 3 rounds · best</text>
+  </svg>
+  <figcaption>A mission as the cockpit draws it. The accent dot marks the seat that is working. <span class="verdict pass">PASS</span> goes on to the End node; <span class="verdict fail">FAIL</span> sends the draft back with the judge's reasons. The Limit card is optional: without it the loop runs until the gate passes or someone stops it.</figcaption>
+</figure>
+
+<h2>What you get</h2>
+
+<div class="split">
+  <div>
+    <h3>A mission you can read</h3>
+    <p>A mission is one TOML file: an Input card that states what a run supplies, steps that do the work, gates that check it, and End nodes where paths finish. The cockpit, the CLI and agents all edit the same file.</p>
+  </div>
+  <div>
+    <h3>Agents in ordinary tmux sessions</h3>
+    <p>Each staffed slot becomes a seat: a real Claude Code, Codex or Pi session in tmux, with full access. You can open its terminal in the cockpit and talk to it while it works.</p>
+  </div>
+  <div>
+    <h3>Gates that send work back</h3>
+    <p>Gates combine a code check, a judge formation and a human verdict. A failed gate routes its reasons back to the work as the next attempt's feedback.</p>
+  </div>
+  <div>
+    <h3>Runs an agent can drive</h3>
+    <p>The managing agent starts a run and pulls with <code>run wait</code>, which returns when the run needs an answer and prints the exact command that gives it. Archon pushes nothing into anyone's session.</p>
+  </div>
+</div>
+
+<h2>Choose a path</h2>
+
+<ul class="cards">
+  <li><a class="card" href="quickstart.html"><span class="kit-label">10 minutes</span><span class="card-title">Explore in lab</span><span class="card-text">Build or install, import the delivery mission and run it in the lab executor, which routes inputs without launching agents.</span></a></li>
+  <li><a class="card" href="first-real-run.html"><span class="kit-label">Real seats</span><span class="card-title">Run real agents</span><span class="card-text">Start a tmux server, point the daemon at your harness transcripts and run a one-step mission with a real agent.</span></a></li>
+  <li><a class="card" href="missions.html"><span class="kit-label">Authoring</span><span class="card-title">Build a mission</span><span class="card-text">Inputs, steps, wiring, briefs and outputs, from the cockpit or the CLI.</span></a></li>
+  <li><a class="card" href="agents-drive.html"><span class="kit-label">Agent-facing</span><span class="card-title">Let an agent drive</span><span class="card-text">Install the <code>archon</code> skill so your managing agent authors missions, runs them and answers gates with you.</span></a></li>
+</ul>
+
+<h2>How the parts fit</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Part</th><th scope="col">What it does</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>archond</code></th><td>The coordinator. Admits and executes runs, creates and cleans up seats in tmux, writes each run's ledger, and serves the HTTP API and the cockpit. One daemon owns one state directory.</td></tr>
+    <tr><th scope="row"><code>archon</code></th><td>The CLI. Authors missions offline with <code>--workspace</code> or through the daemon with <code>--server</code>, and sends every runtime command (start, wait, answer, resume, abort) to the daemon.</td></tr>
+    <tr><th scope="row">The cockpit</th><td>The browser UI that <code>archond</code> serves. It has the Missions view, where you draw, staff, run and answer, and the Agents view, a library of roles and saved characters.</td></tr>
+    <tr><th scope="row">The <code>archon</code> skill</th><td>Instructions that teach a Claude Code, Codex or Pi agent to author and drive missions with the CLI.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout danger">
+  <p class="kit-label">Trust model</p>
+  <p>Archon adds no sandbox, no file confinement and no authentication. Seats start with their harness's permission prompts turned off (<code>--dangerously-skip-permissions</code> for Claude Code, <code>--dangerously-bypass-approvals-and-sandbox</code> for Codex; Pi asks none). Anyone who can reach the daemon can start, answer and stop runs. Run it only on interfaces you trust. <a href="operate.html#trust-and-network">Read more</a>.</p>
+</div>
+
+<h2>Where the details live</h2>
+
+<p>These pages explain and walk through. Three canonical documents in the repository decide; when a page and one of them disagree, the canonical document wins.</p>
+<ul>
+  <li><a href="repo:docs/PRODUCT.md">PRODUCT.md</a>: what Archon is for, its philosophy and its goals.</li>
+  <li><a href="repo:docs/CONTRACT.md">CONTRACT.md</a>: the running contract, every behaviour in detail.</li>
+  <li><a href="repo:docs/DESIGN.md">DESIGN.md</a>: the cockpit's design language and the one name for each thing.</li>
+</ul>

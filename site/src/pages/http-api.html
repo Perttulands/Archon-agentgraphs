@@ -1,0 +1,106 @@
+<!--
+title: HTTP API
+description: The routes archond serves for authoring, runs, evidence, files, terminals and health, with the response envelope and conflict rules.
+lead: The CLI and the cockpit use the same HTTP API. Every route is listed below, checked against the daemon's router in this source. Field-level detail lives in the OpenAPI specification and the contract.
+-->
+
+<h2>Conventions</h2>
+
+<ul>
+  <li>JSON responses use one envelope, <code>{"success":true,"data":…,"timestamp":"…"}</code>; errors carry an error object with a code and message. The raw theme document is the one exception.</li>
+  <li>There is no authentication. See <a href="operate.html#trust-and-network">Trust and network</a>.</li>
+  <li>Mission edits carry the revision or ETag they read. A stale one answers 409 <code>CONFLICT</code>: <em>The mission changed since it was read; reload it and retry</em>. An edit that changes nothing saves nothing and answers 200.</li>
+  <li>A mission patch carries exactly one operation; a patch naming two is refused whole with 400.</li>
+  <li>A rejected run start answers 422 <code>RUN_ADMISSION_FAILED</code> with <code>error.findings</code> as <code>{code,nodeId,message}</code>.</li>
+</ul>
+
+<h2>Authoring</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Route</th><th scope="col">Does</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>GET POST /api/missions</code></th><td>List missions (broken ones named); create one.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET PATCH DELETE /api/missions/{mission}</code></th><td>Read, apply one patch operation, delete.</td></tr>
+    <tr><th scope="row"><code>GET /api/missions/{mission}/validation</code></th><td><code>{missionRev,missionEtag,errors,warnings}</code>, the same report as <code>mission validate</code>.</td></tr>
+    <tr><th scope="row"><code>GET /api/missions/{mission}/changes</code></th><td>Change polling for open editors.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET PATCH /api/missions/{mission}/notes</code></th><td>Note threads.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET PATCH /api/missions/{mission}/layout</code></th><td>Card positions and wire lanes.</td></tr>
+    <tr><th scope="row"><code>GET POST /api/agents</code></th><td>The role roster, with <code>harnesses</code> (efforts and known models) and <code>effortPolicy</code>; create a role.</td></tr>
+    <tr><th scope="row"><code>GET PATCH DELETE /api/agents/{agentId}</code></th><td>Read, edit (or <code>retire</code>), delete a role card.</td></tr>
+    <tr><th scope="row"><code>GET /api/agents/{agentId}/usage</code></th><td>Every slot in every mission that names the role.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET POST /api/characters</code>, <code>PUT DELETE /api/characters/{characterId}</code></th><td>Saved characters.</td></tr>
+    <tr><th scope="row"><code>GET /api/gate-profiles</code></th><td>The two code checks.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Runs</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Route</th><th scope="col">Does</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>POST /api/runs</code></th><td>Start a run: <code>mission</code> and <code>inputCardId</code> (or <code>formationId</code>), <code>inputs</code>, <code>cwd</code>, <code>contextPaths</code>, <code>beadId</code>, <code>actor</code>. Answers 202 with <code>runId</code>.</td></tr>
+    <tr><th scope="row"><code>GET /api/runs</code></th><td>Compact summaries, newest first. <code>?mission=</code> filters by mission; <code>?needs=you</code> keeps runs waiting at a human gate or blocked.</td></tr>
+    <tr><th scope="row"><code>GET /api/runs/{runId}</code></th><td>The full projection, events included.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET /api/runs/{runId}/events</code>, <code>/escalations</code></th><td>Projected events and escalations.</td></tr>
+    <tr><th scope="row"><code>GET /api/runs/{runId}/stream</code></th><td>Server-sent events: a projection after each durable change.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET /api/runs/{runId}/wait?until=&amp;since=&amp;hold=</code></th><td>Holds up to <code>hold</code> seconds (0 to 60, default 30) for an ask, a change or the end; the server side of <code>run wait</code>.</td></tr>
+    <tr><th scope="row"><code>POST /api/runs/{runId}/resume</code></th><td><code>mode</code>, <code>grant</code>, <code>pickBest</code>, <code>takeFail</code>, <code>reason</code>, <code>actor</code>.</td></tr>
+    <tr><th scope="row"><code>POST /api/runs/{runId}/abort</code></th><td>Cancel the run and clean up its seats.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET /api/runs/{runId}/gates/{gateId}/request</code></th><td>A waiting human request: criterion, routed input and where each verdict leads.</td></tr>
+    <tr><th scope="row" class="wrap"><code>POST /api/runs/{runId}/gates/{gateId}/verdict</code></th><td>Approve or send back, naming <code>requestedSeq</code>; optional <code>relayedBy</code>.</td></tr>
+    <tr><th scope="row" class="wrap"><code>POST /api/runs/{runId}/gates/{gateId}/pick</code></th><td>Pick a best attempt: <code>requestedSeq</code>, <code>attempt</code>, <code>reason</code>.</td></tr>
+    <tr><th scope="row"><code>GET POST /api/runs/{runId}/storage</code></th><td>Evidence inventory; archive, unarchive or dispose.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Seats and terminals</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Route</th><th scope="col">Does</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>GET /api/runs/{runId}/seats</code></th><td>The latest seat per step and slot: harness, model, effort, session name, state (<code>live</code>, <code>ended</code>, <code>missing</code>, <code>unavailable</code>) and, when live, a <code>terminalUrl</code>.</td></tr>
+    <tr><th scope="row" class="wrap"><code>GET /api/runs/{runId}/seats/{createdSeq}/terminal</code></th><td>WebSocket, subprotocol <code>tty</code>, using CHROTE's frames. Input reaches the pane; resizes change only the viewer's own view. The seat's window stays pinned at 160×48.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Evidence and files</h2>
+
+<p>Every evidence route reads one run; served text is <code>{text,bytes,truncated}</code> with secret patterns redacted.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Route</th><th scope="col">Does</th></tr></thead>
+  <tbody>
+    <tr><th scope="row" class="wrap"><code>/api/runs/{runId}/evidence/nodes/{nodeId}</code></th><td>A node's frozen definition, attempts, dispatches, outputs, gate evaluations, picks and problems.</td></tr>
+    <tr><th scope="row"><code>/api/runs/{runId}/evidence/problems</code></th><td>Every block and error, and the event that ended the run.</td></tr>
+    <tr><th scope="row"><code>/api/runs/{runId}/evidence/attempts</code></th><td>Every step's attempts with outputs, verdicts and files; <code>?node=</code> for one step.</td></tr>
+    <tr><th scope="row" class="wrap"><code>/api/runs/{runId}/evidence/briefs/{dispatchSeq}</code></th><td>The brief that dispatch sent.</td></tr>
+    <tr><th scope="row" class="wrap"><code>/api/runs/{runId}/evidence/artifacts</code>, <code>/evidence/artifacts/{name…}</code></th><td>The artifact list; one artifact's preview.</td></tr>
+    <tr><th scope="row"><code>/api/runs/{runId}/artifacts/{name…}</code></th><td>An artifact's bytes, sandboxed (<code>Content-Security-Policy: sandbox</code>), with ranges.</td></tr>
+    <tr><th scope="row" class="wrap"><code>/api/files/preview?path=</code>, <code>/api/files/raw?path=</code></th><td>Any file a mission references by absolute path: preview, or bytes.</td></tr>
+    <tr><th scope="row"><code>/api/files/directory?path=</code></th><td>An absolute directory's subdirectories and regular files, directories first; used by the start dialog's path picker.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>All evidence and file routes are <code>GET</code>.</p>
+
+<h2>Health and theme</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Route</th><th scope="col">Does</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>GET /healthz</code></th><td>Enveloped <code>{status:"ok", version, commit}</code> of the running build.</td></tr>
+    <tr><th scope="row"><code>GET /api/theme</code></th><td>The raw schema-1 theme document, without an envelope.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Full detail: <a href="repo:docs/openapi/archon.yaml">docs/openapi/archon.yaml</a>, <a href="repo:docs/CONTRACT.md#http-contract">CONTRACT.md, HTTP contract</a> and <a href="repo:docs/CONTRACT.md#run-evidence">Run evidence</a>.</p>

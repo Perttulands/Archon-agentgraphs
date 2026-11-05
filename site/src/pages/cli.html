@@ -1,0 +1,26 @@
+<!--
+title: CLI reference
+description: Every archon noun and command with its usage and flags, generated from the binary's own help.
+lead: Generated from `archon -h`, `archon <noun> -h` and `archon <noun> <command> -h` of this source, so it matches the code. The binary in front of you is the final word: if it is a different build, ask it.
+-->
+
+<p>The text is generated with an empty home directory so it is the same on every machine. Your binary's help adds the Codex models listed in your <code>$CODEX_HOME/models_cache.json</code>.</p>
+
+<h2>Global flags</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Flag</th><th scope="col">Use</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>--server &lt;url&gt;</code></th><td>Send the command to a daemon. Required for every runtime command; authoring through it shows edits live in an open cockpit. A failure is final: nothing falls back to local files.</td></tr>
+    <tr><th scope="row"><code>--workspace &lt;state-dir&gt;</code></th><td>Work on a state directory's files offline. For a directory no daemon serves.</td></tr>
+    <tr><th scope="row"><code>--version</code></th><td>Print the CLI's version and source commit. <code>archon --server &lt;url&gt; version</code> adds the daemon's.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>There is no default: a command given neither <code>--server</code> nor <code>--workspace</code> says so and stops. With <code>--server</code>, authoring commands print the same output as offline; runtime commands print the daemon's <code>{success,timestamp,data}</code> envelope, except <code>run status</code>, <code>run gates</code>, <code>run seats</code>, <code>run attempts</code> and <code>gate request</code>, which print text unless you pass <code>--json</code>. <code>run ask</code>, <code>agent spawn</code> and <code>agent attach</code> work offline only.</p>
+
+<p>Nouns and commands explain themselves: <code>archon &lt;noun&gt;</code>, <code>archon &lt;noun&gt; -h</code> and <code>archon &lt;noun&gt; help</code> list a noun's commands; an unknown command is named and the noun's commands listed.</p>
+
+{{cli-reference}}

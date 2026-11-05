@@ -231,12 +231,12 @@ canvas, opens threads in windows.
 Notes files are schema 2: `missionId`, `rev`, and one `[[entry]]` per entry
 with its `target` (`mission` for the mission's own thread, or a node ID).
 
-A minimal mission file, `hello.mission.toml`, has an Input card and one staffed
-formation:
+A minimal mission file, `hello.mission.toml`, has an Input card, one staffed
+formation and the End node its output leads to:
 
 ```toml
 schema = 1
-id = "brd_hello"
+id = "msn_hello"
 slug = "hello"
 title = "Hello"
 rev = 1
@@ -265,12 +265,21 @@ agentId = "builder"
 harness = "openai-codex"
 model = "" # harness default
 effort = "medium"
-controller = true
+
+[[end]]
+id = "end_done"
+title = "Done"
+outcome = "done"
 
 [[connection]]
 id = "edge_start"
 from = "inp_hello:out"
 to = "fmn_work:port_in"
+
+[[connection]]
+id = "edge_done"
+from = "fmn_work:port_out"
+to = "end_done:in"
 ```
 
 Authoring accepts drafts through the cockpit, HTTP and Archon. Mission, Input

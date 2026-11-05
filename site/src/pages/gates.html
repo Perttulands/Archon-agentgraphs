@@ -1,0 +1,123 @@
+<!--
+title: Gates and End nodes
+nav: Gates and End nodes
+description: Code checks, judge chains and human verdicts; pushback edges that send work back; End nodes and how a run finishes.
+lead: A gate checks work between steps and routes it: PASS goes on, FAIL goes back or to a rejected end. End nodes finish paths on purpose. Together they decide when a run is done and whether it delivered.
+-->
+
+<h2>Kinds</h2>
+
+<p>A gate has a criterion and any non-empty combination of three kinds. They run in this order and stop at the first failure:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Kind</th><th scope="col">Decides by</th><th scope="col">Configure</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>code</code></th><td>A string check on the output: <code>output_contains@1</code> or <code>output_absent@1</code>. It runs no shell commands.</td><td class="wrap"><code>--kinds code --check output_contains --check-version 1 --check-value &lt;text&gt;</code></td></tr>
+    <tr><th scope="row"><code>formation</code></th><td>A judge chain of agent formations. The last judge's verdict decides.</td><td class="wrap"><code>--kinds formation</code>, then <code>gate judge --chain &lt;formation&gt;</code></td></tr>
+    <tr><th scope="row"><code>human</code></th><td>An explicit operator verdict. There is no default verdict and no timeout.</td><td class="wrap"><code>--kinds human</code>, the default for a new gate</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Real checks such as tests, lint or code review belong in a judge formation, whose agents can run anything. A gate's ports are <code>in</code>, <code>pass</code>, <code>fail</code> and <code>judge</code>; every <code>pass</code> and <code>fail</code> must lead to a step, another gate or an End node.</p>
+
+<p class="setup-note">Commands on this page are for bash or zsh and need <code>jq</code>. Take step, slot, gate and run IDs from the JSON a command returns (<code>formation list "$M"</code>, <code>run status "$RUN" --json</code>); never guess one.</p>
+
+<code-block lang="bash" title="Shell setup for this page">
+export ARCHON_SERVER=http://127.0.0.1:8091   # your daemon
+M=review                                      # the mission slug
+WORK=fmn_...  WORK_IN=port_...  WORK_OUT=port_...   # the step under review and its ports
+JUDGE=fmn_...                                 # the judging step
+NEXT=fmn_...  NEXT_IN=port_...                # where a pass goes
+SIGNOFF=gate_...                              # a gate whose verdict ends the mission
+RUN=run_...                                   # a run waiting at a gate
+</code-block>
+
+<code-block lang="bash">
+GATE=$(archon --server "$ARCHON_SERVER" gate create "$M" --kinds formation,human --title "Review" \
+         --criterion "The change satisfies the brief" --json | jq -r .gate.id)
+archon --server "$ARCHON_SERVER" gate judge  "$M" "$GATE" --chain "$JUDGE"
+archon --server "$ARCHON_SERVER" gate update "$M" "$GATE" --kinds human     # dropping a kind drops its configuration
+archon --server "$ARCHON_SERVER" gate judge  "$M" "$GATE" --detach
+</code-block>
+
+<h2 id="judge-chains">Judge chains and the verdict contract</h2>
+
+<p>A judge chain is the formations wired from the gate's <code>judge</code> port and back to it, step to step. Each judge reads the work and the judges before it; a chain that leaves the steps, loops or never returns makes the gate incomplete. The runtime appends the verdict contract to every judge seat's prompt. A judge ends with exactly one block, separate from its ordinary output block:</p>
+
+<code-block lang="text" title="A judge's verdict">
+```archon-verdict
+{"verdict":"pass","reason":"Required checks passed","evidence":["check report reference"]}
+```
+</code-block>
+
+<p><code>verdict</code> is <code>pass</code> or <code>fail</code>, <code>reason</code> a string, <code>evidence</code> an array of strings, and nothing else. A malformed block gets one correction turn in the same live seat. If the correction is still wrong, the run blocks resumably with <code>invalid_judge_result</code>: <code>run resume</code> asks the final judge again in a new attempt, keeping earlier judges' reviews, and <code>run resume --take-fail</code> settles the gate as a fail instead. The gate's window offers both as Ask the judge again and Take it as a fail.</p>
+
+<h2 id="pushback">Pushback: sending work back</h2>
+
+<p>Wire a gate's <code>fail</code> back to the step whose work it judged, and a failure becomes the next attempt. The fail route delivers typed feedback: the gate, its attempt, the verdict, the reason, the evidence and the original input. The next brief shows it as a gate-feedback section.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" formation wire "$M" "$WORK:$WORK_OUT" "$GATE:in"
+archon --server "$ARCHON_SERVER" formation wire "$M" "$GATE:fail" "$WORK:$WORK_IN"   # the pushback edge
+archon --server "$ARCHON_SERVER" formation wire "$M" "$GATE:pass" "$NEXT:$NEXT_IN"
+</code-block>
+
+<p>Nothing caps the loop except a <a href="limits.html">Limit card</a>: without one, work goes back until the gate passes or someone stops the run. There is no automatic loop detection.</p>
+
+<h2 id="human-gates">Human gates</h2>
+
+<p>A human gate holds up only the work behind it. Other branches keep running, several human gates can wait at once, and each is answered on its own. While a gate waits, the run's status is <code>waiting_human</code>, the cockpit marks the gate with a gold ring and <span class="verdict wait">waiting for you</span>, and the navigator counts it under Needs you.</p>
+
+<h3>Answering in the cockpit</h3>
+
+<p>The gate's answer panel shows the routed input, where each verdict leads, a response box, and Approve and Send back. It says whether a verdict ends its path and whether the run would then succeed or fail.</p>
+
+<h3>Answering from the CLI</h3>
+
+<p>A verdict names the exact pending request by its sequence, so a stale or duplicate answer is refused with 409. <code>run wait</code> prints both commands with the right <code>--requested-seq</code> when a gate asks.</p>
+
+<code-block lang="bash">
+archon --server "$ARCHON_SERVER" run gates "$RUN"                      # pending gates and their request sequences
+archon --server "$ARCHON_SERVER" gate request "$RUN" "$GATE"           # the question, routed input and routes
+archon --server "$ARCHON_SERVER" gate approve "$RUN" "$GATE" --requested-seq 42 --response "Ship it; keep the old flag one release."
+archon --server "$ARCHON_SERVER" gate reject  "$RUN" "$GATE" --requested-seq 42 --response-file /abs/review.md
+</code-block>
+
+<p>On approve, a nonempty response travels with the approved input to the next step, rendered as a human-response section. On reject, the response becomes the feedback reason. Responses are kept verbatim, whitespace included. A verdict is recorded and routed at once, even while other steps work.</p>
+
+<h3 id="session-channel">Answering through the asking agents</h3>
+
+<p>By default a human gate's ask reaches the operator through the cockpit, <code>run wait</code> and, if configured, the notify command (<code>humanChannel = notify</code>). With <code>mission update --human-channel session</code>, an ask goes instead to the seats whose work the gate judges: the formation behind the gate keeps its seats on call when it finishes, and each gets a brief with the exact approve and reject commands for its own slot.</p>
+
+<p>The operator then talks to that agent, in its terminal or through the cockpit's Talk, and the agent records only a complete, unambiguous verdict with the operator's exact words (<code>--relayed-by &lt;slot&gt;</code>). If a seat cannot receive the ask, it falls back to the notify command once. Read <a href="repo:docs/adr/0019-human-channel-agent-session.md">ADR-0019</a> and <a href="repo:skills/archon/references/human-gates.md">the skill's human-gates reference</a> before using it.</p>
+
+<h2 id="end-nodes">End nodes</h2>
+
+<p>An End node ends a path on purpose with outcome <code>done</code> or <code>rejected</code>. Its one port, <code>in</code>, takes any number of routes.</p>
+
+<code-block lang="bash">
+DONE=$(archon --server "$ARCHON_SERVER" end create "$M" --json | jq -r .end.id)
+REJECTED=$(archon --server "$ARCHON_SERVER" end create "$M" --outcome rejected --json | jq -r .end.id)
+archon --server "$ARCHON_SERVER" formation wire "$M" "$SIGNOFF:pass" "$DONE:in"
+archon --server "$ARCHON_SERVER" formation wire "$M" "$SIGNOFF:fail" "$REJECTED:in"
+</code-block>
+
+<p>A route that leads nowhere is the validation error <code>route_leads_nowhere</code> (<em>Brief sign-off's pass route leads nowhere: wire it to a step or an End node</em>); drafts with one still save, but no run starts.</p>
+
+<h2 id="how-a-run-finishes">How a run finishes</h2>
+
+<p>A run finishes when every path has ended and nothing else can still run: every formation has produced output since its last delivery, every gate has evaluated its last input, and no human request is open. Then:</p>
+
+<ul>
+  <li>It <strong>succeeds</strong> if every path ended at <code>done</code> Ends and no work came through a pick.</li>
+  <li>It <strong>fails</strong> with <code>path_rejected</code> if any path ended at a <code>rejected</code> End, carrying the routing verdict's reason. Other branches still run to their own ends first.</li>
+  <li>It ends <strong>picked</strong> if its work reached a done End through a best-attempt pick: failed work carried on, never a pass. See <a href="limits.html#best-of-n">Best of N</a>.</li>
+</ul>
+
+<p>A join that can never receive its missing input is starved, not pending: once nothing else can run, the run fails if a rejection explains it, or blocks with <code>reachable_node_starved</code>.</p>
+
+<h2>Steps that work at once</h2>
+
+<p>A run starts every step whose inputs have arrived, beside whatever else works: the branches of a fan-out, steps on other paths and the judge chains of gates. A step reads its ports when it starts; work that arrives while it runs waits and starts the next run of it. A gate evaluates one input at a time, oldest first. Where one step must follow another, wire it so. Full rules: <a href="repo:docs/CONTRACT.md#steps-that-work-at-once">CONTRACT.md, Steps that work at once</a>.</p>

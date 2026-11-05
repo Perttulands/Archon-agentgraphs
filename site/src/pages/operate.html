@@ -1,0 +1,152 @@
+<!--
+title: Operate the daemon
+nav: Operate the daemon
+description: Every archond flag, the trust and network model, the state directory, the cockpit and theme, notifications, environment variables and running Archon under a supervisor.
+lead: `archond` is one process per state directory. It admits and executes runs, owns their seats, writes their ledgers and serves the API and the cockpit. Host paths, sockets and listen addresses are always host values you pass in; nothing in a mission names them.
+-->
+
+<h2 id="trust-and-network">Trust and network</h2>
+
+<div class="callout danger">
+  <p class="kit-label">No authentication, no authority checks</p>
+  <p>Whoever reaches the daemon, or runs the CLI against its state directory, can author missions, start, resume and abort runs, and answer gates. The daemon opens any file a mission references by absolute path, and seats run with full access as the daemon's user. This is deliberate (<a href="repo:docs/adr/0021-archon-only-chains-agents-and-gates.md">ADR-0021</a>): safety lives in the configuration of the agents, the account they run as and the network perimeter.</p>
+</div>
+
+<ul>
+  <li>Listen only on interfaces you trust. Repeat <code>--listen</code> for each one; the default is none, and the daemon refuses to start without one.</li>
+  <li>Reach a remote daemon through your own forwarding (an SSH tunnel, for example), not by listening on a public address.</li>
+  <li>The server URL a client uses must be an HTTP URL with a literal IP, without a trailing slash, credentials, query or fragment.</li>
+  <li>WebSocket terminal connections must come from the same origin as the request host.</li>
+</ul>
+
+<h2 id="daemon-flags">Daemon flags</h2>
+
+<p>Generated from <code>archond -h</code> of this source.</p>
+
+{{archond-flags}}
+
+<p>Every path flag takes an absolute path. With <code>--executor tmux</code>, <code>--socket</code>, <code>--tmux-bin</code>, <code>--claude-transcripts</code> and <code>--codex-transcripts</code> are required; <code>--pi-transcripts</code> is optional. The daemon sets no default working directory and no step time limit: runs name their own <code>cwd</code> or get a workspace, and only Limit cards limit.</p>
+
+<h2>The state directory</h2>
+
+<p>One daemon locks one state directory (<code>coordinator.lock</code>) and runs many missions concurrently within it. The same directory is the CLI's <code>--workspace</code>. Offline commands that execute, such as <code>mission run</code> or <code>gate approve</code> without <code>--server</code>, refuse while a daemon owns it: <em>a daemon owns this state directory: run this through it with --server</em>.</p>
+
+<p>Keep it private (<code>umask 077</code>), outside any source checkout and outside the install prefix. Back it up as a whole; restart the daemon with the same directory and flags to keep missions and history. Layout: <a href="missions.html#where-missions-live">Where missions live</a>.</p>
+
+<h2>The cockpit and its theme</h2>
+
+<ul>
+  <li>An installed daemon finds <code>../share/archon/ui</code> beside its <code>bin</code> directory. A source build needs <code>--ui-dir</code> pointing at a built <code>dashboard/dist</code>. <code>--ui-dir ''</code> turns the cockpit off.</li>
+  <li><code>GET /api/theme</code> serves the bundled <code>chrote-dark</code> theme, or the schema-1 file named by <code>--theme-file</code>, read and validated on each request. A broken theme file answers 500 and leaves execution alone.</li>
+  <li>The cockpit's Style control chooses Console (the host theme) or Paper (a built-in light palette) for that browser only.</li>
+</ul>
+
+<h2 id="notifications">Needs-you notifications</h2>
+
+<p><code>--notify-command</code> names an executable the daemon runs, with no shell and no arguments, for each needs-you event, writing one JSON notification on its stdin. Exit 0 means delivered; each send has 30 seconds. <code>--cockpit-url</code> is the base for links in messages. The command owns the channel, recipient and credentials.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Kind</th><th scope="col">Sent when</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>human_gate</code></th><td>A human gate asks. The body has the criterion, the input (up to 64 KiB), the cockpit link and the exact approve and reject commands.</td></tr>
+    <tr><th scope="row"><code>escalation</code></th><td>A blocking escalation is raised.</td></tr>
+    <tr><th scope="row"><code>blocked</code></th><td>The run settles blocked with no escalation to explain it; resumable blocks include the resume command.</td></tr>
+    <tr><th scope="row"><code>final</code></th><td>A run that finished while this daemon was running ends.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Each notification carries <code>runId</code>, <code>missionSlug</code>, <code>missionTitle</code>, <code>kind</code>, <code>runStatus</code>, gate and node identities, <code>missionUrl</code>, a one-line <code>text</code> and a complete plain-text <code>subject</code> and <code>body</code>. Each ask is sent once (recorded in the run's <code>.needs-you.json</code>), and failed sends are retried at the next settle, at startup and every five minutes. A placeholder command:</p>
+
+<code-block lang="sh" title="notify.sh">
+#!/bin/sh
+set -eu
+notification=$(cat)
+subject=$(printf '%s' "$notification" | jq -r '.subject')
+printf '%s' "$notification" | jq -r '.body' |
+  "$NOTIFY_SENDER" --to "$NOTIFY_TO" --subject "$subject"
+</code-block>
+
+<h2 id="environment">Environment variables</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Variable</th><th scope="col">Read by</th><th scope="col">Effect</th></tr></thead>
+  <tbody>
+    <tr><th scope="row"><code>ARCHON_DRIVER</code></th><td><code>archon</code></td><td>Default for every <code>--actor</code>, before <code>agent:archon</code>.</td></tr>
+    <tr><th scope="row"><code>ARCHON_AGENTS_DIR</code></th><td><code>archon</code> offline</td><td>Role-card directory for offline <code>agent</code> commands; otherwise <code>&lt;workspace&gt;/agents</code>.</td></tr>
+    <tr><th scope="row"><code>ARCHON_TMUX_SOCKET</code>, <code>ARCHON_TMUX_BIN</code></th><td><code>archon agent spawn|attach</code></td><td>The tmux socket and client a role's own session uses.</td></tr>
+    <tr><th scope="row"><code>PATH</code></th><td><code>archond</code></td><td>Where <code>claude</code>, <code>codex</code> and <code>pi</code> are found when a seat launches.</td></tr>
+    <tr><th scope="row"><code>CODEX_HOME</code></th><td><code>archond</code></td><td>Where the Codex model list (<code>models_cache.json</code>) is read; default <code>~/.codex</code>.</td></tr>
+    <tr><th scope="row"><code>PI_CODING_AGENT_DIR</code></th><td><code>archond</code></td><td>Default Pi transcript root (<code>$PI_CODING_AGENT_DIR/sessions</code>) when <code>--pi-transcripts</code> is not given.</td></tr>
+    <tr><th scope="row"><code>ARCHON_API_URL</code></th><td>The dashboard's dev server</td><td>The daemon URL <code>npm run dev</code> proxies to.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The daemon clears <code>TMUX</code>, <code>TMUX_PANE</code> and <code>TMUX_TMPDIR</code> from its own environment and sets <code>TERM=xterm-256color</code>, so starting it from inside tmux is safe. Seats do not inherit the daemon's environment: they take the tmux server's.</p>
+
+<p>The CLI can also execute runs offline, without a daemon, when <code>ARCHON_LAB_HARNESSES</code> or <code>ARCHON_TMUX_HARNESSES</code> and the related <code>ARCHON_TMUX_*</code>, <code>ARCHON_*_TRANSCRIPTS</code>, <code>ARCHON_STATE_DIR</code> and <code>ARCHON_AGENT_USER</code> variables configure an executor. The test suite uses this path; for real work, run through the daemon.</p>
+
+<h2>Health and version</h2>
+
+<code-block lang="bash">
+curl --fail --silent http://127.0.0.1:8091/healthz
+# {"success":true,"data":{"commit":"…","status":"ok","version":"…"},"timestamp":"…"}
+archon --server http://127.0.0.1:8091 version
+</code-block>
+
+<p>The cockpit's top bar shows the daemon's version too. A deploy can compare <code>data.commit</code> with the commit it meant to start.</p>
+
+<h2 id="supervision">Running under a supervisor</h2>
+
+<p>Archon ships no service files; supervision belongs to the host. What a supervisor must respect:</p>
+
+<ul>
+  <li><strong>The tmux server outlives the daemon.</strong> Run it separately. A daemon shutdown detaches from working seats without ending them (<code>left_shutdown</code>) and the restarted daemon picks the run up again; killing the server loses those seats.</li>
+  <li><strong>Stop with SIGTERM and allow about ten seconds.</strong> SIGTERM fences new work at once, gives active turns five seconds, and drains HTTP and execution within a ten-second budget. A watchdog is an outer limit, not the normal way to stop.</li>
+  <li><strong>Restart with the same flags and state directory.</strong> Startup recovers interrupted runs before listening.</li>
+  <li><strong>Give the daemon a <code>PATH</code> with the harness CLIs</strong>, and the tmux server the environment the seats need.</li>
+</ul>
+
+<p>An illustration for systemd user units. Adapt every path; nothing here is installed for you.</p>
+
+<code-block lang="ini" title="~/.config/systemd/user/archon-tmux.service (example)">
+[Unit]
+Description=tmux server for Archon seats
+
+[Service]
+Type=forking
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/mkdir -p %h/.local/share/archon/state/tmux
+ExecStart=/usr/bin/tmux -S %h/.local/share/archon/state/tmux/seats.sock new-session -d -s archon-keep
+
+[Install]
+WantedBy=default.target
+</code-block>
+
+<code-block lang="ini" title="~/.config/systemd/user/archond.service (example)">
+[Unit]
+Description=Archon coordinator
+Wants=archon-tmux.service
+After=archon-tmux.service
+
+[Service]
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/archond --executor tmux \
+  --state-dir %h/.local/share/archon/state \
+  --listen 127.0.0.1:8091 \
+  --socket %h/.local/share/archon/state/tmux/seats.sock \
+  --tmux-bin /usr/bin/tmux \
+  --claude-transcripts %h/.claude/projects \
+  --codex-transcripts %h/.codex/sessions
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+</code-block>
+
+<p>Before restarting a daemon with active work, read <a href="recovery.html#restarting-the-daemon">Restarting the daemon</a>.</p>
