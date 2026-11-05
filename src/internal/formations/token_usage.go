@@ -13,7 +13,7 @@ import (
 )
 
 // Token limits (archon-o7p.9). A Limit card's tokens knob caps what the work
-// it covers spends, by one approximate definition for both harnesses: input
+// it covers spends, by one approximate definition for every harness: input
 // the model did not read from its cache, writing to the cache included, plus
 // every output token, reasoning included, subagents included, counted for
 // each dispatch from its pointer.
@@ -23,6 +23,8 @@ import (
 //     session file and in the subagent files beside it.
 //   - Codex: how much the session's total_token_usage grew from its last count
 //     before the pointer, input_tokens - cached_input_tokens + output_tokens.
+//   - Pi: input + cacheWrite + output of each assistant message after the
+//     pointer.
 //
 // The executor records each dispatch's count as a token_usage event when the
 // dispatch ends or is cut, so replay, later attempts and the mission's card
@@ -61,6 +63,8 @@ func dispatchTokens(harness, path, pointer string) (TokenUsage, error) {
 		return claudeDispatchTokens(path, pointer)
 	case "openai-codex":
 		return codexDispatchTokens(path, pointer)
+	case piHarnessID:
+		return piDispatchTokens(path, pointer)
 	}
 	return TokenUsage{}, nil
 }

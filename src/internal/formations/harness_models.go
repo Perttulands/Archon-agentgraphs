@@ -24,15 +24,28 @@ var claudeCodeModels = []string{
 	"opus", "sonnet", "haiku", "fable",
 }
 
+// piModels lists the provider/model names offered for Pi. The first is a new
+// Pi slot's default. Pi runs any model its providers know, so a slot may name
+// another provider's model; the list is only a picker.
+var piModels = []string{
+	"anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-5-5", "anthropic/claude-fable-5-1",
+}
+
 // HarnessModels lists the models offered for a harness, the one a new slot on
-// that harness takes first. Claude Code offers family aliases. Codex
-// offers the models its CLI lists, by priority, from the host's
-// models_cache.json; without that cache it offers none.
+// that harness takes first. Claude Code offers family aliases and Pi
+// provider/model names. Codex offers the models its CLI lists, by priority,
+// from the host's models_cache.json; without that cache it offers none.
 func HarnessModels(harnessID string) []HarnessModel {
 	switch harnessID {
 	case "claude-code":
 		models := make([]HarnessModel, 0, len(claudeCodeModels))
 		for _, id := range claudeCodeModels {
+			models = append(models, HarnessModel{ID: id})
+		}
+		return models
+	case piHarnessID:
+		models := make([]HarnessModel, 0, len(piModels))
+		for _, id := range piModels {
 			models = append(models, HarnessModel{ID: id})
 		}
 		return models

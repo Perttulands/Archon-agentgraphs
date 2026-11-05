@@ -127,10 +127,10 @@ func (e *TmuxFormationExecutor) verifyServerOwner(expected expectedAgentUser) er
 }
 
 type TmuxExecutorConfig struct {
-	StateDir, CodexTranscriptRoot, ClaudeTranscriptRoot, Mission string
-	RecoveryTranscript, RecoveryBrief                            string
-	Harnesses                                                    []string
-	Socket                                                       string
+	StateDir, CodexTranscriptRoot, ClaudeTranscriptRoot, PiTranscriptRoot, Mission string
+	RecoveryTranscript, RecoveryBrief                                              string
+	Harnesses                                                                      []string
+	Socket                                                                         string
 	// Cwd is the working directory of the dispatch being executed: its run's
 	// recorded cwd. It is set per dispatch and never configured (archon-12qt).
 	Cwd string
@@ -206,6 +206,20 @@ func (o *ownedSessions) record(slotID, name string) {
 
 }
 
+// transcriptRoot is where a harness writes its native transcripts.
+func (c TmuxExecutorConfig) transcriptRoot(harness string) string {
+	switch harness {
+	case "claude-code":
+		return c.ClaudeTranscriptRoot
+	case piHarnessID:
+		if c.PiTranscriptRoot != "" {
+			return c.PiTranscriptRoot
+		}
+		return DefaultPiTranscriptRoot()
+	}
+	return c.CodexTranscriptRoot
+}
+
 func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 	capBytes := defaultTmuxOutputCapBytes
 	if raw := strings.TrimSpace(os.Getenv("ARCHON_TMUX_OUTPUT_CAP_BYTES")); raw != "" {
@@ -219,6 +233,7 @@ func TmuxExecutorConfigFromEnv() TmuxExecutorConfig {
 		Mission:              strings.TrimSpace(os.Getenv("ARCHON_MISSION_LABEL")),
 		CodexTranscriptRoot:  strings.TrimSpace(os.Getenv("ARCHON_CODEX_TRANSCRIPTS")),
 		ClaudeTranscriptRoot: strings.TrimSpace(os.Getenv("ARCHON_CLAUDE_TRANSCRIPTS")),
+		PiTranscriptRoot:     strings.TrimSpace(os.Getenv("ARCHON_PI_TRANSCRIPTS")),
 		Socket:               strings.TrimSpace(os.Getenv("ARCHON_TMUX_SOCKET")),
 		AgentUser:            strings.TrimSpace(os.Getenv("ARCHON_AGENT_USER")),
 		SessionPrefix:        strings.TrimSpace(os.Getenv("ARCHON_TMUX_SESSION_PREFIX")),
@@ -974,10 +989,7 @@ func (e *TmuxFormationExecutor) provisionOwnedSession(ctx context.Context, owned
 	if err != nil {
 		return "", err
 	}
-	root := e.config.CodexTranscriptRoot
-	if variant.ID == "claude-code" {
-		root = e.config.ClaudeTranscriptRoot
-	}
+	root := e.config.transcriptRoot(variant.ID)
 	if err := dispatchContextError(ctx); err != nil {
 		return "", err
 	}
@@ -1043,6 +1055,9 @@ func (e *TmuxFormationExecutor) pickOwnedSessionName(ctx context.Context, runID,
 // dispatch. It targets only the exact owned name, so it never enumerates or
 // inspects foreign sessions.
 func tmuxPaneShowsHarnessReady(harnessID, captured string) bool {
+	if harnessID == piHarnessID {
+		return piReady(captured)
+	}
 	if harnessID == "openai-codex" {
 		if panel := strings.LastIndex(captured, "OpenAI Codex"); panel >= 0 {
 			captured = captured[panel:]
@@ -1880,11 +1895,12 @@ func (realTmuxHarnessClient) DescribeActivePane(ctx context.Context, socket, tar
 
 // tmuxPaneShowsAgentWorking is the one rule for a harness at work in captured
 // pane text: Codex, and older Claude Code, show "esc to interrupt"; Claude Code
-// 2.1 shows a running spinner such as "✶ Puzzling… (4s · ↓ 60 tokens)".
+// 2.1 shows a running spinner such as "✶ Puzzling… (4s · ↓ 60 tokens)"; Pi
+// reads as piWorkingLine says.
 // Readiness applies it to a pane's tail, seatInputClear to the lines just above
 // the input box.
 func tmuxPaneShowsAgentWorking(harness, captured string) bool {
-	return strings.Contains(captured, "esc to interrupt") || harness == "claude-code" && claudeWorkingLine.MatchString(captured)
+	return strings.Contains(captured, "esc to interrupt") || harness == "claude-code" && claudeWorkingLine.MatchString(captured) || harness == piHarnessID && piWorkingLine.MatchString(captured)
 }
 
 // tmuxCommandTimeout bounds one tmux command. A single command answers in

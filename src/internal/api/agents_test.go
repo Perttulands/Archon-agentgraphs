@@ -267,7 +267,7 @@ func TestAgentsHandlerServesARoleAsRoleTextOnly(t *testing.T) {
 			EffortPolicy []formations.EffortPolicyEntry `json:"effortPolicy"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(list.Body.Bytes(), &roster); err != nil || len(roster.Data.Harnesses) != 2 || roster.Data.Harnesses[0].ID != "claude-code" || roster.Data.Harnesses[0].DefaultEffort != "medium" {
+	if err := json.Unmarshal(list.Body.Bytes(), &roster); err != nil || len(roster.Data.Harnesses) != 3 || roster.Data.Harnesses[0].ID != "claude-code" || roster.Data.Harnesses[0].DefaultEffort != "medium" {
 		t.Fatalf("roster harnesses = %+v (%v) from %s", roster.Data.Harnesses, err, list.Body.String())
 	}
 	wantPolicy := []formations.EffortPolicyEntry{

@@ -91,12 +91,12 @@ func TestAssigningASlotStatesItsSettings(t *testing.T) {
 		want string
 	}{
 		{"no effort", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus"}, "needs an effort; the policy is low for errands (verifier, scout); medium for making things (builder, debugger, operator); xhigh for architecture and review (reviewer, judge, architect, designer, planner, orchestrator); max for consequential reviews, chosen by hand"},
-		{"no harness", FormationSlotAssignmentRequest{Effort: "low"}, "needs a harness: claude-code or openai-codex"},
+		{"no harness", FormationSlotAssignmentRequest{Effort: "low"}, "needs a harness: claude-code or openai-codex or pi"},
 		{"ultra on claude", FormationSlotAssignmentRequest{Harness: "claude-code", Effort: "ultra"}, `effort "ultra" is not one claude-code accepts; use low, medium, high, xhigh, max`},
 		{"a harness that cannot start seats", FormationSlotAssignmentRequest{Harness: "hermes", Effort: "low"}, `harness "hermes" cannot start seats`},
 		{"a model with spaces", FormationSlotAssignmentRequest{Harness: "claude-code", Model: "opus 5", Effort: "low"}, "one model name without spaces"},
 		// A role names only role text; the slot still states what it runs.
-		{"a role alone", FormationSlotAssignmentRequest{AgentID: "reviewer"}, "needs a harness: claude-code or openai-codex"},
+		{"a role alone", FormationSlotAssignmentRequest{AgentID: "reviewer"}, "needs a harness: claude-code or openai-codex or pi"},
 		{"a role and a harness without an effort", FormationSlotAssignmentRequest{AgentID: "reviewer", Harness: "openai-codex"}, "needs an effort; the policy is"},
 		{"a role with a model and no effort", FormationSlotAssignmentRequest{AgentID: "scout", Model: "opus"}, "needs a harness"},
 	} {
@@ -282,7 +282,7 @@ func TestAdmissionNamesASlotWhoseHarnessCannotStart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := `formation "fmn_research" slot "Researcher" (slot_research) harness "hermes" cannot start seats; use claude-code or openai-codex`
+			want := `formation "fmn_research" slot "Researcher" (slot_research) harness "hermes" cannot start seats; use claude-code or openai-codex or pi`
 			for _, report := range []BoardValidationReport{
 				ValidateRunAdmission(board, check.personas, RunAdmissionScope{}),
 				ValidateRunAdmission(board, check.personas, RunAdmissionScope{MissionID: "mis_showcase"}),

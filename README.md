@@ -108,8 +108,8 @@ on trusted interfaces.
 
 ## Run real agents
 
-Install tmux and the Claude Code or Codex CLI required by your chosen personas,
-and authenticate those CLIs. Start the daemon with `--executor tmux` and your
+Install tmux and the Claude Code, Codex or Pi CLI your slots name, and
+authenticate those CLIs. Start the daemon with `--executor tmux` and your
 absolute paths for `--socket`, `--tmux-bin`, `--codex-transcripts` and
 `--claude-transcripts`. The daemon creates seats on demand when a formation
 runs. See [configuration](docs/CONTRACT.md#daemon-configuration) and the

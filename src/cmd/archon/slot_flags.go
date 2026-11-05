@@ -52,7 +52,7 @@ func newSlotAssignFlags(fs *flag.FlagSet, stderr io.Writer) slotAssignFlags {
 	flags := slotAssignFlags{
 		slot:      fs.String("slot", "", "slot id"),
 		role:      fs.String("role", "", "optional role (persona id); omit it for a vanilla agent"),
-		harness:   fs.String("harness", "", "harness the seat runs: claude-code or openai-codex"),
+		harness:   fs.String("harness", "", "harness the seat runs: "+strings.Join(formations.LaunchableHarnessIDs(), " or ")),
 		model:     fs.String("model", "", "model the seat runs; blank means the harness default model"),
 		effort:    fs.String("effort", "", "reasoning effort; policy: "+formations.EffortPolicyText()),
 		character: fs.String("character", "", "saved character (agent characters) to staff the slot as: its role, harness, model and effort, each replaced by its own flag when given"),

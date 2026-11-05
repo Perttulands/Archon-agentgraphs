@@ -12,6 +12,9 @@ import (
 // Preserve Codex's session identity and preceding turn context for versions
 // that write context before the user message.
 func readLatestSeatTurn(s *nativeSeat, path, cwd, pointer string) (codexTranscriptTurn, error) {
+	if s.variant.ID == piHarnessID {
+		return readPiTurn(path, cwd, pointer, s.runID)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return codexTranscriptTurn{}, err

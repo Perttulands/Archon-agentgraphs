@@ -8,7 +8,7 @@ contract defines the behaviour that implements it.
 Archon builds and runs work graphs with agents and gates. `archond` owns
 execution and serves the Archon UI. The `archon` CLI authors the same
 definitions and sends runtime commands to the daemon. This is a trusted-operator
-service with concurrent missions, two native harness adapters and durable run
+service with concurrent missions, three native harness adapters and durable run
 history. Host deployment, forwarding and CHROTE integration live outside this
 repository. [ADR-0016](adr/0016-daily-capability.md) records the daily-capability
 decisions; [examples](../examples/) provide reusable missions.
@@ -24,7 +24,7 @@ decisions; [examples](../examples/) provide reusable missions.
 | Output port | What a step emits on one route. Its kind is `text` (the default), `file` or `folder`; a file or folder output's `ref` is the absolute path of what the step produced, and Archon keeps a copy of it as each attempt produced it. Input ports carry no kind. |
 | Attempt directory | `<state-dir>/.archon/artifacts/<runId>/<nodeId>/<attempt>/`, created when each attempt of a step, judges included, is dispatched. The seat writes selected evidence there; it belongs to that attempt alone. Retention follows the run evidence lifecycle below; project deliverables and build caches belong in the project workspace. |
 | Formation | A step: the team of agents that does it. `solo` has one seat; `peer` has peer seats; `orchestrated` has a controller directing its bound workers. |
-| Slot | A position in a formation that owns what its seat runs: a harness (`claude-code` or `openai-codex`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
+| Slot | A position in a formation that owns what its seat runs: a harness (`claude-code`, `openai-codex` or `pi`), a model (blank means the harness default) and an effort, plus an optional role (`agentId`, a persona). A slot without a role is a vanilla agent, such as `claude-code · opus · low`. A seat is the slot's runtime agent session. |
 | Persona (role) | A TOML agent card with role text only: a display name, kind, summary, capabilities, status and notes. It carries no harness, model or effort; each slot that uses it states its own. Every Archon has seven built-in generic roles (`scout`, `planner`, `builder`, `judge`, `orchestrator`, `debugger`, `reviewer`); a card in the agents directory adds a role or overrides a built-in one. |
 | Character | A saved staffing: a name, an optional description and picture, and a role, harness, model and effort. It is a stamp: stamping a slot writes those four values to the slot and keeps no link, so editing or deleting a character changes no mission. Characters live in `characters.json` beside the role cards. |
 | Gate | A criterion with one or more kinds: `code`, `formation`, `human`. Its ports are `in`, `pass`, `fail`, `judge`. |
@@ -80,7 +80,11 @@ harness's known `models`: `claude-code` runs the aliases `opus`, `sonnet`,
 `openai-codex` runs the models its CLI lists in
 `$CODEX_HOME/models_cache.json` (default `~/.codex`), by priority, each with
 the efforts it accepts; without that cache Codex lists none. A known Codex
-model narrows the slot's efforts to its own.
+model narrows the slot's efforts to its own. `pi` runs `provider/model` names,
+offering `anthropic/claude-opus-5-5`, `anthropic/claude-sonnet-5-5`,
+`anthropic/claude-haiku-5-5` and `anthropic/claude-fable-5-1`; a name from any
+other provider Pi knows works the same way, with that provider's credentials
+resolved by Pi. A Pi slot's effort is Pi's thinking level.
 The catalog is a picker, not an exhaustive list of accepted names. A model
 outside it is accepted without a warning; the harness decides whether it can
 run. Choose the effort by the policy the agent
@@ -93,7 +97,7 @@ several slots, each with its own settings.
 
 The cockpit shows every slot as a row: its harness mark and label, then its
 role (or `vanilla`) over `<Harness> · <model> · <effort>`, as in `Claude · opus
-· low`. Cards name the harness in one short word (`Claude`, `Codex`) and a
+· low`. Cards name the harness in one short word (`Claude`, `Codex`, `Pi`) and a
 blank model as `default`; sentences say `Claude Code` and `default model`. On a
 card only a long model gives way, never the harness or the effort, and the
 workers of an orchestrated step sit under `workers` with a solo slot's width;
@@ -163,7 +167,8 @@ after the role. `archon agent spawn <id> --harness <h> --effort <e> [--model
 <m>]` starts it, and refuses one already running, which keeps what it started
 with: it names what the spawn stated and says it changes none of it. It states its settings as a slot does: the effort must be one the harness accepts
 (`claude-code` takes `low`, `medium`, `high`, `xhigh` or `max`; `openai-codex`
-also takes `ultra`, though a Codex model may accept fewer), a blank model means
+also takes `ultra`, though a Codex model may accept fewer; `pi` takes the same
+efforts as `claude-code`), a blank model means
 the harness default, and a harness Archon cannot start, such as `hermes`, is
 refused. Cards hold no launch string.
 
@@ -589,10 +594,11 @@ executor records them without seats.
 
 Its `tokens` knob (archon-o7p.9) counts what the covered seats spend: on a
 step, every dispatch of its attempts, and on the Input card, every dispatch of
-the run, judges included. The count is approximate and the same for both
-harnesses: input the model did not read from its cache, writing to the cache
+the run, judges included. The count is approximate and the same for every
+harness: input the model did not read from its cache, writing to the cache
 included, plus every output token, reasoning included, subagents included,
-counted for each dispatch from its pointer. For Claude Code that is
+counted for each dispatch from its pointer. For Pi that is `input + cacheWrite +
+output` of each assistant message after the pointer. For Claude Code that is
 `input_tokens + cache_creation_input_tokens + output_tokens` of each assistant
 message after the pointer, once per message id, in the session file and the
 subagent files beside it; for Codex it is how much the session's
@@ -926,8 +932,14 @@ the API. In session mode the operator talks to that seat; it records the
 confirmed answer with `gate approve|reject`, the current `--requested-seq`,
 its own `--relayed-by` slot ID and the exact `--response` or `--response-file`.
 
-The `tmux` executor uses one implementation with Claude Code and OpenAI Codex
-adapters. It resolves authenticated harness executables from its environment.
+The `tmux` executor uses one implementation with Claude Code, OpenAI Codex and
+Pi adapters. It resolves authenticated harness executables from its environment.
+Archon never holds or passes a harness's credentials. A seat takes its
+environment from the tmux server, not the daemon, so a Pi seat's key lives in
+Pi's own auth file or that server's environment. A Pi seat keeps its saved
+session in Pi's own per-folder layout under the transcript root (`--session-dir`
+names it, whatever Pi's settings say), so `pi --resume` in the seat's folder
+finds it under the default root.
 Each fresh seat gets a pointer to a file under `<state-dir>/briefs`. The file
 contains run/node/slot identity, the role (`agent: vanilla (no role)` for a slot without one), cwd, mission goal, Bead, role summary,
 formation brief, file/link references, routed inputs, gate feedback, human
@@ -943,7 +955,9 @@ shows in the input line, however the harness wraps it, and confirms the harness
 took it: the input line no longer holds the pointer. While the input line still
 holds exactly the pointer, Enter is pressed again after a moment, up to five
 presses; Enter is never pressed while the input line holds anything else, such
-as text the operator added (recorded as `brief_not_taken`, below). A Codex
+as text the operator added (recorded as `brief_not_taken`, below). A Pi seat
+starts with `--approve`, so it trusts its folder's project files for its launch
+only, shows no trust dialog and writes nothing to Pi's `trust.json`. A Codex
 seat starts with its folder trusted for its launch only (`-c
 'projects={"<cwd>"={trust_level="trusted"}}'`), so it shows no trust dialog
 and Archon never writes the operator's `~/.codex/config.toml`. Should a
@@ -969,12 +983,12 @@ running for its human gate. That seat's later cleanup records `ended`, `gone`,
 
 Native completion must match the exact pointer, cwd, the slot's model/effort,
 native session, and a natively finished agent turn carrying this run's
-completion sentinel: Codex task completion, or Claude's end_turn assistant
-message. A marker alone is insufficient, and another run's sentinel never
+completion sentinel: Codex task completion, Claude's end_turn assistant
+message, or Pi's assistant message with `stopReason` `stop`. A marker alone is insufficient, and another run's sentinel never
 completes a dispatch. The operator's turns after the pointer, typed or queued
 messages and interrupts, neither complete nor fail the dispatch, and the
 completing turn may come after them. A turn that finishes without the sentinel waits for recovery.
-For both harnesses, once a dispatched seat has an idle, empty input prompt
+For every harness, once a dispatched seat has an idle, empty input prompt
 and no native transcript activity for five minutes, Archon sends one continue
 instruction in that same seat naming the missing completion sentinel. Busy
 panes, Claude background tasks awaiting their native completion notification,
@@ -988,7 +1002,10 @@ with `--mode redispatch` to run the step again. This is stalled-seat recovery,
 not a time limit on a working step.
 The dispatch
 still fails loudly when the seat ends, when the model or effort changes, or when
-the harness moves to another conversation (`/clear`, `/new` or `/resume`).
+the harness moves to another conversation (`/clear`, `/new` or `/resume`). Pi
+keeps no record of a process's current session, so a Pi seat moved to another
+conversation is not named as such: its dispatch reaches the idle recovery above
+and blocks with `seat_idle_without_sentinel`.
 
 A step without a time limit never times out, so a seat that waits on something
 Archon cannot end on its own is recorded instead. The idle recovery above
@@ -1616,6 +1633,8 @@ For build and launch commands, see [lab setup](../skills/archon/references/lab-a
 
 For real seats select `--executor tmux` and supply `--socket`, `--tmux-bin`,
 `--codex-transcripts`, `--claude-transcripts` from host configuration.
+`--pi-transcripts` is optional and defaults to Pi's own sessions directory
+(`$PI_CODING_AGENT_DIR/sessions`, else `~/.pi/agent/sessions`).
 The daemon has no default working directory: every run, a mission's or a
 single step's, works in the cwd its start names or an automatic workspace, as
 described above, and records it in `run_started`; completed-turn recovery

@@ -52,7 +52,7 @@ var nounHelps = []nounHelp{
 		{"create", "<mission> [solo|peer|orchestrated] [--title <title>] [--x n] [--y n] [--json]", "add a step. It is solo unless you name another type"},
 		{"list", "<mission> [--json]", "list the steps with their slots and staffing"},
 		{"inspect", "<mission> <formation> [--json]", "print one step with its slots, ports, brief and connections"},
-		{"assign", "<mission> <formation> --slot <slot> (--character <id> | --harness <claude-code|openai-codex> --effort <effort>) [--model <model>] [--role <persona>] [--json]", "staff a slot. A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent. --character stamps a saved character's role, harness, model and effort, each replaced by its own flag when given; the slot keeps no link to it"},
+		{"assign", "<mission> <formation> --slot <slot> (--character <id> | --harness <claude-code|openai-codex|pi> --effort <effort>) [--model <model>] [--role <persona>] [--json]", "staff a slot. A slot owns its harness, model and effort; --role adds optional role text, and a slot without one is a vanilla agent. --character stamps a saved character's role, harness, model and effort, each replaced by its own flag when given; the slot keeps no link to it"},
 		{"unassign", "<mission> <formation> --slot <slot> [--json]", "empty a slot"},
 		{"set-brief", "<mission> <formation> --goal <goal> [--bead <beads-id>] [--file <path>]... [--link <url>]... [--json]", "write the step's brief"},
 		{"rename", "<mission> <formation> <title> [--json]", "change the step's title"},

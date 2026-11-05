@@ -50,7 +50,7 @@ func TestCharactersAreSavedReplacedAndDeleted(t *testing.T) {
 	for name, body := range map[string]string{
 		"no name":       `{"harness":"claude-code","effort":"low"}`,
 		"no effort":     `{"name":"A","harness":"claude-code"}`,
-		"bad harness":   `{"name":"A","harness":"pi","effort":"low"}`,
+		"bad harness":   `{"name":"A","harness":"hermes","effort":"low"}`,
 		"bad effort":    `{"name":"A","harness":"claude-code","effort":"ultra"}`,
 		"bad picture":   `{"name":"A","harness":"claude-code","effort":"low","picture":"https://example.test/a.png"}`,
 		"unknown field": `{"name":"A","harness":"claude-code","effort":"low","kind":"x"}`,
